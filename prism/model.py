@@ -14,72 +14,12 @@ class Model(nn.Module):
         d_value: int = 64
     ):
         super().__init__()
-        self.embedding = Embedding(vocab_size, embedding_size)
-        self.positional_encoding = PositionalEncoding(
-            context_size, embedding_size)
+        self.embedding = Embedding(vocab_size, context_size, embedding_size)
         self.masked_multi_head_attention = MultiHeadAttention(
             embedding_size, num_heads, d_key, d_value)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.positional_encoding(self.embedding(x))
-
-
-class PositionalEncoding(nn.Module):
-    """Adds sinusoidal positional encoding to the input tensor."""
-
-    def __init__(self, context_size: int, embedding_size: int):
-        super().__init__()
-        self.positional_encoding = sinusoidal_positional_encoding(
-            (context_size, embedding_size))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.positional_encoding + x
-
-
-def sinusoidal_positional_encoding(shape: tuple[int, int]) -> torch.Tensor:
-    """Returns the sinusoidal positional encoding matrix with the given shape.
-
-    The positional encoding matrix has shape (context_size, embedding_size) 
-    and is computed using the following formula:
-
-        PE(pos, 2i)   = sin(pos / 10000^(2i/embedding_size))
-        PE(pos, 2i+1) = cos(pos / 10000^(2i/embedding_size))
-
-    Where pos is the position of the token in the context and i is the 
-    index of the pair of dimensions under consideration.
-
-    Shape is expected to be a pair of positive integers where the second 
-    integer is even.
-
-    Args:
-        shape: A tuple of (context_size, embedding_size).
-
-    Returns:
-        A tensor of shape (context_size, embedding_size) containing the 
-        sinusoidal positional encoding matrix.
-
-    Raises:
-        ValueError: If the specified shape is invalid.
-    """
-    if not isinstance(shape, tuple) or len(shape) != 2:
-        raise ValueError("Shape must be a tuple (context_size, embedding_size).")
-
-    context_size, embedding_size = shape
-    if not (isinstance(context_size, int) and context_size > 0):
-        raise ValueError("Context size must be a positive integer.")
-    if not (isinstance(embedding_size, int) and embedding_size > 0 and embedding_size % 2 == 0):
-        raise ValueError("Embedding size must be a positive, even integer.")
-
-    positions = torch.arange(context_size, dtype=torch.float32)
-    indices = torch.arange(embedding_size / 2, dtype=torch.float32)
-
-    scaling_factor = 10_000 ** ((2 * indices) / embedding_size)
-    angles = positions.unsqueeze(1) / scaling_factor
-    pos_encoding = torch.zeros((context_size, embedding_size), dtype=torch.float32)
-    pos_encoding[:, 0::2] = torch.sin(angles)
-    pos_encoding[:, 1::2] = torch.cos(angles)
-    # breakpoint()
-    return pos_encoding
+        return self.embedding(x)
 
 
 class MultiHeadAttention(nn.Module):
@@ -94,12 +34,9 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.masked = masked
         self.d_key = d_key
-        self.q_proj = nn.Parameter(torch.randn(
-            num_heads, embedding_size, d_key))
-        self.k_proj = nn.Parameter(torch.randn(
-            num_heads, embedding_size, d_key))
-        self.v_proj = nn.Parameter(torch.randn(
-            num_heads, embedding_size, d_value))
+        self.q_proj = nn.Parameter(torch.randn(num_heads, embedding_size, d_key))
+        self.k_proj = nn.Parameter(torch.randn(num_heads, embedding_size, d_key))
+        self.v_proj = nn.Parameter(torch.randn(num_heads, embedding_size, d_value))
 
     def forward(
         self,
@@ -137,5 +74,3 @@ class MultiHeadAttention(nn.Module):
         out = torch.bmm(attn_weights, values)
 
         return out
-
-# Add tests for all modules.
