@@ -7,8 +7,8 @@ class Embedding(nn.Module):
         self.vocab_size = vocab_size
         self.context_size = context_size
         self.embedding_size = embedding_size
-        self.embedding = nn.Embedding(vocab_size, embedding_size)
-        self.positional_encoding = sinusoidal_positional_encoding(
+        self._embedding = nn.Embedding(vocab_size, embedding_size)
+        self._positional_encoding = sinusoidal_positional_encoding(
             (context_size, embedding_size))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -29,9 +29,9 @@ class Embedding(nn.Module):
         Raises:
             IndexError: If the token ids are outside of the range [0, vocab_size).
         """
-        if torch.any(x < 0) or torch.any(x >= self.embedding.num_embeddings):
+        if torch.any(x < 0) or torch.any(x >= self._embedding.num_embeddings):
             raise IndexError("Token ids are outside of the range [0, vocab_size).")
-        return self.embedding(x) + self.positional_encoding
+        return self._embedding(x) + self._positional_encoding
     
 
 def sinusoidal_positional_encoding(shape: tuple[int, int]) -> torch.Tensor:

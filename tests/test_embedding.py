@@ -20,7 +20,8 @@ class TestEmbedding:
         token_ids = torch.randint(
             0, vocab_size, (batch_size, context_size), dtype=torch.int)
         token_embedding = embedding(token_ids)
-        assert token_embedding.shape == (batch_size, context_size, embedding_size)
+        assert token_embedding.shape == (
+            batch_size, context_size, embedding_size)
         assert token_embedding.dtype == torch.float32
 
     @pytest.mark.parametrize("vocab_size", [1, 32, 64])
@@ -30,13 +31,32 @@ class TestEmbedding:
         vocab_size: int,
         embedding_size: int
     ) -> None:
-        context_size = 1  # Add context_size parameter
+        context_size = 1
         embedding = Embedding(vocab_size, context_size, embedding_size)
-        token_ids = torch.arange(vocab_size).unsqueeze(1)  # Add dimension for context
+        token_ids = torch.arange(vocab_size).unsqueeze(1)
         token_embedding = embedding(token_ids)
-        # Check the embedding dimension, ignoring the positional encoding
-        base_embeddings = token_embedding - sinusoidal_positional_encoding((context_size, embedding_size))
+        base_embeddings = token_embedding - \
+            sinusoidal_positional_encoding((context_size, embedding_size))
         assert not torch.any(torch.all(base_embeddings == 0, dim=2))
+
+    def test_embedding_with_fixed_weights(self):
+        embedding = Embedding(vocab_size=4, context_size=2, embedding_size=4)
+
+        embedding_weights = torch.tensor([
+            [0.1, 0.2, 0.3, 0.4],
+            [0.5, 0.6, 0.7, 0.8],
+            [0.9, 1.0, 1.1, 1.2],
+            [1.3, 1.4, 1.5, 1.6]
+        ], dtype=torch.float32)
+        with torch.no_grad():
+            embedding._embedding.weight.copy_(embedding_weights)
+
+        expected_output = torch.tensor([[[[0.1000, 1.2000, 0.3000, 1.4000],
+                                          [1.3414, 1.1403, 0.7099, 1.7999]],
+                                         [[0.9000, 2.0000, 1.1000, 2.2000],
+                                          [2.1414, 1.9403, 1.5099, 2.5999]]]], dtype=torch.float32)
+        actual_output = embedding(torch.tensor([[[0, 1], [2, 3]]], dtype=torch.int))
+        assert torch.allclose(actual_output, expected_output, atol=1e-4)
 
     @pytest.mark.parametrize("vocab_size", [16, 32])
     @pytest.mark.parametrize("embedding_size", [64, 128])
@@ -49,7 +69,7 @@ class TestEmbedding:
         batch_size: int,
         num_lookups: int
     ) -> None:
-        context_size = 5  # Add context_size parameter
+        context_size = 5
         embedding = Embedding(vocab_size, context_size, embedding_size)
         token_ids = torch.randint(0, vocab_size, (batch_size, context_size))
         initial_token_embedding = embedding(token_ids)
@@ -118,4 +138,4 @@ class TestPositionalEncoding:
     ) -> None:
         actual_positional_encoding = sinusoidal_positional_encoding(shape)
         assert torch.allclose(actual_positional_encoding,
-                              expected_positional_encoding, atol=1e-4) 
+                              expected_positional_encoding, atol=1e-4)
