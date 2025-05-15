@@ -39,7 +39,7 @@ class TestEmbedding:
             sinusoidal_positional_encoding((context_size, embedding_size))
         assert not torch.any(torch.all(base_embeddings == 0, dim=2))
 
-    def test_embedding_with_fixed_weights(self):
+    def test_embedding_produces_correct_output(self):
         embedding = Embedding(vocab_size=4, context_size=2, embedding_size=4)
 
         embedding_weights = torch.tensor([
