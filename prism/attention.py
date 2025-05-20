@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from prism.validation import validate_positive_integer, validate_boolean
+from prism import validation
 
 
 class MultiHeadAttention(nn.Module):
@@ -13,6 +13,7 @@ class MultiHeadAttention(nn.Module):
         d_key (int): The size of the key
         d_value (int): The size of the value
         masked (bool): Whether to mask the attention scores
+        dropout (float): Dropout probability for attention weights
     """
     def __init__(
         self,
@@ -20,24 +21,31 @@ class MultiHeadAttention(nn.Module):
         embedding_size: int,
         d_key: int,
         d_value: int,
-        masked: bool = True
+        masked: bool = True,
+        dropout: float = 0.0
     ) -> None:
-        validate_positive_integer(num_heads, "num_heads")
-        validate_positive_integer(embedding_size, "embedding_size")
-        validate_positive_integer(d_key, "d_key")
-        validate_positive_integer(d_value, "d_value")
-        validate_boolean(masked, "masked")
+        validation.validate_positive_integer(num_heads, "num_heads")
+        validation.validate_positive_integer(embedding_size, "embedding_size")
+        validation.validate_positive_integer(d_key, "d_key")
+        validation.validate_positive_integer(d_value, "d_value")
+        validation.validate_boolean(masked, "masked")
+        validation.validate_positive_float_or_zero(dropout, "dropout")
 
         super().__init__()
         self._masked = masked
-        self._q_proj = nn.Parameter(torch.randn(num_heads, embedding_size, d_key))
-        self._k_proj = nn.Parameter(torch.randn(num_heads, embedding_size, d_key))
-        self._v_proj = nn.Parameter(torch.randn(num_heads, embedding_size, d_value))
+        self._d_key = d_key
+        self._d_value = d_value
+        self._num_heads = num_heads
+        if dropout > 0.0:
+            self._dropout = nn.Dropout(dropout)
+        else:
+            self._dropout = nn.Identity()
+        self._q_proj = nn.Parameter(torch.randn(embedding_size, d_key * num_heads))
+        self._k_proj = nn.Parameter(torch.randn(embedding_size, d_key * num_heads))
+        self._v_proj = nn.Parameter(torch.randn(embedding_size, d_value * num_heads))
+        self._o_proj = nn.Parameter(torch.randn(d_value * num_heads, embedding_size))
 
-    def forward(
-        self,
-        x: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Creates the query, key and value matrices for a given batch of 
         tokens.
 
@@ -49,28 +57,31 @@ class MultiHeadAttention(nn.Module):
             A tensor of shape (batch_size, num_heads, context_size, d_value)
             containing the attention weights.
         """
-        queries = torch.bmm(x, self.q_proj)
-        keys = torch.bmm(x, self.k_proj)
-        values = torch.bmm(x, self.v_proj)
+        if x.dim() != 3:
+            raise ValueError("Input tensor must have shape (batch_size, context_size, embedding_size)")
+        
+        queries = torch.matmul(x, self._q_proj)
+        keys = torch.matmul(x, self._k_proj)
+        values = torch.matmul(x, self._v_proj)
 
-        raw_attn_scores = torch.bmm(queries, torch.transpose(keys, -2, -1))
-        scaled_attn_scores = raw_attn_scores / torch.sqrt(self.d_key)
+        queries = split_heads(queries, self._num_heads, self._d_key)
+        keys = split_heads(keys, self._num_heads, self._d_key)
+        values = split_heads(values, self._num_heads, self._d_value)
 
-        # mask the attention scores now
-        if self.masked:
-            mask = torch.triu(torch.ones_like(
-                raw_attn_scores, dtype=torch.bool))
-            scaled_attn_scores = scaled_attn_scores.masked_fill(
-                mask, -float('inf'))
+        attention_scores = torch.matmul(queries, torch.transpose(keys, -2, -1))
+        scaled_attention_scores = attention_scores / torch.sqrt(torch.tensor(self._d_key, dtype=queries.dtype))
 
-        # apply the softmax function
-        attn_weights = torch.softmax(scaled_attn_scores, dim=-1)
+        if self._masked:
+            mask = torch.triu(torch.ones(queries.shape[2], queries.shape[2], dtype=torch.bool), diagonal=1)
+            scaled_attention_scores = scaled_attention_scores.masked_fill(mask.unsqueeze(0).unsqueeze(0), -float('inf'))
 
-        # apply the attention weights to the values
-        out = torch.bmm(attn_weights, values)
+        attention_weights = torch.softmax(scaled_attention_scores, dim=-1)
+        attention_weights = self._dropout(attention_weights)
+        attention_values = torch.matmul(attention_weights, values)
 
-        return out
-    
+        attention_values = concat_heads(attention_values)
+        output = torch.matmul(attention_values, self._o_proj)
+        return x + output
 
     @property
     def masked(self):
@@ -87,3 +98,32 @@ class MultiHeadAttention(nn.Module):
     @property
     def v_proj(self):
         return self._v_proj
+
+    @property
+    def o_proj(self):
+        return self._o_proj
+    
+    
+def split_heads(tensor: torch.Tensor, num_heads: int, num_features: int) -> torch.Tensor:
+    """Splits the tensor into multiple attention heads and transposes the sequence and head dimensions.
+    
+    Args:
+        tensor: Tensor to split of shape (batch_size, seq_len, num_heads * d_head)
+        num_heads: Number of attention heads
+        num_features: Number of features per attention head
+        
+    Returns:
+        Tensor of shape (batch_size, num_heads, seq_len, d_head)
+    """
+    return tensor.view(tensor.shape[0], tensor.shape[1], num_heads, num_features).transpose(1, 2)
+
+def concat_heads(tensor: torch.Tensor) -> torch.Tensor:
+    """Concatenates the tensor from multiple attention heads and transposes the sequence and head dimensions.
+    
+    Args:
+        tensor: Tensor to concatenate of shape (batch_size, num_heads, context_size, num_features)
+        
+    Returns:
+        Tensor of shape (batch_size, context_size, num_heads * num_features)
+    """ 
+    return tensor.transpose(1, 2).reshape(tensor.shape[0], tensor.shape[2], -1)  
