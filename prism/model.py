@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from prism.embedding import Embedding
-from prism.attention import MultiHeadAttention
+from prism.block import TransformerBlock
 
 
 class Model(nn.Module):
@@ -13,23 +13,37 @@ class Model(nn.Module):
         num_heads: int = 12,
         d_key: int = 64,
         d_value: int = 64,
-        masked: bool = True,
-        dropout: float = 0.0
+        d_ff: int = 1024,
+        num_layers: int = 6,
+        dropout: float = 0.1
     ):
         super().__init__()
         self.embedding = Embedding(vocab_size, context_size, embedding_size)
-        self.masked_multi_head_attention = MultiHeadAttention(
-            num_heads,
-            embedding_size,
-            d_key,
-            d_value,
-            masked=masked,
-            dropout=dropout
-        )
-        self.normalization = nn.LayerNorm(embedding_size)
-
+        
+        # Create a stack of transformer blocks
+        self.blocks = nn.ModuleList([
+            TransformerBlock(
+                embedding_size=embedding_size,
+                num_heads=num_heads,
+                d_key=d_key,
+                d_value=d_value,
+                d_ff=d_ff,
+                dropout=dropout
+            )
+            for _ in range(num_layers)
+        ])
+        
+        self.linear_out = nn.Linear(embedding_size, vocab_size, bias=True)
+        self.softmax = nn.Softmax(dim=-1)
+        
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Get embeddings
         x = self.embedding(x)
-        x = self.masked_multi_head_attention(x)
-        x = self.normalization(x)
+        
+        # Pass through each transformer block
+        for block in self.blocks:
+            x = block(x)
+            
+        # Apply linear output layer and softmax
+        x = self.linear_out(x)
         return x
