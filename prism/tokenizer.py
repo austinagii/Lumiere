@@ -35,3 +35,12 @@ class Tokenizer:
 
     def get_vocab_size(self) -> int:
         return self.tokenizer.get_vocab_size()
+    
+    def save(self, path: str):
+        self.tokenizer.save(path)
+    
+    @staticmethod
+    def load(path: str):
+        tokenizer = Tokenizer()
+        tokenizer.tokenizer = tokenizers.Tokenizer.from_file(path)
+        return tokenizer
