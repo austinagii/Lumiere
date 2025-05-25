@@ -40,10 +40,16 @@ class MultiHeadAttention(nn.Module):
             self._dropout = nn.Dropout(dropout)
         else:
             self._dropout = nn.Identity()
-        self._q_proj = nn.Parameter(torch.randn(embedding_size, d_key * num_heads))
-        self._k_proj = nn.Parameter(torch.randn(embedding_size, d_key * num_heads))
-        self._v_proj = nn.Parameter(torch.randn(embedding_size, d_value * num_heads))
-        self._o_proj = nn.Parameter(torch.randn(d_value * num_heads, embedding_size))
+        self._q_proj = nn.Parameter(torch.empty(embedding_size, d_key * num_heads))
+        self._k_proj = nn.Parameter(torch.empty(embedding_size, d_key * num_heads))
+        self._v_proj = nn.Parameter(torch.empty(embedding_size, d_value * num_heads))
+        self._o_proj = nn.Parameter(torch.empty(d_value * num_heads, embedding_size))
+        
+        # Xavier initialization
+        nn.init.xavier_uniform_(self._q_proj)
+        nn.init.xavier_uniform_(self._k_proj)
+        nn.init.xavier_uniform_(self._v_proj)
+        nn.init.xavier_uniform_(self._o_proj)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Creates the query, key and value matrices for a given batch of 
@@ -69,10 +75,10 @@ class MultiHeadAttention(nn.Module):
         values = split_heads(values, self._num_heads, self._d_value)
 
         attention_scores = torch.matmul(queries, torch.transpose(keys, -2, -1))
-        scaled_attention_scores = attention_scores / torch.sqrt(torch.tensor(self._d_key, dtype=queries.dtype))
+        scaled_attention_scores = attention_scores / torch.sqrt(torch.tensor(self._d_key, dtype=queries.dtype, device=queries.device))
 
         if self._masked:
-            mask = torch.triu(torch.ones(queries.shape[2], queries.shape[2], dtype=torch.bool), diagonal=1)
+            mask = torch.triu(torch.ones(queries.shape[2], queries.shape[2], dtype=torch.bool, device=queries.device), diagonal=1)
             scaled_attention_scores = scaled_attention_scores.masked_fill(mask.unsqueeze(0).unsqueeze(0), -float('inf'))
 
         attention_weights = torch.softmax(scaled_attention_scores, dim=-1)

@@ -33,8 +33,8 @@ class Model(nn.Module):
             for _ in range(num_layers)
         ])
         
+        self.final_norm = nn.LayerNorm(embedding_size)
         self.linear_out = nn.Linear(embedding_size, vocab_size, bias=True)
-        self.softmax = nn.Softmax(dim=-1)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Get embeddings
@@ -44,6 +44,7 @@ class Model(nn.Module):
         for block in self.blocks:
             x = block(x)
             
-        # Apply linear output layer and softmax
+        # Apply final normalization and linear output layer
+        x = self.final_norm(x)
         x = self.linear_out(x)
         return x

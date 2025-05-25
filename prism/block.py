@@ -33,7 +33,8 @@ class TransformerBlock(nn.Module):
             dropout=dropout
         )
         self.normalization_1 = nn.LayerNorm(embedding_size)
-        self.feedforward = FeedForward(embedding_size, d_ff)
+        self.feedforward = FeedForward(embedding_size, d_ff, dropout=dropout)
+        self.dropout = nn.Dropout(dropout)
         self.normalization_2 = nn.LayerNorm(embedding_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -45,8 +46,7 @@ class TransformerBlock(nn.Module):
         Returns:
             Output tensor of shape (batch_size, context_size, embedding_size)
         """
-        x = x + self.attention(x)
-        x = self.normalization_1(x)
-        x = x + self.feedforward(x)
-        x = self.normalization_2(x)
+        # Pre-normalization for better training stability
+        x = x + self.dropout(self.attention(self.normalization_1(x)))
+        x = x + self.dropout(self.feedforward(self.normalization_2(x)))
         return x 

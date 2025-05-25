@@ -8,8 +8,9 @@ class Embedding(nn.Module):
         self.context_size = context_size
         self.embedding_size = embedding_size
         self._embedding = nn.Embedding(vocab_size, embedding_size)
-        self._positional_encoding = sinusoidal_positional_encoding(
+        positional_encoding = sinusoidal_positional_encoding(
             (context_size, embedding_size))
+        self.register_buffer('_positional_encoding', positional_encoding)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Returns the embedding for the given token ids.
@@ -31,7 +32,8 @@ class Embedding(nn.Module):
         """
         if torch.any(x < 0) or torch.any(x >= self._embedding.num_embeddings):
             raise IndexError("Token ids are outside of the range [0, vocab_size).")
-        return self._embedding(x) + self._positional_encoding
+        seq_len = x.size(-1)
+        return self._embedding(x) + self._positional_encoding[:seq_len]
     
 
 def sinusoidal_positional_encoding(shape: tuple[int, int]) -> torch.Tensor:
