@@ -17,7 +17,7 @@ from lumiere.config.config import TokenizerConfig, ModelConfig
 from lumiere.utils.data import to_batches
 
 DATASET_NAME = "wikitext"
-DATASET_CONFIG = "wikitext-2-raw-v1"
+DATASET_CONFIG = "wikitext-103-raw-v1"
 DATASET_PORTION = 20
 TEXT_COLUMN_NAME = "text"
 

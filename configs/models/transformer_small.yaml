@@ -13,8 +13,8 @@ model:
   output_path: "artifacts/models/transformer_small"
 
 training:
-  batch_size: 16
-  learning_rate: 0.001
+  batch_size: 64
+  learning_rate: 0.0003
   weight_decay: 0.01
   gradient_clip_norm: 1.0
   num_epochs: 10
