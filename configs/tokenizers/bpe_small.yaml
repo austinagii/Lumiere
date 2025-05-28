@@ -1,4 +1,4 @@
 tokenizer:
   vocab_size: 8192
   batch_size: 128
-  output_path: "tokenizers/base_small"
+  output_path: "artifacts/tokenizers/bpe_small"

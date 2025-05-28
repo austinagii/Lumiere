@@ -1,7 +1,7 @@
 # Large Transformer Configuration
 model:
   architecture: "base"
-  tokenizer: "base_large"
+  tokenizer: "bpe_large"
   embedding_size: 512
   context_size: 512
   num_layers: 12
@@ -10,7 +10,7 @@ model:
   d_value: 64
   d_ff: 2048
   dropout: 0.1
-  output_path: "models/base_large"
+  output_path: "artifacts/models/transformer_large"
 
 training:
   batch_size: 32
