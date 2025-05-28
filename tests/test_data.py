@@ -2,7 +2,7 @@ import string
 
 import torch
 
-from prism.data import to_batches
+from lumiere.utils.data import to_batches
 
 class SimpleTokenizer:
     def __init__(self):

@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from prism.attention import MultiHeadAttention
+from lumiere.core.attention import MultiHeadAttention
 
 
 class TestMultiHeadAttention:

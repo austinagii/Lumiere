@@ -33,7 +33,8 @@ class Tokenizer:
     def decode(self, token_ids: Iterable[str]) -> str:
         return self.tokenizer.decode(token_ids)
 
-    def get_vocab_size(self) -> int:
+    @property
+    def vocab_size(self) -> int:
         return self.tokenizer.get_vocab_size()
     
     def save(self, path: str):

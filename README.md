@@ -1,17 +1,15 @@
-# Prism: A Transformer Implementation
-![Prism Logo](assets/logo.png)
+# Lumiére: Transformer-Based Multimodal Learning
+![Lumiére Logo](assets/logo.png)
 
-Prism is a simple generative transformer based on the original Transformer architecture described in the paper ["Attention Is All You Need"](https://arxiv.org/abs/1706.03762) by Vaswani et al. It provides a reference implementation designed to be used for experimenting with language models and their internals.
+Lumiére is a multimodal transformer built for interpretability research and easy experimentation. 
 
-This is intended as a 
+The project aims to provide a lightweight canvas for exploring and interpreting the internals of transformer models 
+by It provides a beginner friendly, modular implementation of a modern(ish) multimodal transformer architecture
+along with many of the common building blocks. 
+
 ## Features
-
-- **Modular Architecture**: Each component is implemented as a separate module for clarity and reusability
 - **PyTorch-Based**: Built on top of PyTorch for efficient tensor operations and GPU acceleration
-- **Byte-Pair Encoding Tokenization**: Uses the Hugging Face tokenizers library for efficient text tokenization
-- **Data Processing Utilities**: Includes utilities for batch processing of datasets
-- **Positional Encoding**: Implementation of sinusoidal positional encoding
-- **Multi-Head Attention**: Core attention mechanism of the Transformer architecture
+- **Modular Architecture**: Each component is implemented as a separate module for clarity and reusability
 
 ## Installation
 

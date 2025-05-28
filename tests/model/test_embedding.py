@@ -1,7 +1,7 @@
 import torch
 import pytest
 
-from prism.embedding import Embedding, sinusoidal_positional_encoding
+from lumiere.core.embedding import Embedding, sinusoidal_positional_encoding
 
 
 class TestEmbedding:

@@ -1,7 +1,7 @@
 import torch
 import pytest
 
-from prism.model import Model
+from lumiere.core.model import Model
 
 
 class TestModel:
@@ -30,4 +30,4 @@ class TestModel:
         output = model(token_ids)
         
         # Check shape
-        assert output.shape == (batch_size, context_size, embedding_size)
+        assert output.shape == (batch_size, context_size, vocab_size)

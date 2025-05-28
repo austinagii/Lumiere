@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from prism.attention import MultiHeadAttention
-from prism.feedforward import FeedForward
+from lumiere.components.attention import MultiHeadAttention
+from lumiere.components.feedforward import FeedForward
 
 class TransformerBlock(nn.Module):
     """A transformer block that combines attention and normalization.

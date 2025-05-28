@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from prism import validation
+from lumiere.utils import validation
 
 
 class MultiHeadAttention(nn.Module):
