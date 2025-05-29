@@ -1,21 +1,19 @@
 # Large Transformer Configuration
 model:
-  architecture: "base"
   tokenizer: "bpe_large"
   embedding_size: 512
-  context_size: 512
+  context_size: 256
   num_layers: 12
   num_heads: 8
   d_key: 64
   d_value: 64
   d_ff: 2048
   dropout: 0.1
-  output_path: "artifacts/models/transformer_large"
 
 training:
-  batch_size: 32
-  learning_rate: 3e-4
-  weight_decay: 1e-2
+  batch_size: 64 
+  learning_rate: 0.0003
+  weight_decay: 0.01
   gradient_clip_norm: 1.0
   num_epochs: 20
   warmup_steps: 2000

@@ -16,6 +16,13 @@ from lumiere.utils import get_device
 from lumiere.config.config import TokenizerConfig, ModelConfig
 from lumiere.utils.data import to_batches
 
+MODEL_CONFIG_DIR = "configs/models"
+TOKENIZER_CONFIG_DIR = "configs/tokenizers"
+CONFIG_FILE_EXTENSION = ".yaml"
+
+MODEL_OUTPUT_DIR = "artifacts/models"
+TOKENIZER_OUTPUT_DIR = "artifacts/tokenizers"
+
 DATASET_NAME = "wikitext"
 DATASET_CONFIG = "wikitext-103-raw-v1"
 DATASET_PORTION = 20
@@ -32,7 +39,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def train(tokenizer_config_path: str, model_config_path: str):
+def train(model_name: str):
+    model_config_path = f"{MODEL_CONFIG_DIR}/{model_name}{CONFIG_FILE_EXTENSION}"
+    if not os.path.exists(model_config_path):
+        raise FileNotFoundError(f"Config file not found: {model_config_path}")
+
+    logger.info(f"Loading model config from '{model_config_path}'...")
+    model_config = ModelConfig(model_config_path)
+    logger.info(f"Model configuration loaded successfully")
+
+    tokenizer_config_path = f"{TOKENIZER_CONFIG_DIR}/{model_config.model['tokenizer']}{CONFIG_FILE_EXTENSION}"
     if not os.path.exists(tokenizer_config_path):
         raise FileNotFoundError(
             f"Config file not found: {tokenizer_config_path}")
@@ -40,13 +56,6 @@ def train(tokenizer_config_path: str, model_config_path: str):
     logger.info(f"Loading tokenizer config from '{tokenizer_config_path}'...")
     tokenizer_config = TokenizerConfig(tokenizer_config_path)
     logger.info(f"Tokenizer configuration loaded successfully")
-
-    if not os.path.exists(model_config_path):
-        raise FileNotFoundError(f"Config file not found: {model_config_path}")
-
-    logger.info(f"Loading model config from '{model_config_path}'...")
-    model_config = ModelConfig(model_config_path)
-    logger.info(f"Model configuration loaded successfully")
 
     device = get_device()
     logger.info(f"Using device: {device}")
@@ -178,16 +187,17 @@ def train(tokenizer_config_path: str, model_config_path: str):
 
     # Save model and tokenizer
     logger.info("Saving model to disk...")
-    save_path = Path(model_config.model['output_path'])
+    save_path = Path(MODEL_OUTPUT_DIR)
     save_path.mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), save_path / "model.pth")
-    logger.info(f"Model saved to {save_path / 'model.pth'}")
+    torch.save(model.state_dict(), save_path / f"{model_name}.pth")
+    logger.info(f"Model saved to {save_path / f'{model_name}.pth'}")
 
     logger.info("Saving tokenizer to disk...")
-    tokenizer_save_path = Path(tokenizer_config.tokenizer['output_path'])
+    tokenizer_save_path = Path(TOKENIZER_OUTPUT_DIR)
     tokenizer_save_path.mkdir(parents=True, exist_ok=True)
-    tokenizer.save(str(tokenizer_save_path / "tokenizer.json"))
-    logger.info(f"Tokenizer saved to {tokenizer_save_path / 'tokenizer.json'}")
+    tokenizer.save(str(tokenizer_save_path / f"{model_config.model['tokenizer']}.json"))
+    logger.info(
+        f"Tokenizer saved to {tokenizer_save_path / f'{model_config.model['tokenizer']}.json'}")
 
     logger.info("Training completed successfully\n")
 
@@ -195,12 +205,8 @@ def train(tokenizer_config_path: str, model_config_path: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Train a model')
-    parser.add_argument('--tokenizer_config', default='base_small',
-                        help='Name of the tokenizer config file')
-    parser.add_argument('--model_config', default='base_small',
+    parser.add_argument('--model', default='base_small',
                         help='Name of the model config file')
     args = parser.parse_args()
 
-    tokenizer_config_path = f"configs/tokenizers/{args.tokenizer_config}.yaml"
-    model_config_path = f"configs/models/{args.model_config}.yaml"
-    train(tokenizer_config_path, model_config_path)
+    train(args.model)

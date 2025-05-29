@@ -183,6 +183,8 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Model files
-**/*.pth
-**/tokenizer.json
+# Artifact files
+artifacts/**/*.pth
+artifacts/**/*.json
+
+!artifacts/**/.gitkeep

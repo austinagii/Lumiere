@@ -18,6 +18,8 @@ class Transformer(nn.Module):
         dropout: float = 0.1
     ):
         super().__init__()
+        self._context_size = context_size
+
         self.embedding = Embedding(vocab_size, context_size, embedding_size)
         
         # Create a stack of transformer blocks
@@ -48,3 +50,7 @@ class Transformer(nn.Module):
         x = self.final_norm(x)
         x = self.linear_out(x)
         return x
+    
+    @property
+    def context_size(self):
+        return self.embedding.context_size
