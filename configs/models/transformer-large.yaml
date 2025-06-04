@@ -1,6 +1,6 @@
 # Large Transformer Configuration
 model:
-  tokenizer: "bpe_large"
+  tokenizer: "bpe-large"
   embedding_size: 512
   context_size: 256
   num_layers: 12

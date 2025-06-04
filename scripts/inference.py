@@ -42,7 +42,7 @@ def predict(model, tokenizer, text, device, max_length=200):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run inference with the language model')
-    parser.add_argument('--model', default='transformer_tiny', 
+    parser.add_argument('model', default='transformer_tiny', 
                         help='Name of the model config file')
     args = parser.parse_args()
 
@@ -64,13 +64,13 @@ if __name__ == "__main__":
         dropout=model_config.model['dropout']
     )
     
-    model_path = f"{MODEL_OUTPUT_DIR}/{args.model}.pth"
-    model.load_state_dict(torch.load(model_path), strict=True)
-    model.eval()
-
     device = get_device()
     logger.info(f"Using device: {device}")
+
+    model_path = f"{MODEL_OUTPUT_DIR}/{args.model}.pth"
+    model.load_state_dict(torch.load(model_path, map_location=device), strict=True)
     model.to(device)
+    model.eval()
     
     while True:
         text = input("User: ")

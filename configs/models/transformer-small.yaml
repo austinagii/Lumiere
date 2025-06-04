@@ -1,7 +1,6 @@
 # Small Base Configuration
 model:
-  architecture: "base"
-  tokenizer: "bpe_small"
+  tokenizer: "bpe-small"
   embedding_size: 256
   context_size: 256
   num_layers: 6
@@ -10,7 +9,6 @@ model:
   d_value: 64
   d_ff: 1024
   dropout: 0.1
-  output_path: "artifacts/models/transformer_small"
 
 training:
   batch_size: 64

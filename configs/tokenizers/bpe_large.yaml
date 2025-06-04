@@ -1,4 +1,0 @@
-tokenizer:
-  vocab_size: 32000
-  batch_size: 128
-  output_path: "artifacts/tokenizers/bpe_large"

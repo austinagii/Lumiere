@@ -1,6 +1,6 @@
 # Tiny Transformer Configuration
 model:
-  tokenizer: "bpe_small"
+  tokenizer: "bpe-small"
   embedding_size: 128
   context_size: 64
   num_layers: 4

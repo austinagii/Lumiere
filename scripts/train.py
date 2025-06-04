@@ -205,7 +205,7 @@ def train(model_name: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Train a model')
-    parser.add_argument('--model', default='base_small',
+    parser.add_argument('model', default='base_small',
                         help='Name of the model config file')
     args = parser.parse_args()
 
