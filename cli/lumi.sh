@@ -33,11 +33,13 @@ show_usage() {
     echo "Commands:"
     echo "  train    Train a machine learning model."
     echo "  chat     Start interactive chat session with a model"
+    echo "  eval     Evaluate a language model"
     echo "  help     Show this help message"
     echo
     echo "Examples:"
     echo "  ${CMD_NAME} train transformer-large"
     echo "  ${CMD_NAME} chat transformer-large"
+    echo "  ${CMD_NAME} eval transformer-large"
 }
 
 run_with_pipenv() {
@@ -72,9 +74,9 @@ main() {
     local model="$2"
     
     # Validate command
-    if [[ "$command" != "train" && "$command" != "chat" ]]; then
+    if [[ "$command" != "train" && "$command" != "chat" && "$command" != "eval" ]]; then
         log_error "Unrecognized command: '$command'"
-        log_error "Supported commands are: train, chat, help"
+        log_error "Supported commands are: train, chat, eval, help"
         echo
         show_usage
         exit 1
@@ -83,23 +85,22 @@ main() {
     # Allow the lumiere module to be discoverable
     export PYTHONPATH="${CMD_BASE_DIR}:${PYTHONPATH}"
 
-    pipenv_installed=$(command -v pipenv &>/dev/null)
-    if [[ $pipenv_installed ]]; then
-        log_info "Pipenv detected: $(pipenv --version)"
-    else
-        log_warning "Pipenv not found - using system Python instead"
-        log_warning "Consider installing Pipenv for better dependency management"
-    fi
-
     # Execute the appropriate command.
     case "$command" in
         "train")
             log_info "Starting model training..."
             run_with_pipenv "${CMD_BASE_DIR}/scripts/train.py" "${model}"
+            log_info "Training completed"
             ;;
         "chat")
             log_info "Starting chat session..."
             run_with_pipenv "${CMD_BASE_DIR}/scripts/inference.py" "${model}"
+            log_info "Chat session completed"
+            ;;
+        "eval")
+            log_info "Starting evaluation..."
+            run_with_pipenv "${CMD_BASE_DIR}/scripts/eval.py" "${model}"
+            log_info "Evaluation completed"
             ;;
     esac
 }
