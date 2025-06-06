@@ -6,6 +6,7 @@
 set -e
 
 readonly CMD_NAME="lumi"
+# shellcheck disable=SC2155
 readonly CMD_BASE_DIR="$(cd "$(dirname "$(realpath "$0")")/.." && pwd)"
 
 # Color constants

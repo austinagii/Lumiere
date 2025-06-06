@@ -115,12 +115,14 @@ def train(model_name: str):
     logger.info("Starting training...")
     start_time = time.time()
     best_loss = float('inf')
+    best_perplexity = float('inf')
     patience_counter = 0
     patience = model_config.training['patience']
 
     for epoch in range(model_config.training['num_epochs']):
         epoch_start = time.time()
         epoch_loss = 0.0
+        epoch_perplexity = 0.0
         num_batches = 0
 
         batches = to_batches(tokenizer, train_dataset,
@@ -132,6 +134,8 @@ def train(model_name: str):
                 logits = model(x)
                 loss = F.cross_entropy(
                     logits.view(-1, tokenizer.vocab_size), y.reshape(-1))
+                perplexity = torch.exp(loss)
+                epoch_perplexity += perplexity
                 loss.backward()
 
                 # Gradient clipping
@@ -152,12 +156,14 @@ def train(model_name: str):
                 pbar.set_postfix({
                     'loss': f'{batch_loss:.4f}',
                     'avg_loss': f'{epoch_loss/num_batches:.4f}',
+                    'avg_perplexity': f'{epoch_perplexity/num_batches:.4f}',
                     'lr': f'{current_lr:.2e}',
                     'grad_norm': f'{grad_norm:.2f}'
                 })
 
         # Log epoch statistics
         avg_epoch_loss = epoch_loss / num_batches if num_batches > 0 else 0
+        avg_epoch_perplexity = epoch_perplexity / num_batches if num_batches > 0 else 0
         epoch_time = time.time() - epoch_start
         total_time = time.time() - start_time
 
@@ -169,6 +175,9 @@ def train(model_name: str):
             f"Time: {epoch_time:.2f}s, "
             f"Total: {total_time:.2f}s"
         )
+
+        if avg_epoch_perplexity < best_perplexity:
+            best_perplexity = avg_epoch_perplexity
 
         # Early stopping check
         if avg_epoch_loss < best_loss:
@@ -184,6 +193,7 @@ def train(model_name: str):
 
     total_training_time = time.time() - start_time
     logger.info(f"Training completed in {total_training_time:.2f}s\n")
+    logger.info(f"Best loss: {best_loss:.4f}, Best perplexity: {best_perplexity:.4f}")
 
     # Save model and tokenizer
     logger.info("Saving model to disk...")
