@@ -9,14 +9,14 @@ import torch
 
 from lumiere.models.transformer import Transformer
 from lumiere.preprocessing.tokenizer import Tokenizer
+from lumiere.training import schedulers
 from lumiere.training.train import train
 from lumiere.training.eval import evaluate
 from lumiere.utils import get_device
 from lumiere.config.config import TokenizerConfig, ModelConfig
 
-MODEL_CONFIG_DIR = "configs/models"
-TOKENIZER_CONFIG_DIR = "configs/tokenizers"
-CONFIG_FILE_EXTENSION = ".yaml"
+MODEL_CONFIG_PATH_TEMPLATE = f"configs/models/{{}}.yaml"
+TOKENIZER_CONFIG_PATH_TEMPLATE = f"configs/tokenizers/{{}}.yaml"
 
 MODEL_OUTPUT_DIR = "artifacts/models"
 TOKENIZER_OUTPUT_DIR = "artifacts/tokenizers"
@@ -36,9 +36,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-def train_model(model_name: str):
-    model_config_path = f"{MODEL_CONFIG_DIR}/{model_name}{CONFIG_FILE_EXTENSION}"
+def load_configs(model_name: str) -> tuple[ModelConfig, TokenizerConfig]:
+    """Load the model and tokenizer configurations."""
+    model_config_path = MODEL_CONFIG_PATH_TEMPLATE.format(model_name)
     if not os.path.exists(model_config_path):
         raise FileNotFoundError(f"Config file not found: {model_config_path}")
 
@@ -46,7 +46,7 @@ def train_model(model_name: str):
     model_config = ModelConfig(model_config_path)
     logger.info(f"Model configuration loaded successfully")
 
-    tokenizer_config_path = f"{TOKENIZER_CONFIG_DIR}/{model_config.model['tokenizer']}{CONFIG_FILE_EXTENSION}"
+    tokenizer_config_path = TOKENIZER_CONFIG_PATH_TEMPLATE.format(model_config.model['tokenizer'])
     if not os.path.exists(tokenizer_config_path):
         raise FileNotFoundError(
             f"Config file not found: {tokenizer_config_path}")
@@ -55,9 +55,10 @@ def train_model(model_name: str):
     tokenizer_config = TokenizerConfig(tokenizer_config_path)
     logger.info(f"Tokenizer configuration loaded successfully")
 
-    device = get_device()
-    logger.info(f"Using device: {device}")
+    return model_config, tokenizer_config
 
+def load_datasets():
+    """Load the training and validation datasets."""
     logger.info("Loading dataset...")
     train_dataset = datasets.load_dataset(
         DATASET_NAME, DATASET_CONFIG, split=f"train[:{DATASET_PORTION}%]")
@@ -67,6 +68,14 @@ def train_model(model_name: str):
         DATASET_NAME, DATASET_CONFIG, split=f"validation")
     logger.info(
         f"Validation dataset loaded: {len(validation_dataset)} samples")
+
+    return train_dataset, validation_dataset
+
+def main(model_name: str):
+    model_config, tokenizer_config = load_configs(model_name)
+    train_dataset, validation_dataset = load_datasets()
+    device = get_device()
+    logger.info(f"Using device: {device}")
 
     logger.info(f"Training tokenizer with configuration:\n{tokenizer_config}")
     tokenizer = Tokenizer().train(
@@ -94,19 +103,11 @@ def train_model(model_name: str):
         lr=model_config.training['learning_rate'],
         weight_decay=model_config.training['weight_decay']
     )
-
-    def lr_lambda(step):
-        warmup_steps = model_config.training['warmup_steps']
-        if step < warmup_steps:
-            return step / warmup_steps
-        else:
-            # Cosine annealing after warmup
-            # Approximate steps
-            progress = (step - warmup_steps) / \
-                (model_config.training['num_epochs'] * 1000 - warmup_steps)
-            return 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159)))
-
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    scheduler = schedulers.cosine_annealing_lr_scheduler(
+        optimizer,
+        model_config.training['warmup_steps'],
+        model_config.training['num_epochs']
+    )
 
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel()
@@ -215,4 +216,4 @@ if __name__ == "__main__":
                         help='Name of the model to train')
     args = parser.parse_args()
 
-    train_model(args.model)
+    main(args.model)
