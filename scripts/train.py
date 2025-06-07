@@ -1,15 +1,11 @@
 import itertools
 import logging
 import os
-import time
 import argparse
-import sys
 from pathlib import Path
 
 import datasets
 import torch
-import torch.nn.functional as F
-from tqdm import tqdm
 
 from lumiere.models.transformer import Transformer
 from lumiere.preprocessing.tokenizer import Tokenizer
@@ -17,7 +13,6 @@ from lumiere.training.train import train
 from lumiere.training.eval import evaluate
 from lumiere.utils import get_device
 from lumiere.config.config import TokenizerConfig, ModelConfig
-from lumiere.utils.data import to_batches
 
 MODEL_CONFIG_DIR = "configs/models"
 TOKENIZER_CONFIG_DIR = "configs/tokenizers"
