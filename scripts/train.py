@@ -25,7 +25,7 @@ TOKENIZER_OUTPUT_DIR = "artifacts/tokenizers"
 
 DATASET_NAME = "wikitext"
 DATASET_CONFIG = "wikitext-103-raw-v1"
-DATASET_PORTION = 20
+DATASET_PORTION = 1
 TEXT_COLUMN_NAME = "text"
 
 logging.basicConfig(
@@ -64,6 +64,9 @@ def train(model_name: str):
     train_dataset = datasets.load_dataset(
         DATASET_NAME, DATASET_CONFIG, split=f"train[:{DATASET_PORTION}%]")
     logger.info(f"Dataset loaded: {len(train_dataset)} samples")
+
+    validation_dataset = datasets.load_dataset(DATASET_NAME, DATASET_CONFIG, split=f"validation")
+    logger.info(f"Validation dataset loaded: {len(validation_dataset)} samples")
 
     logger.info(f"Training tokenizer with configuration:\n{tokenizer_config}")
     tokenizer = Tokenizer().train(
@@ -118,8 +121,10 @@ def train(model_name: str):
     best_perplexity = float('inf')
     patience_counter = 0
     patience = model_config.training['patience']
+    max_epochs = model_config.training['num_epochs']
+    current_epoch = 0
 
-    for epoch in range(model_config.training['num_epochs']):
+    while True:
         epoch_start = time.time()
         epoch_loss = 0.0
         epoch_perplexity = 0.0
@@ -128,7 +133,7 @@ def train(model_name: str):
         batches = to_batches(tokenizer, train_dataset,
                              model_config.training['batch_size'], model_config.model['context_size']+1)
 
-        with tqdm(batches, desc=f"Epoch {epoch+1}/{model_config.training['num_epochs']}") as pbar:
+        with tqdm(batches, desc=f"Epoch {current_epoch+1}") as pbar:
             for batch in pbar:
                 x, y = batch[:, :-1].to(device), batch[:, 1:].to(device)
                 logits = model(x)
@@ -161,29 +166,51 @@ def train(model_name: str):
                     'grad_norm': f'{grad_norm:.2f}'
                 })
 
+        # Evaluate performance on validation set.
+        validation_loss = 0.0
+        validation_perplexity = 0.0
+        num_validation_batches = 0
+        validation_batches = to_batches(tokenizer, validation_dataset,
+                             model_config.training['batch_size'], model_config.model['context_size']+1)
+        model.eval()
+        with torch.no_grad():
+            for validation_batch in validation_batches:
+                num_validation_batches += 1
+                x, y = validation_batch[:, :-1].to(device), validation_batch[:, 1:].to(device)
+                logits = model(x)
+                loss = F.cross_entropy(logits.reshape(-1, tokenizer.vocab_size), y.reshape(-1))
+                validation_loss += loss.item()
+                validation_perplexity += torch.exp(loss).item()
+
+        model.train()
+
         # Log epoch statistics
         avg_epoch_loss = epoch_loss / num_batches if num_batches > 0 else 0
         avg_epoch_perplexity = epoch_perplexity / num_batches if num_batches > 0 else 0
+        avg_validation_loss = validation_loss / num_validation_batches if num_validation_batches > 0 else 0
+        avg_validation_perplexity = validation_perplexity / num_validation_batches if num_validation_batches > 0 else 0
         epoch_time = time.time() - epoch_start
         total_time = time.time() - start_time
-
         current_lr = scheduler.get_last_lr()[0]
         logger.info(
-            f"Epoch {epoch+1}/{model_config.training['num_epochs']} - "
+            f"Epoch {current_epoch+1} - "
             f"Loss: {avg_epoch_loss:.4f}, "
+            f"Perplexity: {avg_epoch_perplexity:.4f}, "
             f"LR: {current_lr:.2e}, "
             f"Time: {epoch_time:.2f}s, "
-            f"Total: {total_time:.2f}s"
+            f"Total: {total_time:.2f}s, "
+            f"Validation Loss: {avg_validation_loss:.4f}, "
+            f"Validation Perplexity: {avg_validation_perplexity:.4f}"
         )
 
-        if avg_epoch_perplexity < best_perplexity:
-            best_perplexity = avg_epoch_perplexity
+        if avg_validation_perplexity < best_perplexity:
+            best_perplexity = avg_validation_perplexity
 
         # Early stopping check
-        if avg_epoch_loss < best_loss:
-            best_loss = avg_epoch_loss
+        if avg_validation_loss < best_loss:
+            best_loss = avg_validation_loss
             patience_counter = 0
-            logger.info(f"New best loss: {best_loss:.4f}")
+            logger.info(f"New best validation loss: {best_loss:.4f}")
         else:
             patience_counter += 1
             if patience_counter >= patience:
@@ -191,9 +218,14 @@ def train(model_name: str):
                     f"Early stopping triggered after {patience} epochs without improvement")
                 break
 
+        current_epoch += 1
+        if max_epochs > 0 and current_epoch >= max_epochs:
+            logger.info(f"Training completed after {current_epoch} epochs")
+            break
+
     total_training_time = time.time() - start_time
     logger.info(f"Training completed in {total_training_time:.2f}s\n")
-    logger.info(f"Best loss: {best_loss:.4f}, Best perplexity: {best_perplexity:.4f}")
+    logger.info(f"Best validation loss: {best_loss:.4f}, Best validation perplexity: {best_perplexity:.4f}")
 
     # Save model and tokenizer
     logger.info("Saving model to disk...")
