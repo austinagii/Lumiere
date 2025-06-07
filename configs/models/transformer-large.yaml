@@ -2,11 +2,11 @@
 model:
   tokenizer: "bpe-large"
   embedding_size: 512
-  context_size: 256
+  context_size: 512
   num_layers: 12
-  num_heads: 8
-  d_key: 64
-  d_value: 64
+  num_heads: 12
+  d_key: 128
+  d_value: 128
   d_ff: 2048
   dropout: 0.1
 

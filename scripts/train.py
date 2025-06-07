@@ -23,7 +23,7 @@ TOKENIZER_OUTPUT_DIR = "artifacts/tokenizers"
 
 DATASET_NAME = "wikitext"
 DATASET_CONFIG = "wikitext-103-raw-v1"
-DATASET_PORTION = 1
+DATASET_PORTION = 100
 TEXT_COLUMN_NAME = "text"
 
 logging.basicConfig(

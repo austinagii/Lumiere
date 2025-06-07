@@ -1,13 +1,13 @@
 # Tiny Transformer Configuration
 model:
-  tokenizer: "bpe-small"
+  tokenizer: "bpe-tiny"
   embedding_size: 128
   context_size: 64
   num_layers: 4
-  num_heads: 8
+  num_heads: 4
   d_key: 32
   d_value: 32
-  d_ff: 512
+  d_ff: 256
   dropout: 0.1
 
 training:
