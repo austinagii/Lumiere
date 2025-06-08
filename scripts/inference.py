@@ -30,7 +30,7 @@ def predict(model, tokenizer, text, device, max_length=200):
             else:
                 model_input = full_sequence
                 
-            logits = model(model_input)
+            logits, _ = model(model_input)
             probs = F.softmax(logits[0, -1], dim=-1)
             next_token = torch.multinomial(probs, 1).item()
             

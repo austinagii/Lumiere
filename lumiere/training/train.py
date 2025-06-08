@@ -42,7 +42,7 @@ def train(
         for batch in pbar:
             # Evaluate the model on the current batch.
             x, y = batch[:, :-1].to(device), batch[:, 1:].to(device)
-            logits = model(x)
+            logits, _ = model(x)
             batch_loss = F.cross_entropy(
                 logits.view(-1, tokenizer.vocab_size), y.reshape(-1))
             batch_perplexity = torch.exp(batch_loss)

@@ -77,7 +77,7 @@ def eval(model_name: str) -> None:
             x = x.to(device)
             y = y.to(device)
             with torch.no_grad():
-                logits = model(x)
+                logits, _ = model(x)
                 loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
                 perplexity = torch.exp(loss)
                 total_loss += loss.item()

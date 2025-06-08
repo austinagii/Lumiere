@@ -37,7 +37,7 @@ def evaluate(
     with torch.no_grad():
         for validation_batch in validation_batches:
             x, y = validation_batch[:, :-1].to(device), validation_batch[:, 1:].to(device)
-            logits = model(x)
+            logits, _ = model(x)
             loss = F.cross_entropy(logits.reshape(-1, tokenizer.vocab_size), y.reshape(-1))
             total_loss += loss.item()
             total_perplexity += torch.exp(loss).item()

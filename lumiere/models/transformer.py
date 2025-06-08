@@ -41,15 +41,18 @@ class Transformer(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Get embeddings
         x = self.embedding(x)
-        
+
+        attention_weights = []
         # Pass through each transformer block
         for block in self.blocks:
-            x = block(x)
-            
+            x, block_attention_weights = block(x)
+            attention_weights.append(block_attention_weights)
+        attention_weights = torch.stack(attention_weights, dim=1)
+        
         # Apply final normalization and linear output layer
         x = self.final_norm(x)
         x = self.linear_out(x)
-        return x
+        return x, attention_weights
     
     @property
     def context_size(self):

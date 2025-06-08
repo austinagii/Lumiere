@@ -60,8 +60,11 @@ class MultiHeadAttention(nn.Module):
             containing the token embeddings.
 
         Returns:
-            A tensor of shape (batch_size, num_heads, context_size, d_value)
-            containing the attention weights.
+            A tuple containing:
+            - A tensor of shape (batch_size, context_size, embedding_size)
+              containing the input embeddings enriched with the attention values.
+            - A tensor of shape (batch_size, num_heads, context_size, context_size)
+              containing the attention weights.
         """
         if x.dim() != 3:
             raise ValueError("Input tensor must have shape (batch_size, context_size, embedding_size)")
@@ -87,7 +90,7 @@ class MultiHeadAttention(nn.Module):
 
         attention_values = concat_heads(attention_values)
         output = torch.matmul(attention_values, self._o_proj)
-        return x + output
+        return x + output, attention_weights
 
     @property
     def masked(self):
