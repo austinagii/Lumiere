@@ -185,7 +185,16 @@ def load_checkpoint_from_blob_storage(model_name: str, checkpoint_name: str) -> 
 
         local_checkpoint_path = Path(CHECKPOINT_DIR_TEMPLATE.format(model_name=model_name)) \
             / CHECKPOINT_NAME_TEMPLATE.format(checkpoint_name=checkpoint_name)
-        # TODO: Create the directory if it does not already exist.
+        
+        # Create the directory if it does not already exist
+        checkpoint_directory_path = local_checkpoint_path.parent
+        if not checkpoint_directory_path.exists():
+            try:
+                checkpoint_directory_path.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                raise PersistenceError(
+                    f"Failed to create checkpoint directory '{checkpoint_directory_path}'", e)
+        
         mode = "w" if local_checkpoint_path.exists() else "x"
         print(f"Mode: {mode}")
         try:
