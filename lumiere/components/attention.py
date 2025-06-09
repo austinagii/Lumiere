@@ -90,7 +90,7 @@ class MultiHeadAttention(nn.Module):
 
         attention_values = concat_heads(attention_values)
         output = torch.matmul(attention_values, self._o_proj)
-        return x + output, attention_weights
+        return output, attention_weights
 
     @property
     def masked(self):

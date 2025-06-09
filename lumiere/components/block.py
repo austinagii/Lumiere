@@ -46,8 +46,11 @@ class TransformerBlock(nn.Module):
         Returns:
             Output tensor of shape (batch_size, context_size, embedding_size)
         """
-        # Pre-normalization for better training stability
-        x, attention_weights = self.attention(self.normalization_1(x))
-        x = x + self.dropout(x)
-        x = x + self.dropout(self.feedforward(self.normalization_2(x)))
+        norm_x1 = self.normalization_1(x)
+        attention_values, attention_weights = self.attention(norm_x1)
+        x = x + self.dropout(attention_values)
+        
+        norm_x2 = self.normalization_2(x)
+        output = self.feedforward(norm_x2)
+        x = x + self.dropout(output)
         return x, attention_weights
