@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 
 import torch
 import torch.nn.functional as F
@@ -8,6 +9,7 @@ from lumiere.models.transformer import Transformer
 from lumiere.preprocessing.tokenizer import Tokenizer
 from lumiere.utils import get_device
 from lumiere.config.config import ModelConfig
+from lumiere.training.persistence import load_checkpoint, load_tokenizer
 
 MODEL_CONFIG_DIR = "configs/models"
 TOKENIZER_CONFIG_DIR = "configs/tokenizers"
@@ -44,13 +46,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run inference with the language model')
     parser.add_argument('model', default='transformer_tiny', 
                         help='Name of the model config file')
+    parser.add_argument('--checkpoint', default=None,
+                        help='Name of the checkpoint to load (e.g., "best", "epoch_0010")')
     args = parser.parse_args()
 
-    model_config_path = f"{MODEL_CONFIG_DIR}/{args.model}{CONFIG_FILE_EXTENSION}"
-    model_config = ModelConfig(model_config_path)
+    if args.checkpoint:
+        checkpoint = load_checkpoint(args.model, args.checkpoint)
+        model_config = checkpoint['model_config']
+        logger.info(f"Loaded checkpoint: {args.checkpoint}")
+    else:
+        model_config_path = f"{MODEL_CONFIG_DIR}/{args.model}{CONFIG_FILE_EXTENSION}"
+        model_config = ModelConfig(model_config_path)
 
-    tokenizer_path = f"{TOKENIZER_OUTPUT_DIR}/{model_config.model['tokenizer']}.json"
-    tokenizer = Tokenizer.load(tokenizer_path)
+    tokenizer = load_tokenizer(model_config.model['tokenizer'])
 
     model = Transformer(
         vocab_size=tokenizer.vocab_size,
@@ -67,8 +75,15 @@ if __name__ == "__main__":
     device = get_device()
     logger.info(f"Using device: {device}")
 
-    model_path = f"{MODEL_OUTPUT_DIR}/{args.model}.pth"
-    model.load_state_dict(torch.load(model_path, map_location=device), strict=True)
+    if args.checkpoint:
+        model_state_dict = checkpoint['model_state_dict']
+    else:
+        model_path = f"{MODEL_OUTPUT_DIR}/{args.model}.pth"
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+        model_state_dict = torch.load(model_path, map_location=device)
+
+    model.load_state_dict(model_state_dict, strict=True)
     model.to(device)
     model.eval()
     

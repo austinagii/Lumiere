@@ -9,6 +9,7 @@ numpy = "==2.2.3"
 datasets = "~=3.5"
 pytest = "~=8.3"
 tokenizers = "~=0.21"
+azure-storage-blob = "~=12.25"
 
 [dev-packages]
 jupyter = "*"

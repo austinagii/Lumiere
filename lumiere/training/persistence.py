@@ -2,8 +2,10 @@ import logging
 from typing import Any
 from pathlib import Path
 from enum import StrEnum, auto
+import os
 
 import torch
+from azure.storage.blob import BlobServiceClient
 
 from lumiere.config.config import Config, ModelConfig
 from lumiere.preprocessing.tokenizer import Tokenizer
@@ -120,3 +122,28 @@ def load_checkpoint(model_name: str, checkpoint_name: str) -> dict[str, Any]:
 
     checkpoint['model_config'] = ModelConfig.from_dict(checkpoint['model_config'])
     return checkpoint
+
+def sync_checkpoint_to_blob_storage(model_name: str, checkpoint_name: str) -> None:
+    connection_string = os.getenv('BLOB_STORAGE_CONNECTION_STRING')
+    if not connection_string:
+        raise PersistenceError("Environment variable BLOB_STORAGE_CONNECTION_STRING is not set")
+    blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+
+    container_name = os.getenv('BLOB_STORAGE_CONTAINER_NAME')
+    if not container_name:
+        raise PersistenceError("Environment variable BLOB_STORAGE_CONTAINER_NAME is not set")
+
+    blob_client = blob_service_client.get_blob_client(
+        container=container_name,
+        blob=f"checkpoints/{model_name}/{checkpoint_name}.pth"
+    )
+
+    local_checkpoint_path = CHECKPOINT_DIR_TEMPLATE.format(model_name=model_name) \
+        + "/"+ CHECKPOINT_NAME_TEMPLATE.format(checkpoint_name=checkpoint_name)
+    try:
+        with open(local_checkpoint_path, "rb") as data:
+            blob_client.upload_blob(data, overwrite=True)
+    except Exception as e:
+        raise PersistenceError(f"An error occurred while syncing checkpoint to blob storage", e)
+
+    logger.info(f"Checkpoint '{checkpoint_name}' synced to blob storage")

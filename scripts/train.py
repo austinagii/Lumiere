@@ -2,6 +2,8 @@ import itertools
 import logging
 import os
 import argparse
+import signal
+import sys
 
 import datasets
 import torch
@@ -13,7 +15,7 @@ from lumiere.training.train import train
 from lumiere.training.eval import evaluate
 from lumiere.utils import get_device
 from lumiere.config.config import TokenizerConfig, ModelConfig
-from lumiere.training.persistence import CheckpointType, save_tokenizer, save_model, save_checkpoint, load_checkpoint, load_tokenizer
+from lumiere.training.persistence import CheckpointType, save_tokenizer, save_model, save_checkpoint, load_checkpoint, load_tokenizer, sync_checkpoint_to_blob_storage
 
 MODEL_CONFIG_PATH_TEMPLATE = f"configs/models/{{}}.yaml"
 TOKENIZER_CONFIG_PATH_TEMPLATE = f"configs/tokenizers/{{}}.yaml"
@@ -33,7 +35,17 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
+# Disable Azure blob storage logging
+logging.getLogger('azure.storage.blob').setLevel(logging.WARNING)
+logging.getLogger('azure.core').setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
+
+def signal_handler(sig, frame):
+    """Handle Ctrl+C gracefully."""
+    logger.info("\n🛑 Training halted by user (Ctrl+C)")
+    sys.exit(0)
 
 def load_configs(model_name: str) -> tuple[ModelConfig, TokenizerConfig]:
     """Load the model and tokenizer configurations."""
@@ -71,6 +83,9 @@ def load_datasets():
     return train_dataset, validation_dataset
 
 def main(model_name: str, checkpoint_name: str = None):
+    # Register signal handler for graceful Ctrl+C handling
+    signal.signal(signal.SIGINT, signal_handler)
+    
     train_dataset, validation_dataset = load_datasets()
 
     device = get_device()
@@ -224,6 +239,10 @@ def main(model_name: str, checkpoint_name: str = None):
             save_checkpoint(CheckpointType.BEST, model_name, model_config, model, 
                             optimizer, scheduler, epoch, eval_state.avg_loss, best_loss, 
                             patience_counter, total_time_taken)
+            logger.info(f"Best checkpoint saved to local storage")
+            logger.info(f"Syncing best checkpoint to blob storage...")
+            sync_checkpoint_to_blob_storage(model_name, CheckpointType.BEST.value)
+            logger.info(f"Best checkpoint synced to blob storage")
         else:
             patience_counter += 1
 
@@ -238,11 +257,14 @@ def main(model_name: str, checkpoint_name: str = None):
             break
 
         if epoch % CHECKPOINT_INTERVAL == 0:
-            logger.info(f"Saving checkpoint...")
+            logger.info(f"Saving checkpoint to local storage...")
             save_checkpoint(CheckpointType.EPOCH, model_name, model_config, model,
                             optimizer, scheduler, epoch, eval_state.avg_loss, best_loss, 
                             patience_counter, total_time_taken)
-
+            logger.info(f"Checkpoint saved to local storage")
+            logger.info(f"Syncing checkpoint to blob storage...")
+            sync_checkpoint_to_blob_storage(model_name, f"{CheckpointType.EPOCH.value}_{epoch:04d}")
+            logger.info(f"Checkpoint synced to blob storage")
         logger.info("--------------------------------")
 
     logger.info(

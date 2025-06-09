@@ -188,3 +188,7 @@ artifacts/**/*.pth
 artifacts/**/*.json
 
 !artifacts/**/.gitkeep
+
+# Azure Storage
+.env
+!.env.template
