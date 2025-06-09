@@ -21,7 +21,7 @@ MODEL_CONFIG_PATH_TEMPLATE = f"configs/models/{{}}.yaml"
 TOKENIZER_CONFIG_PATH_TEMPLATE = f"configs/tokenizers/{{}}.yaml"
 
 DATASET_NAME = "wikitext"
-DATASET_CONFIG = "wikitext-103-raw-v1"
+DATASET_CONFIG = "wikitext-2-raw-v1"
 DATASET_PORTION = 100
 TEXT_COLUMN_NAME = "text"
 
