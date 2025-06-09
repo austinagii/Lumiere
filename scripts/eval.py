@@ -9,6 +9,7 @@ from torch.nn import functional as F
 from lumiere.config.config import ModelConfig
 from lumiere.models.transformer import Transformer
 from lumiere.preprocessing.tokenizer import Tokenizer
+from lumiere.training.persistence import load_checkpoint, load_tokenizer
 from lumiere.utils import get_device
 from lumiere.utils.data import to_batches
 
@@ -24,15 +25,17 @@ DATASET_NAME = "wikitext"
 DATASET_CONFIG = "wikitext-103-raw-v1"
 TEXT_COLUMN_NAME = "text"
 
-def eval(model_name: str) -> None:
-    # Load the model config.
-    model_config_path = f"{MODEL_CONFIG_DIR}/{model_name}.{CONFIG_FILE_EXTENSION}"
-    model_config = ModelConfig(model_config_path)
+def eval(model_name: str, checkpoint_name: str = None) -> None:
+    if checkpoint_name:
+        checkpoint = load_checkpoint(model_name, checkpoint_name)
+        model_config = checkpoint['model_config']
+    else:
+        # Load the model config.
+        model_config_path = f"{MODEL_CONFIG_DIR}/{model_name}.{CONFIG_FILE_EXTENSION}"
+        model_config = ModelConfig(model_config_path)
 
     # Load the tokenizer.
-    tokenizer_name = model_config.model['tokenizer']
-    tokenizer_path = f"{TOKENIZER_OUTPUT_DIR}/{tokenizer_name}.json"    
-    tokenizer = Tokenizer.load(tokenizer_path)
+    tokenizer = load_tokenizer(model_config.model['tokenizer'])
 
     # Load and initialize the model.
     device = get_device()
@@ -49,10 +52,15 @@ def eval(model_name: str) -> None:
         dropout=model_config.model['dropout']
     )
 
-    model_path = f"{MODEL_OUTPUT_DIR}/{model_name}.{MODEL_FILE_EXTENSION}"
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f"Model file not found: {model_path}")
-    model.load_state_dict(torch.load(model_path, map_location=device), strict=True)
+    if checkpoint_name:
+        model_state_dict = checkpoint['model_state_dict']
+    else:
+        model_path = f"{MODEL_OUTPUT_DIR}/{model_name}.{MODEL_FILE_EXTENSION}"
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+        model_state_dict = torch.load(model_path, map_location=device)
+
+    model.load_state_dict(model_state_dict, strict=True)
     model.to(device)
     model.eval()
     print("Model loaded successfully")
@@ -96,9 +104,11 @@ def main():
     parser = argparse.ArgumentParser(description='Evaluate a language model')
     parser.add_argument('model', default='transformer_tiny', 
                         help='Name of the model config file')
+    parser.add_argument('--checkpoint', default=None,
+                        help='Path to the checkpoint file')
     args = parser.parse_args()
 
-    eval(args.model)
+    eval(args.model, args.checkpoint)
 
 
 if __name__ == "__main__":

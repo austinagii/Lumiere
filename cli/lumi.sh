@@ -28,7 +28,7 @@ log_error() {
 }
 
 show_usage() {
-    echo "Usage: ${CMD_NAME} <command> <model>"
+    echo "Usage: ${CMD_NAME} <command> [arguments...]"
     echo
     echo "Commands:"
     echo "  train    Train a machine learning model."
@@ -44,14 +44,14 @@ show_usage() {
 
 run_with_pipenv() {
     local script_path="$1"
-    local model="$2"
+    shift
     
     if command -v pipenv &>/dev/null; then
         log_info "Running with Pipenv environment..."
-        pipenv run python "${script_path}" "${model}"
+        pipenv run python "${script_path}" "$@"
     else
         log_info "Running with system Python..."
-        python3 "${script_path}" "${model}"
+        python3 "${script_path}" "$@"
     fi
 }
 
@@ -62,8 +62,8 @@ main() {
         exit 0
     fi
     
-    # Validate argument count
-    if [[ $# -ne 2 ]]; then
+    # Validate minimum argument count (need at least the command)
+    if [[ $# -lt 1 ]]; then
         log_error "Invalid number of arguments"
         echo
         show_usage
@@ -71,7 +71,7 @@ main() {
     fi
     
     local command="$1"
-    local model="$2"
+    shift  # Remove command from arguments, leaving all other args in "$@"
     
     # Validate command
     if [[ "$command" != "train" && "$command" != "chat" && "$command" != "eval" ]]; then
@@ -85,21 +85,21 @@ main() {
     # Allow the lumiere module to be discoverable
     export PYTHONPATH="${CMD_BASE_DIR}:${PYTHONPATH}"
 
-    # Execute the appropriate command.
+    # Execute the appropriate command, passing all remaining arguments
     case "$command" in
         "train")
             log_info "Starting model training..."
-            run_with_pipenv "${CMD_BASE_DIR}/scripts/train.py" "${model}"
+            run_with_pipenv "${CMD_BASE_DIR}/scripts/train.py" "$@"
             log_info "Training completed"
             ;;
         "chat")
             log_info "Starting chat session..."
-            run_with_pipenv "${CMD_BASE_DIR}/scripts/inference.py" "${model}"
+            run_with_pipenv "${CMD_BASE_DIR}/scripts/inference.py" "$@"
             log_info "Chat session completed"
             ;;
         "eval")
             log_info "Starting evaluation..."
-            run_with_pipenv "${CMD_BASE_DIR}/scripts/eval.py" "${model}"
+            run_with_pipenv "${CMD_BASE_DIR}/scripts/eval.py" "$@"
             log_info "Evaluation completed"
             ;;
     esac

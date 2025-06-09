@@ -6,9 +6,14 @@ from typing import Dict, Any
 class Config:
     """Configuration class that loads and provides access to YAML configs."""
     
-    def __init__(self, config_path: str):
-        self.config_path = Path(config_path)
-        self._config = self._load_config()
+    def __init__(self, config_path: str = None, config_dict: Dict[str, Any] = None):
+        if config_path is not None:
+            self.config_path = Path(config_path)
+            self._config = self._load_config()
+        elif config_dict is not None:
+            self._config = config_dict
+        else:
+            raise ValueError("Either config_path or config_dict must be provided")
     
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from YAML file."""
@@ -26,11 +31,16 @@ class Config:
             return self._config.get(section, default)
         return self._config.get(section, {}).get(key, default)
 
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> 'Config':
+        """Create a Config instance from a dictionary."""
+        return cls(config_dict=config_dict)
+
 
 class ModelConfig(Config):
     """Configuration class for model configuration."""
-    def __init__(self, config_path: str):
-        super().__init__(config_path)
+    def __init__(self, config_path: str = None, config_dict: Dict[str, Any] = None):
+        super().__init__(config_path, config_dict)
 
     @property
     def model(self) -> Dict[str, Any]:
@@ -58,8 +68,8 @@ class ModelConfig(Config):
 
 class TokenizerConfig(Config):
     """Configuration class for tokenizer configuration."""
-    def __init__(self, config_path: str):
-        super().__init__(config_path)
+    def __init__(self, config_path: str = None, config_dict: Dict[str, Any] = None):
+        super().__init__(config_path, config_dict)
 
     @property
     def tokenizer(self) -> Dict[str, Any]:
