@@ -71,7 +71,7 @@ def sinusoidal_positional_encoding(shape: tuple[int, int]) -> torch.Tensor:
         raise ValueError("Embedding size must be a positive, even integer.")
 
     positions = torch.arange(context_size, dtype=torch.float32)
-    indices = torch.arange(embedding_size / 2, dtype=torch.float32)
+    indices = torch.arange(embedding_size // 2, dtype=torch.float32)
 
     scaling_factor = 10_000 ** ((2 * indices) / embedding_size)
     angles = positions.unsqueeze(1) / scaling_factor
