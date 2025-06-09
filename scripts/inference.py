@@ -20,6 +20,10 @@ TOKENIZER_OUTPUT_DIR = "artifacts/tokenizers"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Disable Azure blob storage logging
+logging.getLogger('azure.storage.blob').setLevel(logging.WARNING)
+logging.getLogger('azure.core').setLevel(logging.WARNING)
+
 def predict(model, tokenizer, text, device, max_length=200):
     tokens = tokenizer.encode(text).ids
     full_sequence = torch.tensor(tokens).unsqueeze(0).to(device)  # Keep all tokens
@@ -50,8 +54,11 @@ if __name__ == "__main__":
                         help='Name of the checkpoint to load (e.g., "best", "epoch_0010")')
     args = parser.parse_args()
 
+    device = get_device()
+    logger.info(f"Using device: {device}")
+
     if args.checkpoint:
-        checkpoint = load_checkpoint(args.model, args.checkpoint)
+        checkpoint = load_checkpoint(args.model, args.checkpoint, device)
         model_config = checkpoint['model_config']
         logger.info(f"Loaded checkpoint: {args.checkpoint}")
     else:
@@ -72,8 +79,6 @@ if __name__ == "__main__":
         dropout=model_config.model['dropout']
     )
     
-    device = get_device()
-    logger.info(f"Using device: {device}")
 
     if args.checkpoint:
         model_state_dict = checkpoint['model_state_dict']

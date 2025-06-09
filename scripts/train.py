@@ -93,7 +93,7 @@ def main(model_name: str, checkpoint_name: str = None):
 
     if checkpoint_name:
         logger.info(f"Resuming training from checkpoint '{checkpoint_name}'...")
-        checkpoint = load_checkpoint(model_name, checkpoint_name)
+        checkpoint = load_checkpoint(model_name, checkpoint_name, device)
         model_config = checkpoint['model_config']
 
         tokenizer = load_tokenizer(model_config.model['tokenizer'])

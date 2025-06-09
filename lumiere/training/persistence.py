@@ -112,11 +112,15 @@ def save_model(model_name, model):
     logger.info(f"Model saved to {save_path / f'{model_name}.pth'}")
 
 
-def load_checkpoint(model_name: str, checkpoint_name: str) -> dict[str, Any]:
-    checkpoint_path = CHECKPOINT_DIR_TEMPLATE.format(model_name=model_name) \
-        + "/"+ CHECKPOINT_NAME_TEMPLATE.format(checkpoint_name=checkpoint_name)
+def load_checkpoint(model_name: str, checkpoint_name: str, device: torch.device) -> dict[str, Any]:
+    checkpoint_path = Path(CHECKPOINT_DIR_TEMPLATE.format(model_name=model_name)) \
+        / CHECKPOINT_NAME_TEMPLATE.format(checkpoint_name=checkpoint_name)
+    
+    if not checkpoint_path.exists():
+        load_checkpoint_from_blob_storage(model_name, checkpoint_name)
+
     try:
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location=device)
     except Exception as e:
         raise PersistenceError(f"An error occurred while loading checkpoint from {checkpoint_path}", e)
 
@@ -158,3 +162,42 @@ def sync_checkpoint_to_blob_storage(model_name: str, checkpoint_name: str) -> No
             os.environ.pop('TOKENIZERS_PARALLELISM', None)
 
     logger.info(f"Checkpoint '{checkpoint_name}' synced to blob storage")
+
+def load_checkpoint_from_blob_storage(model_name: str, checkpoint_name: str) -> None:
+    # Temporarily disable tokenizer parallelism to prevent fork conflicts
+    original_parallelism = os.environ.get('TOKENIZERS_PARALLELISM')
+    os.environ['TOKENIZERS_PARALLELISM'] = 'false'
+    
+    try:
+        connection_string = os.getenv('BLOB_STORAGE_CONNECTION_STRING')
+        if not connection_string:
+            raise PersistenceError("Environment variable BLOB_STORAGE_CONNECTION_STRING is not set")
+        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+
+        container_name = os.getenv('BLOB_STORAGE_CONTAINER_NAME')
+        if not container_name:
+            raise PersistenceError("Environment variable BLOB_STORAGE_CONTAINER_NAME is not set")
+
+        blob_client = blob_service_client.get_blob_client(
+            container=container_name,
+            blob=f"checkpoints/{model_name}/{checkpoint_name}.pth"
+        )
+
+        local_checkpoint_path = Path(CHECKPOINT_DIR_TEMPLATE.format(model_name=model_name)) \
+            / CHECKPOINT_NAME_TEMPLATE.format(checkpoint_name=checkpoint_name)
+        # TODO: Create the directory if it does not already exist.
+        mode = "w" if local_checkpoint_path.exists() else "x"
+        print(f"Mode: {mode}")
+        try:
+            with open(str(local_checkpoint_path), f"{mode}b") as file:
+                file.write(blob_client.download_blob().readall())
+        except Exception as e:
+            raise PersistenceError(f"An error occurred while syncing blob storage to local", e)
+    finally:
+        # Restore original parallelism setting
+        if original_parallelism is not None:
+            os.environ['TOKENIZERS_PARALLELISM'] = original_parallelism
+        else:
+            os.environ.pop('TOKENIZERS_PARALLELISM', None)
+
+    logger.info(f"Checkpoint '{checkpoint_name}' loaded blob storage")

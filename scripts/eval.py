@@ -1,6 +1,7 @@
 import os
 import argparse
 from tqdm import tqdm
+import logging
 
 import datasets
 import torch
@@ -25,9 +26,27 @@ DATASET_NAME = "wikitext"
 DATASET_CONFIG = "wikitext-103-raw-v1"
 TEXT_COLUMN_NAME = "text"
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('training.log'),
+        logging.StreamHandler()
+    ]
+)
+
+# Disable Azure blob storage logging
+logging.getLogger('azure.storage.blob').setLevel(logging.WARNING)
+logging.getLogger('azure.core').setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
+
 def eval(model_name: str, checkpoint_name: str = None) -> None:
+    device = get_device()
+    print(f"Using device: {device}")
+    
     if checkpoint_name:
-        checkpoint = load_checkpoint(model_name, checkpoint_name)
+        checkpoint = load_checkpoint(model_name, checkpoint_name, device)
         model_config = checkpoint['model_config']
     else:
         # Load the model config.
@@ -38,8 +57,6 @@ def eval(model_name: str, checkpoint_name: str = None) -> None:
     tokenizer = load_tokenizer(model_config.model['tokenizer'])
 
     # Load and initialize the model.
-    device = get_device()
-    print(f"Using device: {device}")
     model = Transformer(
         vocab_size=tokenizer.vocab_size,
         embedding_size=model_config.model['embedding_size'],
