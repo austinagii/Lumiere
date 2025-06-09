@@ -1,6 +1,8 @@
 import torch
 from torch import nn
 
+from lumiere.components.activations import SwiGLU
+
 class FeedForward(nn.Module):
     """Feed-forward network for the transformer block.
     
@@ -12,7 +14,7 @@ class FeedForward(nn.Module):
     def __init__(self, embedding_size: int, d_ff: int, dropout: float = 0.1):
         super().__init__()
         self.linear_1 = nn.Linear(embedding_size, d_ff, bias=True)
-        self.activation = nn.GELU()
+        self.activation = SwiGLU(d_ff)
         self.dropout = nn.Dropout(dropout)
         self.linear_2 = nn.Linear(d_ff, embedding_size, bias=True)
 

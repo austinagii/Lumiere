@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
 from lumiere.components.embedding import Embedding
 from lumiere.components.block import TransformerBlock
 
@@ -35,7 +36,7 @@ class Transformer(nn.Module):
             for _ in range(num_layers)
         ])
         
-        self.final_norm = nn.LayerNorm(embedding_size)
+        self.final_norm = nn.RMSNorm(embedding_size)
         self.linear_out = nn.Linear(embedding_size, vocab_size, bias=True)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:

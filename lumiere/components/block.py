@@ -32,10 +32,10 @@ class TransformerBlock(nn.Module):
             d_value=d_value,
             dropout=dropout
         )
-        self.normalization_1 = nn.LayerNorm(embedding_size)
+        self.normalization_1 = nn.RMSNorm(embedding_size)
         self.feedforward = FeedForward(embedding_size, d_ff, dropout=dropout)
         self.dropout = nn.Dropout(dropout)
-        self.normalization_2 = nn.LayerNorm(embedding_size)
+        self.normalization_2 = nn.RMSNorm(embedding_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the transformer block.
