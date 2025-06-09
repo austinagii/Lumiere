@@ -43,8 +43,8 @@ logging.getLogger('azure.core').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 def signal_handler(sig, frame):
-    """Handle Ctrl+C gracefully."""
-    logger.info("\n🛑 Training halted by user (Ctrl+C)")
+    """Handle training interruption gracefully."""
+    logger.info("Training halted by user")
     sys.exit(0)
 
 def load_configs(model_name: str) -> tuple[ModelConfig, TokenizerConfig]:
@@ -203,7 +203,7 @@ def main(model_name: str, checkpoint_name: str = None):
             device=device
         )
         logger.info(
-            f"EPOCH {epoch:04d} - {"TRAINING":<10}: "
+            f"EPOCH {epoch:04d} - {'TRAINING':<10}: "
             f"Loss: {train_state.avg_loss:.4f}, "
             f"Perplexity: {train_state.avg_perplexity:.4f}, "
             f"LR: {train_state.current_lr:.2e}, "
@@ -219,7 +219,7 @@ def main(model_name: str, checkpoint_name: str = None):
             device=device
         )
         logger.info(
-            f"EPOCH {epoch:04d} - {"VALIDATION":<10}: "
+            f"EPOCH {epoch:04d} - {'VALIDATION':<10}: "
             f"Loss: {eval_state.avg_loss:.4f}, "
             f"Perplexity: {eval_state.avg_perplexity:.4f}, "
             f"Time: {eval_state.time_taken:.2f}s, "
