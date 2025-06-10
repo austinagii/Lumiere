@@ -37,7 +37,6 @@ class Transformer(nn.Module):
         ])
         
         self.final_norm = nn.RMSNorm(embedding_size)
-        self.linear_out = nn.Linear(embedding_size, vocab_size, bias=True)
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Get embeddings
@@ -50,9 +49,9 @@ class Transformer(nn.Module):
             attention_weights.append(block_attention_weights)
         attention_weights = torch.stack(attention_weights, dim=1)
         
-        # Apply final normalization and linear output layer
+        # Apply final normalization and tied output projection
         x = self.final_norm(x)
-        x = self.linear_out(x)
+        x = F.linear(x, self.embedding._embedding.weight)
         return x, attention_weights
     
     @property

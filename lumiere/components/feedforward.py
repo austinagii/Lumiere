@@ -4,7 +4,7 @@ from torch import nn
 from lumiere.components.activations import SwiGLU
 
 class FeedForward(nn.Module):
-    """Feed-forward network for the transformer block.
+    """Feed-forward network for the transformer block using SwiGLU.
     
     Args:
         embedding_size (int): The size of the embedding
@@ -13,14 +13,10 @@ class FeedForward(nn.Module):
     """
     def __init__(self, embedding_size: int, d_ff: int, dropout: float = 0.1):
         super().__init__()
-        self.linear_1 = nn.Linear(embedding_size, d_ff, bias=True)
-        self.activation = SwiGLU(d_ff)
+        self.swiglu = SwiGLU(embedding_size, d_ff)
         self.dropout = nn.Dropout(dropout)
-        self.linear_2 = nn.Linear(d_ff, embedding_size, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.linear_1(x)
-        x = self.activation(x)
+        x = self.swiglu(x)
         x = self.dropout(x)
-        x = self.linear_2(x)
         return x

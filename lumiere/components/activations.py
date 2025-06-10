@@ -1,15 +1,15 @@
 from torch import nn
 from torch.nn import functional as F
 
-SWIGLU_SCALE_FACTOR = 2.67
-
 class SwiGLU(nn.Module):
-    def __init__(self, dim: int):
+    def __init__(self, input_dim: int, hidden_dim: int):
         super().__init__()
-        hidden_dim = int(dim * SWIGLU_SCALE_FACTOR)
-        self.w1 = nn.Linear(dim, hidden_dim)
-        self.w2 = nn.Linear(dim, hidden_dim)
-        self.w3 = nn.Linear(hidden_dim, dim)
+        self.gate_proj = nn.Linear(input_dim, hidden_dim, bias=False)
+        self.up_proj = nn.Linear(input_dim, hidden_dim, bias=False)
+        self.down_proj = nn.Linear(hidden_dim, input_dim, bias=False)
     
     def forward(self, x):
-        return self.w3(self.w1(x) * F.silu(self.w2(x)))
+        gate = F.silu(self.gate_proj(x))
+        up = self.up_proj(x)
+        hidden = gate * up
+        return self.down_proj(hidden)
