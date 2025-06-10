@@ -40,16 +40,11 @@ class MultiHeadAttention(nn.Module):
             self._dropout = nn.Dropout(dropout)
         else:
             self._dropout = nn.Identity()
-        self._q_proj = nn.Parameter(torch.empty(embedding_size, d_key * num_heads))
-        self._k_proj = nn.Parameter(torch.empty(embedding_size, d_key * num_heads))
-        self._v_proj = nn.Parameter(torch.empty(embedding_size, d_value * num_heads))
-        self._o_proj = nn.Parameter(torch.empty(d_value * num_heads, embedding_size))
-        
-        # Xavier initialization
-        nn.init.xavier_uniform_(self._q_proj)
-        nn.init.xavier_uniform_(self._k_proj)
-        nn.init.xavier_uniform_(self._v_proj)
-        nn.init.xavier_uniform_(self._o_proj)
+
+        self._q_proj = nn.Linear(embedding_size, d_key * num_heads) 
+        self._k_proj = nn.Linear(embedding_size, d_key * num_heads)
+        self._v_proj = nn.Linear(embedding_size, d_value * num_heads)
+        self._o_proj = nn.Linear(d_value * num_heads, embedding_size) 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Creates the query, key and value matrices for a given batch of 
@@ -69,9 +64,9 @@ class MultiHeadAttention(nn.Module):
         if x.dim() != 3:
             raise ValueError("Input tensor must have shape (batch_size, context_size, embedding_size)")
         
-        queries = torch.matmul(x, self._q_proj)
-        keys = torch.matmul(x, self._k_proj)
-        values = torch.matmul(x, self._v_proj)
+        queries = self._q_proj(x)
+        keys = self._k_proj(x) 
+        values = self._v_proj(x)
 
         queries = split_heads(queries, self._num_heads, self._d_key)
         keys = split_heads(keys, self._num_heads, self._d_key)
@@ -89,7 +84,7 @@ class MultiHeadAttention(nn.Module):
         attention_values = torch.matmul(attention_weights, values)
 
         attention_values = concat_heads(attention_values)
-        output = torch.matmul(attention_values, self._o_proj)
+        output = self._o_proj(attention_values)
         return output, attention_weights
 
     @property
