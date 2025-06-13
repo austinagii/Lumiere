@@ -1,74 +1,102 @@
 import torch
 from torch import nn
 
+from lumiere.utils import validation
+
+
 class Embedding(nn.Module):
-    def __init__(self, vocab_size: int, context_size: int, embedding_size: int):
+    """Converts token IDs to positional-encoded token embeddings.
+
+    Takes a tensor of token IDs and returns the corresponding token embeddings
+    with sinusoidal positional encodings added.
+
+    Args:
+        vocab_size (int): The number of unique tokens in the vocabulary.
+        context_size (int): The number of tokens in the context.
+        embedding_size (int): The dimensionality of the token embeddings.
+
+    Shape:
+        - Input: `(..., context_size)`
+        - Output: `(..., context_size, embedding_size)`
+
+    Raises:
+        ValueError: If the vocabulary size or embedding size is not a positive
+            integer.
+        IndexError: If any of the token ids in the input tensor are outside of
+            the range [0, vocab_size).
+
+    Example:
+        >>> import torch
+        >>> from lumiere.components.embedding import Embedding
+        >>> x = torch.tensor([[1, 2, 3], [4, 5, 6]])
+        >>> embedding = Embedding(10, 10)
+        >>> output = embedding(x)
+        >>> print(output.shape)
+        torch.Size([2, 3, 10])
+    """
+
+    def __init__(
+        self,
+        vocab_size: int,
+        context_size: int,
+        embedding_size: int,
+    ) -> None:
         super().__init__()
-        self.vocab_size = vocab_size
-        self.context_size = context_size
-        self.embedding_size = embedding_size
-        self._embedding = nn.Embedding(vocab_size, embedding_size)
+        validation.validate_positive_integer(vocab_size, "vocab_size")
+        validation.validate_positive_integer(context_size, "context_size")
+        validation.validate_positive_integer(embedding_size, "embedding_size")
+
+        self._vocab_size = vocab_size
+        self._context_size = context_size
+        self._embedding_size = embedding_size
+
+        self._embedding = nn.Embedding(self._vocab_size, self._embedding_size)
         positional_encoding = sinusoidal_positional_encoding(
-            (context_size, embedding_size))
-        self.register_buffer('_positional_encoding', positional_encoding)
+            self._context_size, self._embedding_size
+        )
+        self.register_buffer("_positional_encoding", positional_encoding)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Returns the embedding for the given token ids.
-
-        `x` is expected to be a tensor of shape (..., [batch_size], context_size)
-        where all elements in the last dimension are integers in the range [0, vocab_size) 
-        representing token ids.
-
-        Args:
-            x: A tensor of shape (..., [batch_size], context_size) containing the 
-               token ids.
-
-        Returns:
-            A tensor of shape (..., [batch_size], context_size, embedding_size) 
-            containing the token embeddings.
-
-        Raises:
-            IndexError: If the token ids are outside of the range [0, vocab_size).
-        """
-        if torch.any(x < 0) or torch.any(x >= self._embedding.num_embeddings):
+        if torch.any(x < 0) or torch.any(x >= self._vocab_size):
             raise IndexError("Token ids are outside of the range [0, vocab_size).")
-        seq_len = x.size(-1)
-        return self._embedding(x) + self._positional_encoding[:seq_len]
-    
 
-def sinusoidal_positional_encoding(shape: tuple[int, int]) -> torch.Tensor:
-    """Returns the sinusoidal positional encoding matrix with the given shape.
+        return self._embedding(x) + self._positional_encoding[: x.shape[-1]]
 
-    The positional encoding matrix has shape (context_size, embedding_size) 
-    and is computed using the following formula:
+    @property
+    def vocab_size(self) -> int:
+        """The number of unique tokens in the vocabulary."""
+        return self._vocab_size
 
+    @property
+    def embedding_size(self) -> int:
+        """The dimensionality of the token embeddings."""
+        return self._embedding_size
+
+
+def sinusoidal_positional_encoding(
+    context_size: int, embedding_size: int
+) -> torch.Tensor:
+    """Computes sinusoidal positional encodings for a given context size and embedding 
+    size.
+
+    The positional encoding matrix is computed using the following formula:
         PE(pos, 2i)   = sin(pos / 10000^(2i/embedding_size))
         PE(pos, 2i+1) = cos(pos / 10000^(2i/embedding_size))
 
-    Where pos is the position of the token in the context and i is the 
-    index of the pair of dimensions under consideration.
-
-    Shape is expected to be a pair of positive integers where the second 
-    integer is even.
-
     Args:
-        shape: A tuple of (context_size, embedding_size).
+        context_size (int): The number of tokens in the context.
+        embedding_size (int): The dimensionality of the token embeddings.
 
     Returns:
-        A tensor of shape (context_size, embedding_size) containing the 
+        A tensor of shape (context_size, embedding_size) containing the
         sinusoidal positional encoding matrix.
 
     Raises:
-        ValueError: If the specified shape is invalid.
+        ValueError: If the context size or embedding size is not a positive
+            integer.
     """
-    if not (isinstance(shape, tuple) and len(shape) == 2):
-        raise ValueError("Shape must be a tuple (context_size, embedding_size).")
-
-    context_size, embedding_size = shape
-    if not (isinstance(context_size, int) and context_size > 0):
-        raise ValueError("Context size must be a positive integer.")
-    if not (isinstance(embedding_size, int) and embedding_size > 0 and embedding_size % 2 == 0):
-        raise ValueError("Embedding size must be a positive, even integer.")
+    validation.validate_positive_integer(context_size, "context_size")
+    validation.validate_positive_even_integer(embedding_size, "embedding_size")
 
     positions = torch.arange(context_size, dtype=torch.float32)
     indices = torch.arange(embedding_size // 2, dtype=torch.float32)

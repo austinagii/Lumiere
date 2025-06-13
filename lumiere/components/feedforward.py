@@ -2,32 +2,42 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-class SwiGLU(nn.Module):
-    def __init__(self, input_dim: int, hidden_dim: int):
-        super().__init__()
-        self.gate_proj = nn.Linear(input_dim, hidden_dim, bias=False)
-        self.up_proj = nn.Linear(input_dim, hidden_dim, bias=False)
-        self.down_proj = nn.Linear(hidden_dim, input_dim, bias=False)
-    
-    def forward(self, x):
-        gate = F.silu(self.gate_proj(x))
-        up = self.up_proj(x)
-        hidden = gate * up
-        return self.down_proj(hidden)
-
 
 class FeedForward(nn.Module):
-    """Feed-forward network for the transformer block using SwiGLU.
-    
+    """Applies the SwiGLU feed-forward operation over a batch of token embeddings.
+
+    This layer implements the operation as described in the paper:
+    https://arxiv.org/abs/2002.05202
+
     Args:
-        embedding_size (int): The size of the embedding
-        d_ff (int): The size of the feed-forward network
-        dropout (float): Dropout probability
+        embedding_size (int): The dimensionality of the token embeddings.
+        hidden_size (int): The dimensionality of the tokens' hidden representation.
+        dropout (float): The dropout probability. Default: 0.1.
+
+    Shape:
+        - Input: `(batch_size, context_size, embedding_size)`
+        - Output: `(batch_size, context_size, embedding_size)`
     """
-    def __init__(self, embedding_size: int, d_ff: int, dropout: float = 0.1):
+
+    def __init__(
+        self,
+        embedding_size: int,
+        hidden_size: int,
+        dropout: float = 0.1,
+    ) -> None:
         super().__init__()
-        self.swiglu = SwiGLU(embedding_size, d_ff)
-        self.dropout = nn.Dropout(dropout)
+        self._embedding_size = embedding_size
+        self._hidden_size = hidden_size
+        self._dropout_p = dropout
+
+        self._gate_proj = nn.Linear(self._embedding_size, self._hidden_size, bias=False)
+        self._up_proj = nn.Linear(self._embedding_size, self._hidden_size, bias=False)
+        self._down_proj = nn.Linear(self._hidden_size, self._embedding_size, bias=False)
+        self._dropout = nn.Dropout(self._dropout_p)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.dropout(self.swiglu(x))
+        gate = F.silu(self._gate_proj(x))
+        up = self._up_proj(x)
+        hidden = gate * up
+        down = self._down_proj(hidden)
+        return self._dropout(down)
