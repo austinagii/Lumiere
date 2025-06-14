@@ -53,11 +53,15 @@ class FeedForward(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() < 2:
-            raise ValueError("Expected input tensor to have at least 2 dimensions,"
-                             f"but got {x.dim()}.")
+            raise ValueError(
+                "Expected input tensor to have at least 2 dimensions,"
+                f"but got {x.dim()}."
+            )
         if x.size(-1) != self._embedding_size:
-            raise ValueError(f"Expected input tensor to have embedding size "
-                             f"{self._embedding_size}, but got {x.size(-1)}.")
+            raise ValueError(
+                f"Expected input tensor to have embedding size {self._embedding_size}, "
+                f"but got {x.size(-1)}."
+            )
 
         gate = F.silu(self._gate_proj(x))
         up = self._up_proj(x)
