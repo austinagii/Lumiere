@@ -192,3 +192,8 @@ artifacts/**/*.json
 # Azure Storage
 .env
 !.env.template
+
+# VS Code
+.vscode/
+*.code-workspace
+.history/
