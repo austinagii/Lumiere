@@ -2,6 +2,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from lumiere.utils import validation
+
 
 class FeedForward(nn.Module):
     """Applies the SwiGLU feed-forward operation over a batch of token embeddings.
@@ -17,6 +19,15 @@ class FeedForward(nn.Module):
     Shape:
         - Input: `(batch_size, context_size, embedding_size)`
         - Output: `(batch_size, context_size, embedding_size)`
+
+    Raises:
+        ValueError: If any of the following conditions are met:
+            - The embedding size is not a positive integer.
+            - The hidden size is not a positive integer.
+            - The dropout probability is not a valid probability.
+            - The input tensor has less than 2 dimensions.
+            - The input tensor's embedding size does not match the configured
+              embedding size.
     """
 
     def __init__(
@@ -26,6 +37,11 @@ class FeedForward(nn.Module):
         dropout: float = 0.1,
     ) -> None:
         super().__init__()
+
+        validation.validate_positive_integer(embedding_size, "embedding_size")
+        validation.validate_positive_integer(hidden_size, "hidden_size")
+        validation.validate_probability(dropout, "dropout")
+
         self._embedding_size = embedding_size
         self._hidden_size = hidden_size
         self._dropout_p = dropout
@@ -36,6 +52,13 @@ class FeedForward(nn.Module):
         self._dropout = nn.Dropout(self._dropout_p)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() < 2:
+            raise ValueError("Expected input tensor to have at least 2 dimensions,"
+                             f"but got {x.dim()}.")
+        if x.size(-1) != self._embedding_size:
+            raise ValueError(f"Expected input tensor to have embedding size "
+                             f"{self._embedding_size}, but got {x.size(-1)}.")
+
         gate = F.silu(self._gate_proj(x))
         up = self._up_proj(x)
         hidden = gate * up

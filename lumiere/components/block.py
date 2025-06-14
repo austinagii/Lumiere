@@ -59,7 +59,7 @@ class TransformerBlock(nn.Module):
         validation.validate_positive_integer(d_key, "d_key")
         validation.validate_positive_integer(d_value, "d_value")
         validation.validate_positive_integer(d_ff, "d_ff")
-        validation.validate_positive_float_or_zero(dropout, "dropout")
+        validation.validate_probability(dropout, "dropout")
 
         self._embedding_size = embedding_size
         self._num_heads = num_heads
