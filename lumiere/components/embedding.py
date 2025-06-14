@@ -60,7 +60,7 @@ class Embedding(nn.Module):
         if torch.any(x < 0) or torch.any(x >= self._vocab_size):
             raise IndexError("Token ids are outside of the range [0, vocab_size).")
 
-        return self._embedding(x) + self._positional_encoding[: x.shape[-1]]
+        return self._embedding(x) + self._positional_encoding[:x.shape[-1], :]
 
     @property
     def vocab_size(self) -> int:
