@@ -28,7 +28,7 @@ class MultiHeadAttention(nn.Module):
         ValueError: If any of the following are not positive integers: number of heads,
             embedding size, key dimensionality, or value dimensionality.
         ValueError: If the dropout probability is not a positive float or zero.
-        ValueError: If the input tensor is not of shape (batch_size, context_size, 
+        ValueError: If the input tensor is not of shape (batch_size, context_size,
             embedding_size).
 
     Example:
@@ -117,7 +117,7 @@ def split_heads(
     tensor: torch.Tensor, num_heads: int, num_features: int
 ) -> torch.Tensor:
     """Splits the concatenated multi-head features into separate heads.
-    
+
     Args:
         tensor: Tensor to split
         num_heads: Number of attention heads

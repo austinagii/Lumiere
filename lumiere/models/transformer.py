@@ -22,7 +22,7 @@ class Transformer(nn.Module):
         num_heads (int): The number of attention heads in each transformer block.
         d_key (int): The dimensionality of the key vectors in each attention head.
         d_value (int): The dimensionality of the value vectors in each attention head.
-        d_ff (int): The dimensionality of each feed-forward layer's hidden 
+        d_ff (int): The dimensionality of each feed-forward layer's hidden
             representations.
         dropout (float): The dropout probability. Defaults to 0.1.
 
@@ -40,6 +40,7 @@ class Transformer(nn.Module):
             - The input tensor has a batch size greater than the model's batch
               size.
     """
+
     def __init__(
         self,
         vocab_size: int,
@@ -50,10 +51,10 @@ class Transformer(nn.Module):
         d_key: int,
         d_value: int,
         d_ff: int,
-        dropout: float = 0.1
+        dropout: float = 0.1,
     ):
         super().__init__()
-        
+
         self._vocab_size = vocab_size
         self._context_size = context_size
         self._embedding_size = embedding_size
@@ -67,25 +68,27 @@ class Transformer(nn.Module):
         self.embedding = Embedding(
             self._vocab_size, self._context_size, self._embedding_size
         )
-        self.blocks = nn.ModuleList([
-            TransformerBlock(
-                embedding_size=self._embedding_size,
-                num_heads=self._num_heads,
-                d_key=self._d_key,
-                d_value=self._d_value,
-                d_ff=self._d_ff,
-                dropout=self._dropout
-            )
-            for _ in range(self._num_layers)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                TransformerBlock(
+                    embedding_size=self._embedding_size,
+                    num_heads=self._num_heads,
+                    d_key=self._d_key,
+                    d_value=self._d_value,
+                    d_ff=self._d_ff,
+                    dropout=self._dropout,
+                )
+                for _ in range(self._num_layers)
+            ]
+        )
         self.final_norm = nn.RMSNorm(self._embedding_size)
-        
+
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         if x.ndim != 2:
             raise ValueError(
                 f"The input tensor must have 2 dimensions, but got {x.ndim}."
             )
-        
+
         if x.shape[1] > self._context_size:
             raise ValueError(
                 f"The input tensor must have a context size of at most"
@@ -99,7 +102,7 @@ class Transformer(nn.Module):
             x, block_attention_weights = block(x)
             attention_weights.append(block_attention_weights)
         attention_weights = torch.stack(attention_weights, dim=1)
-        
+
         x = self.final_norm(x)
         x = F.linear(x, self.embedding._embedding.weight)
         return x, attention_weights

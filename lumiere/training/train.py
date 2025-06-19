@@ -1,18 +1,18 @@
 from dataclasses import dataclass
 from time import time
 
-from tqdm import tqdm
 import torch
 from torch.nn import functional as F
+from tqdm import tqdm
 
-from lumiere.utils.data import to_batches
 from lumiere.preprocessing.tokenizer import Tokenizer
+from lumiere.utils.data import to_batches
 
 
 @dataclass
 class TrainingState:
     avg_loss: float
-    avg_perplexity: float 
+    avg_perplexity: float
     num_batches: int
     current_lr: float
     time_taken: float
@@ -29,14 +29,14 @@ def train(
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler._LRScheduler,
     gradient_clip_norm: float,
-    device: torch.device
+    device: torch.device,
 ) -> TrainingState:
     """Trains the model on the dataset"""
     total_loss = 0.0
-    total_perplexity = 0.0 
+    total_perplexity = 0.0
     num_batches = 0
 
-    batches = to_batches(tokenizer, dataset, batch_size, context_size+1)
+    batches = to_batches(tokenizer, dataset, batch_size, context_size + 1)
     start_time = time()
     with tqdm(batches, desc=f"Epoch {current_epoch}/{max_epochs}", leave=False) as pbar:
         for batch in pbar:
@@ -44,12 +44,15 @@ def train(
             x, y = batch[:, :-1].to(device), batch[:, 1:].to(device)
             logits, _ = model(x)
             batch_loss = F.cross_entropy(
-                logits.view(-1, tokenizer.vocab_size), y.reshape(-1))
+                logits.view(-1, tokenizer.vocab_size), y.reshape(-1)
+            )
             batch_perplexity = torch.exp(batch_loss)
 
             # Update the model weights.
             batch_loss.backward()
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_norm)
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                model.parameters(), gradient_clip_norm
+            )
             optimizer.step()
             scheduler.step()
             optimizer.zero_grad()
@@ -61,12 +64,14 @@ def train(
 
             # Update progress bar.
             current_lr = scheduler.get_last_lr()[0]
-            pbar.set_postfix({
-                'loss': f'{batch_loss:.4f}',
-                'perplexity': f'{batch_perplexity:.4f}',
-                'lr': f'{current_lr:.2e}',
-                'grad_norm': f'{grad_norm:.2f}'
-            })
+            pbar.set_postfix(
+                {
+                    "loss": f"{batch_loss:.4f}",
+                    "perplexity": f"{batch_perplexity:.4f}",
+                    "lr": f"{current_lr:.2e}",
+                    "grad_norm": f"{grad_norm:.2f}",
+                }
+            )
     end_time = time()
     time_taken = end_time - start_time
 
@@ -75,5 +80,5 @@ def train(
         avg_perplexity=total_perplexity / num_batches,
         num_batches=num_batches,
         current_lr=current_lr,
-        time_taken=time_taken
+        time_taken=time_taken,
     )

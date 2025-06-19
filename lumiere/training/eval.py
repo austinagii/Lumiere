@@ -17,28 +17,35 @@ class EvaluationState:
 
 
 def evaluate(
-        model: torch.nn.Module, 
-        tokenizer: Tokenizer, 
-        validation_dataset: torch.utils.data.Dataset, 
-        batch_size: int, 
-        context_size: int, 
-        device: torch.device
-    ) -> EvaluationState:
+    model: torch.nn.Module,
+    tokenizer: Tokenizer,
+    validation_dataset: torch.utils.data.Dataset,
+    batch_size: int,
+    context_size: int,
+    device: torch.device,
+) -> EvaluationState:
     """Evaluates the model on the dataset"""
     # Evaluate performance on validation set.
     total_loss = 0.0
     total_perplexity = 0.0
     num_batches = 0
 
-    validation_batches = to_batches(tokenizer, validation_dataset, batch_size, context_size+1)
+    validation_batches = to_batches(
+        tokenizer, validation_dataset, batch_size, context_size + 1
+    )
 
     model.eval()
     start_time = time()
     with torch.no_grad():
         for validation_batch in validation_batches:
-            x, y = validation_batch[:, :-1].to(device), validation_batch[:, 1:].to(device)
+            x, y = (
+                validation_batch[:, :-1].to(device),
+                validation_batch[:, 1:].to(device),
+            )
             logits, _ = model(x)
-            loss = F.cross_entropy(logits.reshape(-1, tokenizer.vocab_size), y.reshape(-1))
+            loss = F.cross_entropy(
+                logits.reshape(-1, tokenizer.vocab_size), y.reshape(-1)
+            )
             total_loss += loss.item()
             total_perplexity += torch.exp(loss).item()
             num_batches += 1
@@ -50,7 +57,7 @@ def evaluate(
         avg_loss=total_loss / num_batches,
         avg_perplexity=total_perplexity / num_batches,
         num_batches=num_batches,
-        time_taken=time_taken
+        time_taken=time_taken,
     )
 
     return eval_state
