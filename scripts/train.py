@@ -14,16 +14,17 @@ from lumiere.preprocessing.tokenizer import Tokenizer
 from lumiere.training import schedulers
 from lumiere.training.eval import evaluate
 from lumiere.training.persistence import (
+    Checkpoint,
     CheckpointType,
     load_checkpoint,
     load_tokenizer,
     save_checkpoint,
-    save_model,
     save_tokenizer,
-    sync_checkpoint_to_blob_storage,
 )
 from lumiere.training.train import train
 from lumiere.utils import get_device
+from scripts import cli
+
 
 MODEL_CONFIG_PATH_TEMPLATE = "configs/models/{}.yaml"
 TOKENIZER_CONFIG_PATH_TEMPLATE = "configs/tokenizers/{}.yaml"
@@ -93,63 +94,39 @@ def load_datasets():
     return train_dataset, validation_dataset
 
 
-def main(model_name: str, checkpoint_name: str = None):
+def main(model_name: str, checkpoint: Checkpoint = None):
     # Register signal handler for graceful Ctrl+C handling
     signal.signal(signal.SIGINT, signal_handler)
 
+    should_resume_checkpoint = checkpoint is not None
     train_dataset, validation_dataset = load_datasets()
 
     device = get_device()
     logger.info(f"Using device: {device}")
 
-    if checkpoint_name:
-        logger.info(f"Resuming training from checkpoint '{checkpoint_name}'...")
-        checkpoint = load_checkpoint(model_name, checkpoint_name, device)
+    # Load the specified checkpoint or load the latest config for training.
+    if should_resume_checkpoint:
+        logger.info(f"Resuming from checkpoint: '{checkpoint}'...")
+        try:
+            checkpoint = load_checkpoint(model_name, checkpoint, device)
+        except Exception as e:
+            raise RuntimeError(f"Checkpoint '{checkpoint}' could not be found", e)
         model_config = checkpoint["model_config"]
-
-        tokenizer = load_tokenizer(model_config.model["tokenizer"])
-
-        model = Transformer(
-            vocab_size=tokenizer.vocab_size,
-            embedding_size=model_config.model["embedding_size"],
-            context_size=model_config.model["context_size"],
-            num_layers=model_config.model["num_layers"],
-            num_heads=model_config.model["num_heads"],
-            d_key=model_config.model["d_key"],
-            d_value=model_config.model["d_value"],
-            d_ff=model_config.model["d_ff"],
-            dropout=model_config.model["dropout"],
-        ).to(device)
-        model.load_state_dict(checkpoint["model_state_dict"])
-
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=model_config.training["learning_rate"],
-            weight_decay=model_config.training["weight_decay"],
-        )
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-
-        scheduler = schedulers.cosine_annealing_lr_scheduler(
-            optimizer,
-            model_config.training["warmup_steps"],
-            model_config.training["num_epochs"],
-        )
-        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-
-        total_time_taken = checkpoint["time_taken"]
-        best_loss = checkpoint["best_loss"]
-        best_perplexity = 0.0
-        current_epoch = checkpoint["epoch"]
-        patience_counter = checkpoint["patience_counter"]
-        patience = model_config.training["patience"]
-        max_epochs = (
-            model_config.training["num_epochs"]
-            if model_config.training["num_epochs"] > 0
-            else float("inf")
-        )
+        logger.info("Checkpoint loaded successfully")
     else:
         model_config, tokenizer_config = load_configs(model_name)
 
+    # Load the checkpoint's configured tokenizer or train one from scratch.
+    if should_resume_checkpoint:
+        tokenizer_name = model_config.model.get("tokenizer")
+        if tokenizer_name is None:
+            raise Exception(
+                "Tokenizer not configured for checkpoint '{checkpoint_name}'"
+            )
+        logger.info(f"Loading tokenizer: '{model_config.model['tokenizer']}")
+        tokenizer = load_tokenizer(model_config.model["tokenizer"])
+        logger.info("Tokenizer loaded successfully")
+    else:
         logger.info(f"Training tokenizer with configuration:\n{tokenizer_config}")
         tokenizer = Tokenizer().train(
             train_dataset,
@@ -158,51 +135,61 @@ def main(model_name: str, checkpoint_name: str = None):
             tokenizer_config.tokenizer["vocab_size"],
         )
         logger.info("Tokenizer trained successfully")
-        tokenizer_path = save_tokenizer(model_config, tokenizer)
-        logger.info(f"Tokenizer saved to {tokenizer_path}")
+        logger.info("Saving tokenizer")
+        save_tokenizer(model_config.model["tokenizer"], tokenizer)
+        logger.info("Tokenizer saved successfully")
 
-        model = Transformer(
-            vocab_size=tokenizer.vocab_size,
-            embedding_size=model_config.model["embedding_size"],
-            context_size=model_config.model["context_size"],
-            num_layers=model_config.model["num_layers"],
-            num_heads=model_config.model["num_heads"],
-            d_key=model_config.model["d_key"],
-            d_value=model_config.model["d_value"],
-            d_ff=model_config.model["d_ff"],
-            dropout=model_config.model["dropout"],
-        ).to(device)
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=model_config.training["learning_rate"],
-            weight_decay=model_config.training["weight_decay"],
-        )
-        scheduler = schedulers.cosine_annealing_lr_scheduler(
-            optimizer,
-            model_config.training["warmup_steps"],
-            model_config.training["num_epochs"],
-        )
-        current_epoch = 0
-        total_time_taken = 0.0
-        best_loss = float("inf")
-        best_perplexity = float("inf")
-        patience_counter = 0
-        patience = model_config.training["patience"]
-        max_epochs = (
-            model_config.training["num_epochs"]
-            if model_config.training["num_epochs"] > 0
-            else float("inf")
-        )
+    model = Transformer(
+        vocab_size=tokenizer.vocab_size,
+        embedding_size=model_config.model["embedding_size"],
+        context_size=model_config.model["context_size"],
+        num_layers=model_config.model["num_layers"],
+        num_heads=model_config.model["num_heads"],
+        d_key=model_config.model["d_key"],
+        d_value=model_config.model["d_value"],
+        d_ff=model_config.model["d_ff"],
+        dropout=model_config.model["dropout"],
+    ).to(device)
 
-    logger.info(f"Training model with configuration:\n{model_config}")
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logger.info(
-        f"Model initialized - Total params: {total_params:,}, "
-        f"Trainable: {trainable_params:,}"
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=model_config.training["learning_rate"],
+        weight_decay=model_config.training["weight_decay"],
     )
 
-    logger.info(f"Starting training for model '{model_name}'...")
+    scheduler = schedulers.cosine_annealing_lr_scheduler(
+        optimizer,
+        model_config.training["warmup_steps"],
+        model_config.training["num_epochs"],
+    )
+
+    if should_resume_checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
+    total_time_taken = checkpoint["time_taken"] if should_resume_checkpoint else 0.0
+    best_loss = checkpoint["best_loss"] if should_resume_checkpoint else float("inf")
+    best_perplexity = (
+        torch.tensor(best_loss).exp().item()
+        if should_resume_checkpoint
+        else float("inf")
+    )
+    current_epoch = checkpoint["epoch"] if should_resume_checkpoint else 0
+    patience_counter = checkpoint["patience_counter"] if should_resume_checkpoint else 0
+    patience = model_config.training["patience"]
+    max_epochs = (
+        model_config.training["num_epochs"]
+        if model_config.training["num_epochs"] > 0
+        else float("inf")
+    )
+
+    logger.info(f"Training model with configuration:\n{model_config}")
+    logger.info(
+        f"Starting training for model '{model_name}', "
+        f"Total params: {sum(p.numel() for p in model.parameters()):,}, "
+        f"Trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
+    )
     logger.info("--------------------------------")
 
     # Start the training loop.
@@ -268,10 +255,7 @@ def main(model_name: str, checkpoint_name: str = None):
                 patience_counter,
                 total_time_taken,
             )
-            logger.info("Best checkpoint saved to local storage")
-            logger.info("Syncing best checkpoint to blob storage...")
-            sync_checkpoint_to_blob_storage(model_name, CheckpointType.BEST.value)
-            logger.info("Best checkpoint synced to blob storage")
+            logger.info("Checkpoint saved successfully")
         else:
             patience_counter += 1
 
@@ -285,26 +269,21 @@ def main(model_name: str, checkpoint_name: str = None):
             break
 
         if epoch % CHECKPOINT_INTERVAL == 0:
-            logger.info("Saving checkpoint to local storage...")
+            logger.info("Saving epoch checkpoint...")
             save_checkpoint(
                 CheckpointType.EPOCH,
                 model_name,
                 model_config,
                 model,
-                optimizer,
-                scheduler,
-                epoch,
-                eval_state.avg_loss,
-                best_loss,
-                patience_counter,
-                total_time_taken,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                epoch=epoch,
+                prev_loss=eval_state.avg_loss,
+                best_loss=best_loss,
+                patience_counter=patience_counter,
+                time_taken=total_time_taken,
             )
-            logger.info("Checkpoint saved to local storage")
-            logger.info("Syncing checkpoint to blob storage...")
-            sync_checkpoint_to_blob_storage(
-                model_name, f"{CheckpointType.EPOCH.value}_{epoch:04d}"
-            )
-            logger.info("Checkpoint synced to blob storage")
+            logger.info("Checkpoint saved successfully")
         logger.info("--------------------------------")
 
     logger.info(
@@ -313,8 +292,7 @@ def main(model_name: str, checkpoint_name: str = None):
         f"Best validation perplexity: {best_perplexity:.4f}"
     )
 
-    # Save the model.
-    save_model(model_name, model)
+    save_checkpoint(CheckpointType.FINAL, model_name, model_config, model)
 
 
 if __name__ == "__main__":
@@ -323,8 +301,15 @@ if __name__ == "__main__":
         "model", default="transformer-tiny", help="Name of the model to train"
     )
     parser.add_argument(
-        "--checkpoint", default=None, help="Path to the checkpoint to load"
+        "--checkpoint", default=None, help="The checkpoint to resume from"
     )
+
     args = parser.parse_args()
 
-    main(args.model, args.checkpoint)
+    checkpoint = None
+    if args.checkpoint is not None:
+        checkpoint = cli.parse_checkpoint(args.checkpoint)
+        if checkpoint is None:
+            parser.error("The specified checkpoint is not a valid checkpoint")
+
+    main(args.model, checkpoint=checkpoint)
