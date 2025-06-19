@@ -178,6 +178,7 @@ def main(model_name: str, checkpoint: Checkpoint = None):
     current_epoch = checkpoint["epoch"] if should_resume_checkpoint else 0
     patience_counter = checkpoint["patience_counter"] if should_resume_checkpoint else 0
     patience = model_config.training["patience"]
+    stopping_threshold = model_config.training["stopping_threshold"]
     max_epochs = (
         model_config.training["num_epochs"]
         if model_config.training["num_epochs"] > 0
@@ -233,7 +234,7 @@ def main(model_name: str, checkpoint: Checkpoint = None):
         total_time_taken += train_state.time_taken + eval_state.time_taken
 
         # Capture performance improvements.
-        if eval_state.avg_loss < best_loss:
+        if eval_state.avg_loss < best_loss - stopping_threshold:
             best_loss = eval_state.avg_loss
             best_perplexity = eval_state.avg_perplexity
             patience_counter = 0

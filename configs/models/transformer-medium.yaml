@@ -18,3 +18,4 @@ training:
   num_epochs: -1
   warmup_steps: 1500
   patience: 4
+  stopping_threshold: 0.0001
