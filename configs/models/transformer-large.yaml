@@ -17,5 +17,5 @@ training:
   gradient_clip_norm: 1.0
   num_epochs: -1
   warmup_steps: 4000
-  patience: 3
+  patience: 20
   stopping_threshold: 0.0001
