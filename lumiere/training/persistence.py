@@ -1,3 +1,4 @@
+import io
 import logging
 import os
 from dataclasses import dataclass
@@ -64,6 +65,8 @@ def save_checkpoint(
     best_loss: float = None,
     patience_counter: int = None,
     time_taken=None,
+    save_local: bool = True,
+    save_remote: bool = True,
 ) -> None:
     checkpoint = {
         "model_config": model_config._config,
@@ -76,61 +79,82 @@ def save_checkpoint(
         "patience_counter": patience_counter,
         "time_taken": time_taken,
     }
+    checkpoint_bytes = to_bytes(checkpoint)
 
     local_checkpoint_path, remote_checkpoint_path = get_checkpoint_path(
         model_name, checkpoint=Checkpoint(type, epoch)
     )
-
-    # Create the checkpoint directory if it does not already exist.
-    if not local_checkpoint_path.parent.exists():
-        try:
-            local_checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            raise PersistenceError(
-                f"Failed to create checkpoint directory '{local_checkpoint_path.parent}'",
-                e,
-            )
-
-    try:
-        torch.save(checkpoint, local_checkpoint_path)
-    except Exception as e:
-        raise PersistenceError(
-            f"An error occurred while saving model checkpointto {local_checkpoint_path}",
-            e,
-        )
-
-    upload_artifact(local_checkpoint_path, remote_checkpoint_path)
+    if save_local:
+        save_checkpoint_to_disk(checkpoint_bytes, local_checkpoint_path)
+    if save_remote:
+        upload_artifact(checkpoint_bytes, remote_checkpoint_path)
 
 
 def load_checkpoint(
     model_name: str,
     checkpoint: Checkpoint,
     device: torch.device = torch.device("cpu"),
+    cache_local: bool = True,
 ) -> dict[str, Any]:
     """Load the checkpoint from local storage or blob storage.
 
     If the checkpoint is not found in local storage, it will be first be downloaded
     to local storage from blob storage.
     """
-
-    # Sync the checkpoint to the local device if it is not already available on device.
     local_checkpoint_path, remote_checkpoint_path = get_checkpoint_path(
         model_name, checkpoint
     )
-    if not local_checkpoint_path.exists():
-        download_artifact(remote_checkpoint_path, local_checkpoint_path)
 
-    # Load the checkpoint.
-    try:
-        checkpoint = torch.load(local_checkpoint_path, map_location=device)
-    except Exception as e:
-        raise PersistenceError("An error occurred while loading the checkpoint", e)
+    # TODO: Allow checkpoint to be overwritten by remote.
+    if local_checkpoint_path.exists():
+        try:
+            checkpoint = torch.load(str(local_checkpoint_path), map_location=device)
+        except Exception as e:
+            raise PersistenceError("An error occurred while loading the checkpoint", e)
+    else:
+        checkpoint_bytes = download_artifact(remote_checkpoint_path)
+
+        if cache_local:
+            save_checkpoint_to_disk(checkpoint_bytes, local_checkpoint_path)
+
+        try:
+            checkpoint = torch.load(io.BytesIO(checkpoint_bytes), map_location=device)
+        except Exception as e:
+            raise PersistenceError("An error occurred while loading the checkpoint", e)
 
     checkpoint["model_config"] = ModelConfig.from_dict(checkpoint["model_config"])
     return checkpoint
 
 
-def upload_artifact(local_artifact_path: Path, remote_artifact_path: Path) -> None:
+def save_checkpoint_to_disk(artifact: bytes, local_artifact_path: Path) -> None:
+    local_artifact_dir = local_artifact_path.parent
+    # Create the checkpoint directory if it does not already exist.
+    if not local_artifact_dir.exists():
+        try:
+            local_artifact_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            raise PersistenceError(
+                f"Failed to create artifact directory '{local_artifact_dir}'",
+                e,
+            )
+
+    try:
+        with open(local_artifact_path, "wb") as f:
+            f.write(artifact)
+    except Exception as e:
+        raise PersistenceError(
+            f"An error occurred while saving the checkpoint to '{local_artifact_path}'",
+            e,
+        )
+
+
+def to_bytes(artifact: Any) -> bytes:
+    buffer = io.BytesIO()
+    torch.save(artifact, buffer)
+    return buffer.getvalue()
+
+
+def upload_artifact(artifact: bytes, remote_artifact_path: Path) -> None:
     """Uploads the artifact to the remote device"""
     # Temporarily disable tokenizer parallelism to prevent fork conflicts
     # with tokenizers library.
@@ -158,8 +182,7 @@ def upload_artifact(local_artifact_path: Path, remote_artifact_path: Path) -> No
         )
 
         try:
-            with open(local_artifact_path, "rb") as data:
-                blob_client.upload_blob(data, overwrite=True)
+            blob_client.upload_blob(artifact, overwrite=True)
         except Exception as e:
             raise PersistenceError(
                 "An error occurred while syncing checkpoint to blob storage", e
@@ -172,8 +195,8 @@ def upload_artifact(local_artifact_path: Path, remote_artifact_path: Path) -> No
             os.environ.pop("TOKENIZERS_PARALLELISM", None)
 
 
-def download_artifact(remote_artifact_path: Path, local_artifact_path: Path) -> None:
-    """Downloads the artifact to the local device"""
+def download_artifact(remote_artifact_path: Path) -> bytes:
+    """Downloads the artifact from the remote device."""
     # Temporarily disable tokenizer parallelism to prevent fork conflicts
     original_parallelism = os.environ.get("TOKENIZERS_PARALLELISM")
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -197,29 +220,16 @@ def download_artifact(remote_artifact_path: Path, local_artifact_path: Path) -> 
             container=container_name, blob=str(remote_artifact_path)
         )
 
-        # Create the directory if it does not already exist
-        local_artifact_directory = local_artifact_path.parent
-        if not local_artifact_directory.exists():
-            try:
-                local_artifact_directory.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
-                raise PersistenceError(
-                    "Failed to create checkpoint directory ",
-                    "'{local_artifact_directory}'",
-                    e,
-                )
-
-        if not blob_client.exists():
-            raise PersistenceError("Checkpoint could not be found in blob")
-
-        mode = "w" if local_artifact_path.exists() else "x"
         try:
-            with open(local_artifact_path, f"{mode}b") as file:
-                file.write(blob_client.download_blob().readall())
+            if not blob_client.exists():
+                raise PersistenceError("Checkpoint could not be found in blob")
+            artifact = blob_client.download_blob().readall()
         except Exception as e:
             raise PersistenceError(
-                "An error occurred while syncing blob storage to local", e
+                "An error occurred while downloading the artifact from blob storage", e
             )
+
+        return artifact
     finally:
         # Restore original parallelism setting
         if original_parallelism is not None:
@@ -269,34 +279,63 @@ def load_model(
     return model, model_config, tokenizer
 
 
-def save_tokenizer(tokenizer_name, tokenizer: Tokenizer) -> Path:
+def save_tokenizer(
+    tokenizer_name,
+    tokenizer: Tokenizer,
+    save_local: bool = True,
+    save_remote: bool = True,
+) -> Path:
+    tokenizer_bytes = bytes(tokenizer.tokenizer.to_str(), "utf-8")
+
     local_path, remote_path = get_tokenizer_path(tokenizer_name)
-    if not local_path.parent.exists():
+    if save_local:
+        save_tokenizer_to_disk(tokenizer_bytes, local_path)
+    if save_remote:
+        upload_artifact(tokenizer_bytes, remote_path)
+
+
+def load_tokenizer(tokenizer_name: str, cache_local: bool = True) -> Tokenizer:
+    """Load the tokenizer from local storage or blob storage.
+
+    If the tokenizer is not found in local storage, it will be downloaded from blob
+    storage.
+    """
+    local_path, remote_path = get_tokenizer_path(tokenizer_name)
+
+    # TODO: Allow tokenizer to be overwritten by remote.
+    if local_path.exists():
+        tokenizer = Tokenizer.load(local_path)
+    else:
+        tokenizer_bytes = download_artifact(remote_path)
+
+        if cache_local:
+            save_tokenizer_to_disk(tokenizer_bytes, local_path)
+
+        tokenizer = Tokenizer.from_bytes(tokenizer_bytes)
+
+    return tokenizer
+
+
+def save_tokenizer_to_disk(tokenizer_bytes: bytes, local_path: Path) -> None:
+    tokenizer_dir = local_path.parent
+    if not tokenizer_dir.exists():
         try:
-            local_path.parent.mkdir(parents=True, exist_ok=True)
+            tokenizer_dir.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             raise PersistenceError(
                 "An error occurred while creating tokenizer directory "
-                f"'{str(local_path)}'",
+                f"'{str(tokenizer_dir)}'",
                 e,
             )
 
+    mode = "w" if local_path.exists() else "x"
     try:
-        tokenizer.save(str(local_path))
+        with open(local_path, f"{mode}b") as file:
+            file.write(tokenizer_bytes)
     except Exception as e:
         raise PersistenceError(
             f"An error occurred while saving tokenizer to {str(local_path)}", e
         )
-
-    upload_artifact(local_path, remote_path)
-
-
-def load_tokenizer(tokenizer_name: str) -> Tokenizer:
-    local_path, remote_path = get_tokenizer_path(tokenizer_name)
-    if not local_path.exists():
-        download_artifact(remote_path, local_path)
-    tokenizer = Tokenizer.load(str(local_path))
-    return tokenizer
 
 
 def get_checkpoint_path(model_name: str, checkpoint: Checkpoint) -> Tuple[Path, Path]:

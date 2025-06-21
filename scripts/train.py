@@ -94,7 +94,12 @@ def load_datasets():
     return train_dataset, validation_dataset
 
 
-def main(model_name: str, checkpoint: Checkpoint = None):
+def main(
+    model_name: str,
+    checkpoint: Checkpoint = None,
+    save_local_checkpoints: bool = True,
+    save_remote_checkpoints: bool = True,
+):
     # Register signal handler for graceful Ctrl+C handling
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -108,7 +113,9 @@ def main(model_name: str, checkpoint: Checkpoint = None):
     if should_resume_checkpoint:
         logger.info(f"Resuming from checkpoint: '{checkpoint}'...")
         try:
-            checkpoint = load_checkpoint(model_name, checkpoint, device)
+            checkpoint = load_checkpoint(
+                model_name, checkpoint, device, cache_local=save_local_checkpoints
+            )
         except Exception as e:
             raise RuntimeError(f"Checkpoint '{checkpoint}' could not be found", e)
         model_config = checkpoint["model_config"]
@@ -124,7 +131,9 @@ def main(model_name: str, checkpoint: Checkpoint = None):
                 "Tokenizer not configured for checkpoint '{checkpoint_name}'"
             )
         logger.info(f"Loading tokenizer: '{model_config.model['tokenizer']}")
-        tokenizer = load_tokenizer(model_config.model["tokenizer"])
+        tokenizer = load_tokenizer(
+            model_config.model["tokenizer"], cache_local=save_local_checkpoints
+        )
         logger.info("Tokenizer loaded successfully")
     else:
         logger.info(f"Training tokenizer with configuration:\n{tokenizer_config}")
@@ -136,7 +145,12 @@ def main(model_name: str, checkpoint: Checkpoint = None):
         )
         logger.info("Tokenizer trained successfully")
         logger.info("Saving tokenizer")
-        save_tokenizer(model_config.model["tokenizer"], tokenizer)
+        save_tokenizer(
+            model_config.model["tokenizer"],
+            tokenizer,
+            save_local=save_local_checkpoints,
+            save_remote=save_remote_checkpoints,
+        )
         logger.info("Tokenizer saved successfully")
 
     model = Transformer(
@@ -255,6 +269,8 @@ def main(model_name: str, checkpoint: Checkpoint = None):
                 best_loss,
                 patience_counter,
                 total_time_taken,
+                save_local=save_local_checkpoints,
+                save_remote=save_remote_checkpoints,
             )
             logger.info("Checkpoint saved successfully")
         else:
@@ -283,6 +299,8 @@ def main(model_name: str, checkpoint: Checkpoint = None):
                 best_loss=best_loss,
                 patience_counter=patience_counter,
                 time_taken=total_time_taken,
+                save_local=save_local_checkpoints,
+                save_remote=save_remote_checkpoints,
             )
             logger.info("Checkpoint saved successfully")
         logger.info("--------------------------------")
@@ -293,7 +311,14 @@ def main(model_name: str, checkpoint: Checkpoint = None):
         f"Best validation perplexity: {best_perplexity:.4f}"
     )
 
-    save_checkpoint(CheckpointType.FINAL, model_name, model_config, model)
+    save_checkpoint(
+        CheckpointType.FINAL,
+        model_name,
+        model_config,
+        model,
+        save_local=save_local_checkpoints,
+        save_remote=save_remote_checkpoints,
+    )
 
 
 if __name__ == "__main__":
@@ -302,7 +327,21 @@ if __name__ == "__main__":
         "model", default="transformer-tiny", help="Name of the model to train"
     )
     parser.add_argument(
-        "--checkpoint", default=None, help="The checkpoint to resume from"
+        "--checkpoint", default=None, help="The checkpoint to resume trainingfrom"
+    )
+    parser.add_argument(
+        "-l",
+        "--disable-local-checkpoints",
+        action="store_false",
+        dest="save_local_checkpoints",
+        help="Do not save checkpoints to local storage",
+    )
+    parser.add_argument(
+        "-r",
+        "--disable-remote-checkpoints",
+        action="store_false",
+        dest="save_remote_checkpoints",
+        help="Do not save checkpoints to remote storage",
     )
 
     args = parser.parse_args()
@@ -313,4 +352,9 @@ if __name__ == "__main__":
         if checkpoint is None:
             parser.error("The specified checkpoint is not a valid checkpoint")
 
-    main(args.model, checkpoint=checkpoint)
+    main(
+        args.model,
+        checkpoint=checkpoint,
+        save_local_checkpoints=args.save_local_checkpoints,
+        save_remote_checkpoints=args.save_remote_checkpoints,
+    )

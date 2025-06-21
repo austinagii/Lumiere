@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Iterable
 
 import tokenizers
@@ -42,7 +43,13 @@ class Tokenizer:
         self.tokenizer.save(path)
 
     @staticmethod
-    def load(path: str):
+    def load(path: Path):
         tokenizer = Tokenizer()
-        tokenizer.tokenizer = tokenizers.Tokenizer.from_file(path)
+        tokenizer.tokenizer = tokenizers.Tokenizer.from_file(str(path))
+        return tokenizer
+
+    @staticmethod
+    def from_bytes(bytes: bytes):
+        tokenizer = Tokenizer()
+        tokenizer.tokenizer = tokenizers.Tokenizer.from_str(bytes.decode("utf-8"))
         return tokenizer
