@@ -7,23 +7,20 @@ import sys
 
 import datasets
 import torch
+from azure.storage.blob import BlobServiceClient
 
 from lumiere.config.config import ModelConfig, TokenizerConfig
 from lumiere.models.transformer import Transformer
+from lumiere.persistence.checkpoint_manager import CheckpointManager
+from lumiere.persistence.errors import PersistenceError
+from lumiere.persistence.storage_client import LocalStorageClient, RemoteStorageClient
+from lumiere.persistence.tokenizer_manager import TokenizerManager
 from lumiere.preprocessing.tokenizer import Tokenizer
 from lumiere.training import schedulers
+from lumiere.training.checkpoint import Checkpoint, CheckpointType
 from lumiere.training.eval import evaluate
-from lumiere.training.persistence import (
-    Checkpoint,
-    CheckpointType,
-    load_checkpoint,
-    load_tokenizer,
-    save_checkpoint,
-    save_tokenizer,
-)
 from lumiere.training.train import train
 from lumiere.utils import get_device
-from scripts import cli
 
 
 MODEL_CONFIG_PATH_TEMPLATE = "configs/models/{}.yaml"
@@ -51,23 +48,25 @@ logger = logging.getLogger(__name__)
 
 def signal_handler(sig, frame):
     """Handle training interruption gracefully."""
+    print()
     logger.info("Training halted by user")
     sys.exit(0)
 
 
-def load_configs(model_name: str) -> tuple[ModelConfig, TokenizerConfig]:
+def load_model_config(model_name: str) -> tuple[str, ModelConfig]:
     """Load the model and tokenizer configurations."""
     model_config_path = MODEL_CONFIG_PATH_TEMPLATE.format(model_name)
     if not os.path.exists(model_config_path):
         raise FileNotFoundError(f"Config file not found: {model_config_path}")
 
-    logger.info(f"Loading model config from '{model_config_path}'...")
     model_config = ModelConfig(model_config_path)
-    logger.info("Model configuration loaded successfully")
 
-    tokenizer_config_path = TOKENIZER_CONFIG_PATH_TEMPLATE.format(
-        model_config.model["tokenizer"]
-    )
+    return model_config_path, model_config
+
+
+def load_tokenizer_config(model_name: str) -> TokenizerConfig:
+    """Load the tokenizer configuration."""
+    tokenizer_config_path = TOKENIZER_CONFIG_PATH_TEMPLATE.format(model_name)
     if not os.path.exists(tokenizer_config_path):
         raise FileNotFoundError(f"Config file not found: {tokenizer_config_path}")
 
@@ -75,12 +74,11 @@ def load_configs(model_name: str) -> tuple[ModelConfig, TokenizerConfig]:
     tokenizer_config = TokenizerConfig(tokenizer_config_path)
     logger.info("Tokenizer configuration loaded successfully")
 
-    return model_config, tokenizer_config
+    return tokenizer_config
 
 
 def load_datasets():
     """Load the training and validation datasets."""
-    logger.info("Loading dataset...")
     train_dataset = datasets.load_dataset(
         DATASET_NAME, DATASET_CONFIG, split=f"train[:{DATASET_PORTION}%]"
     )
@@ -93,49 +91,96 @@ def load_datasets():
 
     return train_dataset, validation_dataset
 
+    # connection_string = os.getenv("BLOB_STORAGE_CONNECTION_STRING")
+    # if not connection_string:
+    #     raise PersistenceError(
+    #         "Environment variable BLOB_STORAGE_CONNECTION_STRING is not set"
+    #     )
+    # blob_service_client = BlobServiceClient.from_connection_string(
+    #     connection_string
+    # )
+
+    # container_name = os.getenv("BLOB_STORAGE_CONTAINER_NAME")
+    # if not container_name:
+    #     raise PersistenceError(
+    #         "Environment variable BLOB_STORAGE_CONTAINER_NAME is not set"
+    #     )
+
 
 def main(
     model_name: str,
-    checkpoint: Checkpoint = None,
-    save_local_checkpoints: bool = True,
-    save_remote_checkpoints: bool = True,
+    checkpoint_name: str = None,
+    checkpoint_manager: CheckpointManager = None,
+    tokenizer_manager: TokenizerManager = None,
 ):
     # Register signal handler for graceful Ctrl+C handling
     signal.signal(signal.SIGINT, signal_handler)
 
-    should_resume_checkpoint = checkpoint is not None
-    train_dataset, validation_dataset = load_datasets()
-
+    logger.info("Selecting device...")
     device = get_device()
-    logger.info(f"Using device: {device}")
+    logger.info(f"Using device: {device}\n")
 
-    # Load the specified checkpoint or load the latest config for training.
-    if should_resume_checkpoint:
-        logger.info(f"Resuming from checkpoint: '{checkpoint}'...")
+    logger.info("Loading datasets...")
+    train_dataset, validation_dataset = load_datasets()
+    logger.info("Datasets loaded successfully\n")
+
+    # Load the checkpoint if specified.
+    checkpoint = None
+    if checkpoint_name is not None:
+        if checkpoint_manager is None:
+            raise ValueError(
+                "Checkpoint manager is required when loading from checkpoint"
+            )
+
+        logger.info(f"Loading checkpoint: '{checkpoint_name}'...")
         try:
-            checkpoint = load_checkpoint(
-                model_name, checkpoint, device, cache_local=save_local_checkpoints
+            checkpoint = checkpoint_manager.load_checkpoint(
+                model_name, checkpoint_name, device
             )
+            logger.info("Checkpoint loaded successfully\n")
         except Exception as e:
-            raise RuntimeError(f"Checkpoint '{checkpoint}' could not be found", e)
-        model_config = checkpoint["model_config"]
-        logger.info("Checkpoint loaded successfully")
-    else:
-        model_config, tokenizer_config = load_configs(model_name)
+            raise RuntimeError(
+                f"Checkpoint '{checkpoint_name}' could not be found: {e}"
+            ) from e
 
-    # Load the checkpoint's configured tokenizer or train one from scratch.
-    if should_resume_checkpoint:
-        tokenizer_name = model_config.model.get("tokenizer")
-        if tokenizer_name is None:
-            raise Exception(
-                "Tokenizer not configured for checkpoint '{checkpoint_name}'"
-            )
-        logger.info(f"Loading tokenizer: '{model_config.model['tokenizer']}")
-        tokenizer = load_tokenizer(
-            model_config.model["tokenizer"], cache_local=save_local_checkpoints
+    # Load the model config.
+    logger.info("Loading model config...")
+    if checkpoint is not None:
+        model_config = ModelConfig.from_dict(checkpoint["model_config"])
+        logger.info(
+            f"Model config loaded successfully from checkpoint:\n{model_config}"
         )
-        logger.info("Tokenizer loaded successfully")
     else:
+        model_config_path, model_config = load_model_config(model_name)
+        logger.info(
+            f"Model config loaded successfully from {model_config_path}:\n"
+            f"{model_config}"
+        )
+
+    # Load the tokenizer.
+    logger.info("Initializing tokenizer...")
+    tokenizer_name = model_config.model.get("tokenizer")
+    if tokenizer_name is None or len(tokenizer_name.strip()) == 0:
+        raise ValueError(f"No tokenizer configured for model '{model_name}'")
+
+    tokenizer = None
+    if tokenizer_manager is not None:
+        logger.info(f"Attempting to load tokenizer: '{tokenizer_name}'")
+        try:
+            tokenizer = tokenizer_manager.load_tokenizer(tokenizer_name)
+            logger.info("Tokenizer loaded successfully\n")
+        except PersistenceError as e:
+            logger.warning(f"Tokenizer '{tokenizer_name}' could not be found: {e}")
+
+    if tokenizer is None:
+        logger.info("Training tokenizer...")
+        try:
+            tokenizer_config = load_tokenizer_config(tokenizer_name)
+        except FileNotFoundError as e:
+            raise ValueError(
+                f"Tokenizer configuration not found for model '{tokenizer_name}': {e}"
+            ) from e
+
         logger.info(f"Training tokenizer with configuration:\n{tokenizer_config}")
         tokenizer = Tokenizer().train(
             train_dataset,
@@ -143,16 +188,14 @@ def main(
             tokenizer_config.tokenizer["batch_size"],
             tokenizer_config.tokenizer["vocab_size"],
         )
-        logger.info("Tokenizer trained successfully")
-        logger.info("Saving tokenizer")
-        save_tokenizer(
-            model_config.model["tokenizer"],
-            tokenizer,
-            save_local=save_local_checkpoints,
-            save_remote=save_remote_checkpoints,
-        )
-        logger.info("Tokenizer saved successfully")
+        logger.info("Tokenizer trained successfully\n")
 
+        if tokenizer_manager is not None:
+            logger.info("Saving tokenizer")
+            tokenizer_manager.save_tokenizer(tokenizer_name, tokenizer)
+            logger.info("Tokenizer saved successfully\n")
+
+    logger.info("Initializing model...")
     model = Transformer(
         vocab_size=tokenizer.vocab_size,
         embedding_size=model_config.model["embedding_size"],
@@ -177,29 +220,30 @@ def main(
         model_config.training["num_epochs"],
     )
 
-    if should_resume_checkpoint:
+    if checkpoint is not None:
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
-    total_time_taken = checkpoint["time_taken"] if should_resume_checkpoint else 0.0
-    best_loss = checkpoint["best_loss"] if should_resume_checkpoint else float("inf")
+    total_time_taken = checkpoint["time_taken"] if checkpoint else 0.0
+    best_loss = checkpoint["best_loss"] if checkpoint else float("inf")
     best_perplexity = (
-        torch.tensor(best_loss).exp().item()
-        if should_resume_checkpoint
-        else float("inf")
+        torch.tensor(best_loss).exp().item() if checkpoint else float("inf")
     )
-    current_epoch = checkpoint["epoch"] if should_resume_checkpoint else 0
-    patience_counter = checkpoint["patience_counter"] if should_resume_checkpoint else 0
+    current_epoch = checkpoint["epoch"] if checkpoint else 0
+    patience_counter = checkpoint["patience_counter"] if checkpoint else 0
     patience = model_config.training["patience"]
     stopping_threshold = model_config.training["stopping_threshold"]
     max_epochs = (
-        model_config.training["num_epochs"]
-        if model_config.training["num_epochs"] > 0
-        else float("inf")
+        checkpoint["max_epochs"]
+        if checkpoint
+        else (
+            model_config.training["num_epochs"]
+            if model_config.training["num_epochs"] > 0
+            else float("inf")
+        )
     )
 
-    logger.info(f"Training model with configuration:\n{model_config}")
     logger.info(
         f"Starting training for model '{model_name}', "
         f"Total params: {sum(p.numel() for p in model.parameters()):,}, "
@@ -245,9 +289,7 @@ def main(
             f"Time: {eval_state.time_taken:.2f}s, "
         )
 
-        total_time_taken += train_state.time_taken + eval_state.time_taken
-
-        # Capture performance improvements.
+        # Update training state.
         if eval_state.avg_loss < best_loss - stopping_threshold:
             best_loss = eval_state.avg_loss
             best_perplexity = eval_state.avg_perplexity
@@ -256,25 +298,38 @@ def main(
                 f"New best validation loss: {best_loss:.4f}, "
                 f"perplexity: {best_perplexity:.4f}"
             )
-            logger.info("Saving best checkpoint...")
-            save_checkpoint(
-                CheckpointType.BEST,
-                model_name,
-                model_config,
-                model,
-                optimizer,
-                scheduler,
-                epoch,
-                eval_state.avg_loss,
-                best_loss,
-                patience_counter,
-                total_time_taken,
-                save_local=save_local_checkpoints,
-                save_remote=save_remote_checkpoints,
-            )
-            logger.info("Checkpoint saved successfully")
         else:
             patience_counter += 1
+
+        total_time_taken += train_state.time_taken + eval_state.time_taken
+
+        checkpoint = Checkpoint(
+            model_config=model_config.to_dict(),
+            model_state_dict=model.state_dict(),
+            optimizer_state_dict=optimizer.state_dict(),
+            scheduler_state_dict=scheduler.state_dict(),
+            epoch=epoch,
+            max_epochs=max_epochs,
+            prev_loss=eval_state.avg_loss,
+            best_loss=best_loss,
+            patience_counter=patience_counter,
+            time_taken=total_time_taken,
+        )
+
+        is_checkpoint_interval = epoch % CHECKPOINT_INTERVAL == 0
+        if is_checkpoint_interval and checkpoint_manager is not None:
+            logger.info("Saving epoch checkpoint...")
+            checkpoint_manager.save_checkpoint(
+                model_name, CheckpointType.EPOCH, checkpoint
+            )
+            logger.info("Checkpoint saved successfully")
+
+        if eval_state.avg_loss == best_loss and checkpoint_manager is not None:
+            logger.info("Saving best checkpoint...")
+            checkpoint_manager.save_checkpoint(
+                model_name, CheckpointType.BEST, checkpoint
+            )
+            logger.info("Checkpoint saved successfully")
 
         # Determine if the training should be stopped.
         if epoch >= max_epochs:
@@ -282,27 +337,8 @@ def main(
             break
         if patience_counter >= patience:
             logger.info(f"Training stopped after {patience} epochs without improvement")
-            logger.info("--------------------------------")
             break
 
-        if epoch % CHECKPOINT_INTERVAL == 0:
-            logger.info("Saving epoch checkpoint...")
-            save_checkpoint(
-                CheckpointType.EPOCH,
-                model_name,
-                model_config,
-                model,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                epoch=epoch,
-                prev_loss=eval_state.avg_loss,
-                best_loss=best_loss,
-                patience_counter=patience_counter,
-                time_taken=total_time_taken,
-                save_local=save_local_checkpoints,
-                save_remote=save_remote_checkpoints,
-            )
-            logger.info("Checkpoint saved successfully")
         logger.info("--------------------------------")
 
     logger.info(
@@ -311,50 +347,74 @@ def main(
         f"Best validation perplexity: {best_perplexity:.4f}"
     )
 
-    save_checkpoint(
-        CheckpointType.FINAL,
-        model_name,
-        model_config,
-        model,
-        save_local=save_local_checkpoints,
-        save_remote=save_remote_checkpoints,
-    )
+    if checkpoint_manager is not None:
+        checkpoint_manager.save_checkpoint(model_name, CheckpointType.FINAL, checkpoint)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a model")
+
     parser.add_argument(
-        "model", default="transformer-tiny", help="Name of the model to train"
+        "model_name",
+        default="transformer-tiny",
+        help="Name of the model to train",
     )
     parser.add_argument(
-        "--checkpoint", default=None, help="The checkpoint to resume trainingfrom"
+        "--checkpoint-name",
+        dest="checkpoint_name",
+        default=None,
+        help="The checkpoint to resume training from",
     )
     parser.add_argument(
         "-l",
-        "--disable-local-checkpoints",
+        "--disable-local-artifacts",
         action="store_false",
-        dest="save_local_checkpoints",
-        help="Do not save checkpoints to local storage",
+        dest="save_local_artifacts",
+        default=True,
+        help="Do not save artifacts to local storage",
     )
     parser.add_argument(
         "-r",
-        "--disable-remote-checkpoints",
+        "--disable-remote-artifacts",
         action="store_false",
-        dest="save_remote_checkpoints",
-        help="Do not save checkpoints to remote storage",
+        dest="save_remote_artifacts",
+        default=True,
+        help="Do not save artifacts to remote storage",
     )
 
     args = parser.parse_args()
 
-    checkpoint = None
-    if args.checkpoint is not None:
-        checkpoint = cli.parse_checkpoint(args.checkpoint)
-        if checkpoint is None:
-            parser.error("The specified checkpoint is not a valid checkpoint")
+    local_storage_client = None
+    if args.save_local_artifacts:
+        local_storage_client = LocalStorageClient()
+
+    remote_storage_client = None
+    if args.save_remote_artifacts:
+        remote_storage_client = RemoteStorageClient(
+            BlobServiceClient.from_connection_string(
+                os.getenv("BLOB_STORAGE_CONNECTION_STRING")
+            ),
+            os.getenv("BLOB_STORAGE_CONTAINER_NAME"),
+        )
+
+    # Investigate using factory pattern.
+    checkpoint_manager = None
+    if remote_storage_client is not None or local_storage_client is not None:
+        checkpoint_manager = CheckpointManager(
+            remote_storage_client=remote_storage_client,
+            local_storage_client=local_storage_client,
+        )
+
+    tokenizer_manager = None
+    if remote_storage_client is not None or local_storage_client is not None:
+        tokenizer_manager = TokenizerManager(
+            remote_storage_client=remote_storage_client,
+            local_storage_client=local_storage_client,
+        )
 
     main(
-        args.model,
-        checkpoint=checkpoint,
-        save_local_checkpoints=args.save_local_checkpoints,
-        save_remote_checkpoints=args.save_remote_checkpoints,
+        args.model_name,
+        checkpoint_name=args.checkpoint_name,
+        checkpoint_manager=checkpoint_manager,
+        tokenizer_manager=tokenizer_manager,
     )

@@ -1,15 +1,19 @@
 import argparse
 import logging
+import os
 
 import datasets
 import torch
+from azure.storage.blob import BlobServiceClient
 from torch.nn import functional as F
 from tqdm import tqdm
 
-from lumiere.training.persistence import Checkpoint, CheckpointType, load_model
+from lumiere.persistence.checkpoint_manager import CheckpointManager
+from lumiere.persistence.model_manager import ModelManager
+from lumiere.persistence.storage_client import LocalStorageClient, RemoteStorageClient
+from lumiere.persistence.tokenizer_manager import TokenizerManager
 from lumiere.utils import get_device
 from lumiere.utils.data import to_batches
-from scripts import cli
 
 
 MODEL_CONFIG_DIR = "configs/models"
@@ -37,14 +41,16 @@ logging.getLogger("azure.core").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
-def eval(
-    model_name: str, checkpoint: Checkpoint = Checkpoint(CheckpointType.FINAL)
+def main(
+    model_name: str,
+    checkpoint_name: str = None,
+    model_manager: ModelManager = None,
 ) -> None:
     device = get_device()
     print(f"Using device: {device}")
 
-    model, model_config, tokenizer = load_model(
-        model_name, checkpoint=checkpoint, device=device
+    model, model_config, tokenizer = model_manager.load_model(
+        model_name, checkpoint_name, device
     )
 
     dataset = datasets.load_dataset(DATASET_NAME, DATASET_CONFIG, split="test")
@@ -88,25 +94,41 @@ def eval(
     )
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Evaluate a language model")
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Evaluate a model")
+
     parser.add_argument(
-        "model", default="transformer_tiny", help="Name of the model config file"
+        "model_name",
+        default="transformer-tiny",
+        help="Name of the model to evaluate",
     )
     parser.add_argument(
-        "--checkpoint", default=None, help="Path to the checkpoint file"
+        "--checkpoint-name",
+        dest="checkpoint_name",
+        default=None,
+        help="The checkpoint to evaluate",
     )
+
     args = parser.parse_args()
 
-    checkpoint = None
-    if args.checkpoint is not None:
-        checkpoint = cli.parse_checkpoint(args.checkpoint)
-        if checkpoint is None:
-            parser.error("The specified checkpoint is not a valid checkpoint")
-        eval(args.model, checkpoint=checkpoint)
-    else:
-        eval(args.model)
+    local_storage_client = LocalStorageClient()
 
+    remote_storage_client = RemoteStorageClient(
+        BlobServiceClient.from_connection_string(
+            os.getenv("BLOB_STORAGE_CONNECTION_STRING")
+        ),
+        os.getenv("BLOB_STORAGE_CONTAINER_NAME"),
+    )
 
-if __name__ == "__main__":
-    main()
+    # Investigate using factory pattern.
+    checkpoint_manager = CheckpointManager(
+        remote_storage_client=remote_storage_client,
+        local_storage_client=local_storage_client,
+    )
+    tokenizer_manager = TokenizerManager(
+        remote_storage_client=remote_storage_client,
+        local_storage_client=local_storage_client,
+    )
+    model_manager = ModelManager(checkpoint_manager, tokenizer_manager)
+
+    main(args.model_name, args.checkpoint_name, model_manager)

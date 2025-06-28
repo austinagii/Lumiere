@@ -31,21 +31,21 @@ show_usage() {
     echo "Usage: ${CMD_NAME} <command> [arguments...]"
     echo
     echo "Commands:"
-    echo "  train    Train a machine learning model."
-    echo "  chat     Start interactive chat session with a model"
-    echo "  eval     Evaluate a language model"
-    echo "  help     Show this help message"
+    echo "  train       Train a machine learning model."
+    echo "  eval        Evaluate a language model."
+    echo "  inference   Run inference with a language model."
+    echo "  help        Show this help message."
     echo
     echo "Examples:"
     echo "  ${CMD_NAME} train transformer-large"
-    echo "  ${CMD_NAME} chat transformer-large"
+    echo "  ${CMD_NAME} inference transformer-large"
     echo "  ${CMD_NAME} eval transformer-large"
 }
 
 run_with_pipenv() {
     local script_path="$1"
     shift
-    
+
     if command -v pipenv &>/dev/null; then
         log_info "Running with Pipenv environment..."
         pipenv run python "${script_path}" "$@"
@@ -61,7 +61,7 @@ main() {
         show_usage
         exit 0
     fi
-    
+
     # Validate minimum argument count (need at least the command)
     if [[ $# -lt 1 ]]; then
         log_error "Invalid number of arguments"
@@ -69,39 +69,39 @@ main() {
         show_usage
         exit 1
     fi
-    
+
     local command="$1"
-    shift  # Remove command from arguments, leaving all other args in "$@"
-    
+    shift # Remove command from arguments, leaving all other args in "$@"
+
     # Validate command
-    if [[ "$command" != "train" && "$command" != "chat" && "$command" != "eval" ]]; then
+    if [[ "$command" != "train" && "$command" != "eval" && "$command" != "inference" ]]; then
         log_error "Unrecognized command: '$command'"
-        log_error "Supported commands are: train, chat, eval, help"
+        log_error "Supported commands are: train, eval, inference, help"
         echo
         show_usage
         exit 1
     fi
-    
+
     # Allow the lumiere module to be discoverable
     export PYTHONPATH="${CMD_BASE_DIR}:${PYTHONPATH}"
 
     # Execute the appropriate command, passing all remaining arguments
     case "$command" in
-        "train")
-            log_info "Starting model training..."
-            run_with_pipenv "${CMD_BASE_DIR}/scripts/train.py" "$@"
-            log_info "Training completed"
-            ;;
-        "chat")
-            log_info "Starting chat session..."
-            run_with_pipenv "${CMD_BASE_DIR}/scripts/inference.py" "$@"
-            log_info "Chat session completed"
-            ;;
-        "eval")
-            log_info "Starting evaluation..."
-            run_with_pipenv "${CMD_BASE_DIR}/scripts/eval.py" "$@"
-            log_info "Evaluation completed"
-            ;;
+    "train")
+        log_info "Starting model training..."
+        run_with_pipenv "${CMD_BASE_DIR}/scripts/train.py" "$@"
+        log_info "Training completed"
+        ;;
+    "eval")
+        log_info "Starting evaluation..."
+        run_with_pipenv "${CMD_BASE_DIR}/scripts/eval.py" "$@"
+        log_info "Evaluation completed"
+        ;;
+    "inference")
+        log_info "Starting inference..."
+        run_with_pipenv "${CMD_BASE_DIR}/scripts/inference.py" "$@"
+        log_info "Inference completed"
+        ;;
     esac
 }
 
