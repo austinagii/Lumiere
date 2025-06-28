@@ -91,21 +91,6 @@ def load_datasets():
 
     return train_dataset, validation_dataset
 
-    # connection_string = os.getenv("BLOB_STORAGE_CONNECTION_STRING")
-    # if not connection_string:
-    #     raise PersistenceError(
-    #         "Environment variable BLOB_STORAGE_CONNECTION_STRING is not set"
-    #     )
-    # blob_service_client = BlobServiceClient.from_connection_string(
-    #     connection_string
-    # )
-
-    # container_name = os.getenv("BLOB_STORAGE_CONTAINER_NAME")
-    # if not container_name:
-    #     raise PersistenceError(
-    #         "Environment variable BLOB_STORAGE_CONTAINER_NAME is not set"
-    #     )
-
 
 def main(
     model_name: str,
