@@ -32,6 +32,10 @@ class Config:
             return self._config.get(section, default)
         return self._config.get(section, {}).get(key, default)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the configuration to a dictionary."""
+        return self._config
+
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "Config":
         """Create a Config instance from a dictionary."""
