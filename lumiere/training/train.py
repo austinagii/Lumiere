@@ -16,7 +16,7 @@ class TrainingState:
     avg_perplexity: float
     num_batches: int
     current_lr: float
-    epoch_steps: int
+    global_step: int
     time_taken: float
 
 
