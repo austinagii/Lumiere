@@ -207,7 +207,7 @@ def main(
     scheduler = schedulers.cosine_annealing_lr_scheduler(
         optimizer,
         model_config.training["warmup_steps"],
-        model_config.training["num_epochs"],
+        model_config.training["max_epochs"],
         model_config.training["epoch_steps"],
     )
 
@@ -227,14 +227,7 @@ def main(
     patience = model_config.training["patience"]
     stopping_threshold = model_config.training["stopping_threshold"]
     max_epochs = (
-        checkpoint["max_epochs"]
-        if checkpoint
-        # TODO: Map numbers less than 0 to a non-infinite value.
-        else (
-            model_config.training["num_epochs"]
-            if model_config.training["num_epochs"] > 0
-            else float("inf")
-        )
+        checkpoint["max_epochs"] if checkpoint else model_config.training["max_epochs"]
     )
 
     logger.info(
@@ -247,6 +240,7 @@ def main(
     run = None
     with disable_tokenizer_parallelism():
         run = wandb.init(
+            # TODO: Extract this to a config.
             entity="kadeemaustin-ai",
             project="lumiere",
             name=f"{model_name}-{checkpoint_name if checkpoint_name else 'train'}",
