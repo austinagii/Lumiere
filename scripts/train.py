@@ -9,11 +9,16 @@ import datasets
 import torch
 from azure.storage.blob import BlobServiceClient
 
+import wandb
 from lumiere.config.config import ModelConfig, TokenizerConfig
 from lumiere.models.transformer import Transformer
 from lumiere.persistence.checkpoint_manager import CheckpointManager
 from lumiere.persistence.errors import PersistenceError
-from lumiere.persistence.storage_client import LocalStorageClient, RemoteStorageClient
+from lumiere.persistence.storage_client import (
+    LocalStorageClient,
+    RemoteStorageClient,
+    disable_tokenizer_parallelism,
+)
 from lumiere.persistence.tokenizer_manager import TokenizerManager
 from lumiere.preprocessing.tokenizer import Tokenizer
 from lumiere.training import schedulers
@@ -203,6 +208,7 @@ def main(
         optimizer,
         model_config.training["warmup_steps"],
         model_config.training["num_epochs"],
+        model_config.training["epoch_steps"],
     )
 
     if checkpoint is not None:
@@ -215,6 +221,7 @@ def main(
     best_perplexity = (
         torch.tensor(best_loss).exp().item() if checkpoint else float("inf")
     )
+    global_step = checkpoint["global_step"] if checkpoint else 0
     current_epoch = checkpoint["epoch"] if checkpoint else 0
     patience_counter = checkpoint["patience_counter"] if checkpoint else 0
     patience = model_config.training["patience"]
@@ -222,6 +229,7 @@ def main(
     max_epochs = (
         checkpoint["max_epochs"]
         if checkpoint
+        # TODO: Map numbers less than 0 to a non-infinite value.
         else (
             model_config.training["num_epochs"]
             if model_config.training["num_epochs"] > 0
@@ -236,13 +244,25 @@ def main(
     )
     logger.info("--------------------------------")
 
+    run = None
+    with disable_tokenizer_parallelism():
+        run = wandb.init(
+            entity="kadeemaustin-ai",
+            project="lumiere",
+            name=f"{model_name}-{checkpoint_name if checkpoint_name else 'train'}",
+            config=model_config.to_dict(),
+        )
+        wandb.watch(model, log="all")
+
     # Start the training loop.
     for epoch in itertools.count(current_epoch + 1):
         train_state = train(
+            run=run,
             model=model,
             tokenizer=tokenizer,
             dataset=train_dataset,
             current_epoch=epoch,
+            global_step=global_step,
             max_epochs=max_epochs,
             batch_size=model_config.training["batch_size"],
             context_size=model_config.model["context_size"],
@@ -251,6 +271,7 @@ def main(
             gradient_clip_norm=model_config.training["gradient_clip_norm"],
             device=device,
         )
+
         logger.info(
             f"EPOCH {epoch:04d} - {'TRAINING':<10}: "
             f"Loss: {train_state.avg_loss:.4f}, "
@@ -294,6 +315,7 @@ def main(
             optimizer_state_dict=optimizer.state_dict(),
             scheduler_state_dict=scheduler.state_dict(),
             epoch=epoch,
+            global_step=global_step,
             max_epochs=max_epochs,
             prev_loss=eval_state.avg_loss,
             best_loss=best_loss,
