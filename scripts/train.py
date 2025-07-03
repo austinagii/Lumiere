@@ -103,6 +103,7 @@ def main(
     checkpoint_name: str = None,
     checkpoint_manager: CheckpointManager = None,
     tokenizer_manager: TokenizerManager = None,
+    log_wandb: bool = True,
 ):
     # Register signal handler for graceful Ctrl+C handling
     signal.signal(signal.SIGINT, signal_handler)
@@ -148,7 +149,10 @@ def main(
             f"{model_config}"
         )
 
+    run_id = checkpoint["run_id"] if checkpoint else wandb.util.generate_id()
+
     # Load the tokenizer.
+    # TODO: Associate run ID with tokenizer.
     logger.info("Initializing tokenizer...")
     tokenizer_name = model_config.model.get("tokenizer")
     if tokenizer_name is None or len(tokenizer_name.strip()) == 0:
@@ -238,22 +242,25 @@ def main(
     )
     logger.info("--------------------------------")
 
-    run = None
-    with disable_tokenizer_parallelism():
-        run_name = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run = wandb.init(
-            # TODO: Extract this to a config.
-            entity="kadeemaustin-ai",
-            project="lumiere",
-            name=f"{model_name}-{run_name}",
-            config=model_config.to_dict(),
-        )
-        run.watch(model, log="all")
+    wandb_run = None
+    if log_wandb:
+        with disable_tokenizer_parallelism():
+            run_name = datetime.now().strftime("%Y%m%d_%H%M%S")
+            wandb_run = wandb.init(
+                # TODO: Extract this to a config.
+                id=run_id,
+                entity="kadeemaustin-ai",
+                project="lumiere",
+                name=f"{model_name}-{run_name}",
+                config=model_config.to_dict(),
+                resume=True,
+            )
+            wandb_run.watch(model, log="all")
 
     # Start the training loop.
     for epoch in itertools.count(current_epoch + 1):
         train_state = train(
-            run=run,
+            run=wandb_run,
             model=model,
             tokenizer=tokenizer,
             dataset=train_dataset,
@@ -291,12 +298,13 @@ def main(
             f"Time: {eval_state.time_taken:.2f}s, "
         )
 
-        run.log(
-            {
-                "validation/loss": eval_state.avg_loss,
-                "validation/perplexity": eval_state.avg_perplexity,
-            }
-        )
+        if wandb_run is not None:
+            wandb_run.log(
+                {
+                    "validation/loss": eval_state.avg_loss,
+                    "validation/perplexity": eval_state.avg_perplexity,
+                }
+            )
 
         # Update training state.
         if eval_state.avg_loss < best_loss - stopping_threshold:
@@ -313,6 +321,7 @@ def main(
         total_time_taken += train_state.time_taken + eval_state.time_taken
 
         checkpoint = Checkpoint(
+            run_id=run_id,
             model_config=model_config.to_dict(),
             model_state_dict=model.state_dict(),
             optimizer_state_dict=optimizer.state_dict(),
@@ -376,7 +385,6 @@ if __name__ == "__main__":
         help="The checkpoint to resume training from",
     )
     parser.add_argument(
-        "-l",
         "--disable-local-artifacts",
         action="store_false",
         dest="save_local_artifacts",
@@ -384,15 +392,32 @@ if __name__ == "__main__":
         help="Do not save artifacts to local storage",
     )
     parser.add_argument(
-        "-r",
         "--disable-remote-artifacts",
         action="store_false",
         dest="save_remote_artifacts",
         default=True,
         help="Do not save artifacts to remote storage",
     )
+    parser.add_argument(
+        "--disable-artifacts",
+        action="store_false",
+        dest="save_artifacts",
+        default=True,
+        help="Do not save artifacts to local or remote storage",
+    )
+    parser.add_argument(
+        "--disable-wandb-logging",
+        action="store_false",
+        dest="log_wandb",
+        default=True,
+        help="Do not log to wandb",
+    )
 
     args = parser.parse_args()
+
+    if not args.save_artifacts:
+        args.save_local_artifacts = False
+        args.save_remote_artifacts = False
 
     local_storage_client = None
     if args.save_local_artifacts:
@@ -427,4 +452,5 @@ if __name__ == "__main__":
         checkpoint_name=args.checkpoint_name,
         checkpoint_manager=checkpoint_manager,
         tokenizer_manager=tokenizer_manager,
+        log_wandb=args.log_wandb,
     )
