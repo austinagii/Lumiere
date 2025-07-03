@@ -46,7 +46,7 @@ def train(
     with tqdm(batches, desc=f"Epoch {current_epoch}/{max_epochs}", leave=False) as pbar:
         for batch in pbar:
             # Evaluate the model on the current batch.
-            x, y = batch[:, :-1].to(device), batch[:, 1:].to(device)
+            x, y = (batch[:, :-1].to(device), batch[:, 1:].to(device))
             logits, _ = model(x)
             batch_loss = F.cross_entropy(
                 logits.view(-1, tokenizer.vocab_size), y.reshape(-1)
@@ -85,10 +85,10 @@ def train(
                 with disable_tokenizer_parallelism():
                     run.log(
                         {
-                            "loss": batch_loss.item(),
-                            "perplexity": batch_perplexity.item(),
-                            "lr": current_lr,
-                            "grad_norm": grad_norm,
+                            "train/loss": batch_loss.item(),
+                            "train/perplexity": batch_perplexity.item(),
+                            "train/lr": current_lr,
+                            "train/grad_norm": grad_norm,
                         }
                     )
 

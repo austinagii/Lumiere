@@ -4,6 +4,7 @@ import logging
 import os
 import signal
 import sys
+from datetime import datetime
 
 import datasets
 import torch
@@ -239,14 +240,15 @@ def main(
 
     run = None
     with disable_tokenizer_parallelism():
+        run_name = datetime.now().strftime("%Y%m%d_%H%M%S")
         run = wandb.init(
             # TODO: Extract this to a config.
             entity="kadeemaustin-ai",
             project="lumiere",
-            name=f"{model_name}-{checkpoint_name if checkpoint_name else 'train'}",
+            name=f"{model_name}-{run_name}",
             config=model_config.to_dict(),
         )
-        wandb.watch(model, log="all")
+        run.watch(model, log="all")
 
     # Start the training loop.
     for epoch in itertools.count(current_epoch + 1):
@@ -287,6 +289,13 @@ def main(
             f"Loss: {eval_state.avg_loss:.4f}, "
             f"Perplexity: {eval_state.avg_perplexity:.4f}, "
             f"Time: {eval_state.time_taken:.2f}s, "
+        )
+
+        run.log(
+            {
+                "validation/loss": eval_state.avg_loss,
+                "validation/perplexity": eval_state.avg_perplexity,
+            }
         )
 
         # Update training state.
