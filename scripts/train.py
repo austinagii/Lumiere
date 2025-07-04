@@ -285,6 +285,7 @@ def main(
             gradient_clip_norm=model_config.training["gradient_clip_norm"],
             device=device,
         )
+        global_step = train_state.global_step
 
         logger.info(
             f"EPOCH {epoch:04d} - {'TRAINING':<10}: "
