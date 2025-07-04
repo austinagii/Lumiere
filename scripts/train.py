@@ -244,13 +244,24 @@ def main(
 
     wandb_run = None
     if log_wandb:
+        wandb_entity = os.getenv("WANDB_ENTITY")
+        wandb_project = os.getenv("WANDB_PROJECT")
+        wandb_api_key = os.getenv("WANDB_API_KEY")
+        if wandb_entity is None or wandb_project is None or wandb_api_key is None:
+            raise ValueError(
+                "WANDB_ENTITY, WANDB_PROJECT, and WANDB_API_KEY environment variables "
+                "must be set to enable logging to wandb"
+            )
+
         with disable_tokenizer_parallelism():
+            if not wandb.login(key=wandb_api_key, verify=True, relogin=True):
+                raise ValueError("Failed to login to wandb")
+
             run_name = datetime.now().strftime("%Y%m%d_%H%M%S")
             wandb_run = wandb.init(
-                # TODO: Extract this to a config.
                 id=run_id,
-                entity="kadeemaustin-ai",
-                project="lumiere",
+                entity=wandb_entity,
+                project=wandb_project,
                 name=f"{model_name}-{run_name}",
                 config=model_config.to_dict(),
                 resume=True,
