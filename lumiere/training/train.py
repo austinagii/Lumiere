@@ -5,6 +5,7 @@ import torch
 from torch.nn import functional as F
 from tqdm import tqdm
 
+from lumiere.persistence.storage_client import disable_tokenizer_parallelism
 from lumiere.preprocessing.tokenizer import Tokenizer
 from lumiere.utils.data import to_batches
 
@@ -15,14 +16,17 @@ class TrainingState:
     avg_perplexity: float
     num_batches: int
     current_lr: float
+    global_step: int
     time_taken: float
 
 
 def train(
+    run,
     model: torch.nn.Module,
     tokenizer: Tokenizer,
     dataset: torch.utils.data.Dataset,
     current_epoch: int,
+    global_step: int,
     max_epochs: int,
     batch_size: int,
     context_size: int,
@@ -35,13 +39,14 @@ def train(
     total_loss = 0.0
     total_perplexity = 0.0
     num_batches = 0
+    epoch_steps = 0
 
     batches = to_batches(tokenizer, dataset, batch_size, context_size + 1)
     start_time = time()
     with tqdm(batches, desc=f"Epoch {current_epoch}/{max_epochs}", leave=False) as pbar:
         for batch in pbar:
             # Evaluate the model on the current batch.
-            x, y = batch[:, :-1].to(device), batch[:, 1:].to(device)
+            x, y = (batch[:, :-1].to(device), batch[:, 1:].to(device))
             logits, _ = model(x)
             batch_loss = F.cross_entropy(
                 logits.view(-1, tokenizer.vocab_size), y.reshape(-1)
@@ -61,6 +66,8 @@ def train(
             total_loss += batch_loss.item()
             total_perplexity += batch_perplexity.item()
             num_batches += 1
+            epoch_steps += 1
+            global_step += 1
 
             # Update progress bar.
             current_lr = scheduler.get_last_lr()[0]
@@ -70,8 +77,21 @@ def train(
                     "perplexity": f"{batch_perplexity:.4f}",
                     "lr": f"{current_lr:.2e}",
                     "grad_norm": f"{grad_norm:.2f}",
+                    "epoch_steps": epoch_steps,
                 }
             )
+
+            if run is not None and global_step % 50 == 0:
+                with disable_tokenizer_parallelism():
+                    run.log(
+                        {
+                            "train/loss": batch_loss.item(),
+                            "train/perplexity": batch_perplexity.item(),
+                            "train/lr": current_lr,
+                            "train/grad_norm": grad_norm,
+                        }
+                    )
+
     end_time = time()
     time_taken = end_time - start_time
 
@@ -80,5 +100,6 @@ def train(
         avg_perplexity=total_perplexity / num_batches,
         num_batches=num_batches,
         current_lr=current_lr,
+        global_step=global_step,
         time_taken=time_taken,
     )

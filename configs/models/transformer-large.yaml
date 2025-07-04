@@ -15,7 +15,8 @@ training:
   learning_rate: 0.0003
   weight_decay: 0.01
   gradient_clip_norm: 1.0
-  num_epochs: -1
-  warmup_steps: 4000
+  max_epochs: 300
+  epoch_steps: 60
+  warmup_steps: 120
   patience: 20
   stopping_threshold: 0.0001

@@ -26,11 +26,18 @@ class Config:
 
         return config
 
-    def get(self, section: str, key: str = None, default=None):
+    def get(self, section: str = None, key: str = None, default=None):
         """Get configuration value by section and optionally by key."""
-        if key is None:
-            return self._config.get(section, default)
-        return self._config.get(section, {}).get(key, default)
+        if section is None and key is None:
+            return self._config
+        elif section is None and key is not None:
+            return self._config.get(key, default)
+        elif section is not None and key is None:
+            return self._config.get(section, {})
+        elif section is not None and key is not None:
+            return self._config.get(section, {}).get(key, default)
+        else:
+            raise ValueError("Invalid section and key combination")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the configuration to a dictionary."""

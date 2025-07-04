@@ -197,3 +197,9 @@ artifacts/**/*.json
 .vscode/
 *.code-workspace
 .history/
+
+# Wandb
+wandb/
+
+# Misc
+todo*

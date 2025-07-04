@@ -11,6 +11,7 @@ pytest = "~=8.3"
 tokenizers = "~=0.21"
 azure-storage-blob = "~=12.25"
 pytest-mock = "~=3.14"
+wandb = "~=0.20"
 
 [dev-packages]
 jupyter = "*"

@@ -4,16 +4,22 @@ import logging
 import os
 import signal
 import sys
+from datetime import datetime
 
 import datasets
 import torch
 from azure.storage.blob import BlobServiceClient
 
+import wandb
 from lumiere.config.config import ModelConfig, TokenizerConfig
 from lumiere.models.transformer import Transformer
 from lumiere.persistence.checkpoint_manager import CheckpointManager
 from lumiere.persistence.errors import PersistenceError
-from lumiere.persistence.storage_client import LocalStorageClient, RemoteStorageClient
+from lumiere.persistence.storage_client import (
+    LocalStorageClient,
+    RemoteStorageClient,
+    disable_tokenizer_parallelism,
+)
 from lumiere.persistence.tokenizer_manager import TokenizerManager
 from lumiere.preprocessing.tokenizer import Tokenizer
 from lumiere.training import schedulers
@@ -91,27 +97,13 @@ def load_datasets():
 
     return train_dataset, validation_dataset
 
-    # connection_string = os.getenv("BLOB_STORAGE_CONNECTION_STRING")
-    # if not connection_string:
-    #     raise PersistenceError(
-    #         "Environment variable BLOB_STORAGE_CONNECTION_STRING is not set"
-    #     )
-    # blob_service_client = BlobServiceClient.from_connection_string(
-    #     connection_string
-    # )
-
-    # container_name = os.getenv("BLOB_STORAGE_CONTAINER_NAME")
-    # if not container_name:
-    #     raise PersistenceError(
-    #         "Environment variable BLOB_STORAGE_CONTAINER_NAME is not set"
-    #     )
-
 
 def main(
     model_name: str,
     checkpoint_name: str = None,
     checkpoint_manager: CheckpointManager = None,
     tokenizer_manager: TokenizerManager = None,
+    log_wandb: bool = True,
 ):
     # Register signal handler for graceful Ctrl+C handling
     signal.signal(signal.SIGINT, signal_handler)
@@ -157,7 +149,10 @@ def main(
             f"{model_config}"
         )
 
+    run_id = checkpoint["run_id"] if checkpoint else wandb.util.generate_id()
+
     # Load the tokenizer.
+    # TODO: Associate run ID with tokenizer.
     logger.info("Initializing tokenizer...")
     tokenizer_name = model_config.model.get("tokenizer")
     if tokenizer_name is None or len(tokenizer_name.strip()) == 0:
@@ -217,7 +212,8 @@ def main(
     scheduler = schedulers.cosine_annealing_lr_scheduler(
         optimizer,
         model_config.training["warmup_steps"],
-        model_config.training["num_epochs"],
+        model_config.training["max_epochs"],
+        model_config.training["epoch_steps"],
     )
 
     if checkpoint is not None:
@@ -230,18 +226,13 @@ def main(
     best_perplexity = (
         torch.tensor(best_loss).exp().item() if checkpoint else float("inf")
     )
+    global_step = checkpoint["global_step"] if checkpoint else 0
     current_epoch = checkpoint["epoch"] if checkpoint else 0
     patience_counter = checkpoint["patience_counter"] if checkpoint else 0
     patience = model_config.training["patience"]
     stopping_threshold = model_config.training["stopping_threshold"]
     max_epochs = (
-        checkpoint["max_epochs"]
-        if checkpoint
-        else (
-            model_config.training["num_epochs"]
-            if model_config.training["num_epochs"] > 0
-            else float("inf")
-        )
+        checkpoint["max_epochs"] if checkpoint else model_config.training["max_epochs"]
     )
 
     logger.info(
@@ -251,13 +242,41 @@ def main(
     )
     logger.info("--------------------------------")
 
+    wandb_run = None
+    if log_wandb:
+        wandb_entity = os.getenv("WANDB_ENTITY")
+        wandb_project = os.getenv("WANDB_PROJECT")
+        wandb_api_key = os.getenv("WANDB_API_KEY")
+        if wandb_entity is None or wandb_project is None or wandb_api_key is None:
+            raise ValueError(
+                "WANDB_ENTITY, WANDB_PROJECT, and WANDB_API_KEY environment variables "
+                "must be set to enable logging to wandb"
+            )
+
+        with disable_tokenizer_parallelism():
+            if not wandb.login(key=wandb_api_key, verify=True, relogin=True):
+                raise ValueError("Failed to login to wandb")
+
+            run_name = datetime.now().strftime("%Y%m%d_%H%M%S")
+            wandb_run = wandb.init(
+                id=run_id,
+                entity=wandb_entity,
+                project=wandb_project,
+                name=f"{model_name}-{run_name}",
+                config=model_config.to_dict(),
+                resume=True,
+            )
+            wandb_run.watch(model, log="all")
+
     # Start the training loop.
     for epoch in itertools.count(current_epoch + 1):
         train_state = train(
+            run=wandb_run,
             model=model,
             tokenizer=tokenizer,
             dataset=train_dataset,
             current_epoch=epoch,
+            global_step=global_step,
             max_epochs=max_epochs,
             batch_size=model_config.training["batch_size"],
             context_size=model_config.model["context_size"],
@@ -266,6 +285,8 @@ def main(
             gradient_clip_norm=model_config.training["gradient_clip_norm"],
             device=device,
         )
+        global_step = train_state.global_step
+
         logger.info(
             f"EPOCH {epoch:04d} - {'TRAINING':<10}: "
             f"Loss: {train_state.avg_loss:.4f}, "
@@ -289,6 +310,14 @@ def main(
             f"Time: {eval_state.time_taken:.2f}s, "
         )
 
+        if wandb_run is not None:
+            wandb_run.log(
+                {
+                    "validation/loss": eval_state.avg_loss,
+                    "validation/perplexity": eval_state.avg_perplexity,
+                }
+            )
+
         # Update training state.
         if eval_state.avg_loss < best_loss - stopping_threshold:
             best_loss = eval_state.avg_loss
@@ -304,11 +333,13 @@ def main(
         total_time_taken += train_state.time_taken + eval_state.time_taken
 
         checkpoint = Checkpoint(
+            run_id=run_id,
             model_config=model_config.to_dict(),
             model_state_dict=model.state_dict(),
             optimizer_state_dict=optimizer.state_dict(),
             scheduler_state_dict=scheduler.state_dict(),
             epoch=epoch,
+            global_step=global_step,
             max_epochs=max_epochs,
             prev_loss=eval_state.avg_loss,
             best_loss=best_loss,
@@ -366,7 +397,6 @@ if __name__ == "__main__":
         help="The checkpoint to resume training from",
     )
     parser.add_argument(
-        "-l",
         "--disable-local-artifacts",
         action="store_false",
         dest="save_local_artifacts",
@@ -374,15 +404,32 @@ if __name__ == "__main__":
         help="Do not save artifacts to local storage",
     )
     parser.add_argument(
-        "-r",
         "--disable-remote-artifacts",
         action="store_false",
         dest="save_remote_artifacts",
         default=True,
         help="Do not save artifacts to remote storage",
     )
+    parser.add_argument(
+        "--disable-artifacts",
+        action="store_false",
+        dest="save_artifacts",
+        default=True,
+        help="Do not save artifacts to local or remote storage",
+    )
+    parser.add_argument(
+        "--disable-wandb-logging",
+        action="store_false",
+        dest="log_wandb",
+        default=True,
+        help="Do not log to wandb",
+    )
 
     args = parser.parse_args()
+
+    if not args.save_artifacts:
+        args.save_local_artifacts = False
+        args.save_remote_artifacts = False
 
     local_storage_client = None
     if args.save_local_artifacts:
@@ -417,4 +464,5 @@ if __name__ == "__main__":
         checkpoint_name=args.checkpoint_name,
         checkpoint_manager=checkpoint_manager,
         tokenizer_manager=tokenizer_manager,
+        log_wandb=args.log_wandb,
     )

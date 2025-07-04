@@ -101,6 +101,6 @@ class TransformerBlock(nn.Module):
         # Compute the feed-forward output.
         norm_x2 = self.normalization_2(x)
         output = self.feedforward(norm_x2)
-        x = x + self.dropout(output)
+        x = x + output
 
         return x, attention_weights
