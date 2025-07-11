@@ -1,5 +1,6 @@
 import torch
 
+
 def get_device():
     device = torch.device("cpu")
     if torch.backends.mps.is_available():

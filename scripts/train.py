@@ -5,16 +5,16 @@ import os
 import signal
 import sys
 from datetime import datetime
+from pathlib import Path
 
-import datasets
 import torch
 from azure.storage.blob import BlobServiceClient
 
 import wandb
-from lumiere.config.config import ModelConfig, TokenizerConfig
+from lumiere.config.config import Config
+from lumiere.data.data_loader_factory import DataLoaderFactory
 from lumiere.models.transformer import Transformer
 from lumiere.persistence.checkpoint_manager import CheckpointManager
-from lumiere.persistence.errors import PersistenceError
 from lumiere.persistence.storage_client import (
     LocalStorageClient,
     RemoteStorageClient,
@@ -26,18 +26,12 @@ from lumiere.training import schedulers
 from lumiere.training.checkpoint import Checkpoint, CheckpointType
 from lumiere.training.eval import evaluate
 from lumiere.training.train import train
+from lumiere.training.utils import ContextBatchManager
 from lumiere.utils import get_device
 
 
-MODEL_CONFIG_PATH_TEMPLATE = "configs/models/{}.yaml"
-TOKENIZER_CONFIG_PATH_TEMPLATE = "configs/tokenizers/{}.yaml"
+CONFIG_PATH = "configs/transformer.yaml"
 
-DATASET_NAME = "wikitext"
-DATASET_CONFIG = "wikitext-2-raw-v1"
-DATASET_PORTION = 100
-TEXT_COLUMN_NAME = "text"
-
-CHECKPOINT_INTERVAL = 3
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,135 +53,92 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def load_model_config(model_name: str) -> tuple[str, ModelConfig]:
-    """Load the model and tokenizer configurations."""
-    model_config_path = MODEL_CONFIG_PATH_TEMPLATE.format(model_name)
-    if not os.path.exists(model_config_path):
-        raise FileNotFoundError(f"Config file not found: {model_config_path}")
-
-    model_config = ModelConfig(model_config_path)
-
-    return model_config_path, model_config
-
-
-def load_tokenizer_config(model_name: str) -> TokenizerConfig:
-    """Load the tokenizer configuration."""
-    tokenizer_config_path = TOKENIZER_CONFIG_PATH_TEMPLATE.format(model_name)
-    if not os.path.exists(tokenizer_config_path):
-        raise FileNotFoundError(f"Config file not found: {tokenizer_config_path}")
-
-    logger.info(f"Loading tokenizer config from '{tokenizer_config_path}'...")
-    tokenizer_config = TokenizerConfig(tokenizer_config_path)
-    logger.info("Tokenizer configuration loaded successfully")
-
-    return tokenizer_config
-
-
-def load_datasets():
-    """Load the training and validation datasets."""
-    train_dataset = datasets.load_dataset(
-        DATASET_NAME, DATASET_CONFIG, split=f"train[:{DATASET_PORTION}%]"
-    )
-    logger.info(f"Dataset loaded: {len(train_dataset)} samples")
-
-    validation_dataset = datasets.load_dataset(
-        DATASET_NAME, DATASET_CONFIG, split="validation"
-    )
-    logger.info(f"Validation dataset loaded: {len(validation_dataset)} samples")
-
-    return train_dataset, validation_dataset
+def _find_run(run_id: str) -> str:
+    """Find the run name for the given run ID."""
+    for run_path in Path("runs").iterdir():
+        if run_path.is_dir() and run_id in run_path.name:
+            return run_path.name
+    return None
 
 
 def main(
-    model_name: str,
+    run_id: str = None,
     checkpoint_name: str = None,
     checkpoint_manager: CheckpointManager = None,
     tokenizer_manager: TokenizerManager = None,
     log_wandb: bool = True,
 ):
-    # Register signal handler for graceful Ctrl+C handling
+    # Handle Ctrl+C gracefully.
     signal.signal(signal.SIGINT, signal_handler)
 
+    # Determine the run ID and name.
+    if run_id is None:
+        run_id = wandb.util.generate_id()
+        run_name = f"run_{run_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        logger.info(f"Starting new training run with ID: {run_id}")
+    else:
+        run_name = _find_run(run_id)
+        if run_name is None:
+            raise ValueError(f"Run with ID '{run_id}' not found")
+        logger.info(f"Resuming training run with ID: {run_id}")
+
+    # Select the device to use for training.
     logger.info("Selecting device...")
     device = get_device()
-    logger.info(f"Using device: {device}\n")
+    logger.info(f"Using device: {device} for this training run.\n")
 
-    logger.info("Loading datasets...")
-    train_dataset, validation_dataset = load_datasets()
-    logger.info("Datasets loaded successfully\n")
-
-    # Load the checkpoint if specified.
+    # Load the checkpoint if one is specified.
     checkpoint = None
     if checkpoint_name is not None:
         if checkpoint_manager is None:
-            raise ValueError(
-                "Checkpoint manager is required when loading from checkpoint"
-            )
+            raise ValueError("A checkpoint manager is required to load from checkpoint")
 
-        logger.info(f"Loading checkpoint: '{checkpoint_name}'...")
-        try:
-            checkpoint = checkpoint_manager.load_checkpoint(
-                model_name, checkpoint_name, device
-            )
-            logger.info("Checkpoint loaded successfully\n")
-        except Exception as e:
-            raise RuntimeError(
-                f"Checkpoint '{checkpoint_name}' could not be found: {e}"
-            ) from e
+        logger.info(f"Loading checkpoint '{checkpoint_name}' for run '{run_id}'...")
+        checkpoint = checkpoint_manager.load_checkpoint(
+            run_name, checkpoint_name, device
+        )
+        logger.info("Checkpoint loaded successfully\n")
 
     # Load the model config.
-    logger.info("Loading model config...")
+    logger.info("Loading model training config...")
     if checkpoint is not None:
-        model_config = ModelConfig.from_dict(checkpoint["model_config"])
-        logger.info(
-            f"Model config loaded successfully from checkpoint:\n{model_config}"
-        )
+        model_config = Config(checkpoint["model_config"])
+        logger.info(f"Resuming training run with config:\n{model_config}")
     else:
-        model_config_path, model_config = load_model_config(model_name)
-        logger.info(
-            f"Model config loaded successfully from {model_config_path}:\n"
-            f"{model_config}"
-        )
+        model_config = Config.from_file(CONFIG_PATH)
+        logger.info(f"Starting new training run with config:\n{model_config}")
 
-    run_id = checkpoint["run_id"] if checkpoint else wandb.util.generate_id()
+    # Load the dataset.
+    logger.info("Loading the dataset...")
+    dataloader = DataLoaderFactory.get_data_loader(
+        dataset_name=model_config.dataset["name"],
+        dataset_subset=model_config.dataset["subset"],
+        train_dataset_portion=model_config.dataset["train_portion"],
+        validation_dataset_portion=model_config.dataset["validation_portion"],
+    )
+    logger.info("Dataset loaded successfully\n")
 
     # Load the tokenizer.
-    # TODO: Associate run ID with tokenizer.
-    logger.info("Initializing tokenizer...")
-    tokenizer_name = model_config.model.get("tokenizer")
-    if tokenizer_name is None or len(tokenizer_name.strip()) == 0:
-        raise ValueError(f"No tokenizer configured for model '{model_name}'")
-
-    tokenizer = None
-    if tokenizer_manager is not None:
-        logger.info(f"Attempting to load tokenizer: '{tokenizer_name}'")
-        try:
-            tokenizer = tokenizer_manager.load_tokenizer(tokenizer_name)
-            logger.info("Tokenizer loaded successfully\n")
-        except PersistenceError as e:
-            logger.warning(f"Tokenizer '{tokenizer_name}' could not be found: {e}")
-
-    if tokenizer is None:
-        logger.info("Training tokenizer...")
-        try:
-            tokenizer_config = load_tokenizer_config(tokenizer_name)
-        except FileNotFoundError as e:
+    logger.info("Initializing the tokenizer...")
+    if checkpoint is not None:
+        if tokenizer_manager is None:
             raise ValueError(
-                f"Tokenizer configuration not found for model '{tokenizer_name}': {e}"
-            ) from e
+                "A tokenizer manager is required to load tokenizer from checkpoint"
+            )
 
-        logger.info(f"Training tokenizer with configuration:\n{tokenizer_config}")
-        tokenizer = Tokenizer().train(
-            train_dataset,
-            TEXT_COLUMN_NAME,
-            tokenizer_config.tokenizer["batch_size"],
-            tokenizer_config.tokenizer["vocab_size"],
+        logger.info(
+            f"Loading tokenizer for run '{run_id}' with config:\n{model_config.tokenizer}"
         )
+        tokenizer = tokenizer_manager.load_tokenizer(run_name)
+        logger.info("Tokenizer loaded successfully\n")
+    else:
+        logger.info(f"Training tokenizer for run '{run_id}'...")
+        tokenizer = Tokenizer(**model_config.tokenizer).train(dataloader.iter_train())
         logger.info("Tokenizer trained successfully\n")
 
         if tokenizer_manager is not None:
             logger.info("Saving tokenizer")
-            tokenizer_manager.save_tokenizer(tokenizer_name, tokenizer)
+            tokenizer_manager.save_tokenizer(run_name, tokenizer)
             logger.info("Tokenizer saved successfully\n")
 
     logger.info("Initializing model...")
@@ -236,7 +187,7 @@ def main(
     )
 
     logger.info(
-        f"Starting training for model '{model_name}', "
+        f"Starting training run '{run_name}' with model config:\n{model_config}"
         f"Total params: {sum(p.numel() for p in model.parameters()):,}, "
         f"Trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
     )
@@ -257,16 +208,21 @@ def main(
             if not wandb.login(key=wandb_api_key, verify=True, relogin=True):
                 raise ValueError("Failed to login to wandb")
 
-            run_name = datetime.now().strftime("%Y%m%d_%H%M%S")
             wandb_run = wandb.init(
                 id=run_id,
                 entity=wandb_entity,
                 project=wandb_project,
-                name=f"{model_name}-{run_name}",
-                config=model_config.to_dict(),
+                name=run_name,
+                config=model_config.config,
                 resume=True,
             )
             wandb_run.watch(model, log="all")
+
+    context_batch_manager = ContextBatchManager(
+        context_size=model_config.model["context_size"] + 1,
+        batch_size=model_config.training["batch_size"],
+        padding_token=tokenizer.special_tokens["padding"],
+    )
 
     # Start the training loop.
     for epoch in itertools.count(current_epoch + 1):
@@ -274,12 +230,11 @@ def main(
             run=wandb_run,
             model=model,
             tokenizer=tokenizer,
-            dataset=train_dataset,
+            data=dataloader.iter_train(),
             current_epoch=epoch,
             global_step=global_step,
             max_epochs=max_epochs,
-            batch_size=model_config.training["batch_size"],
-            context_size=model_config.model["context_size"],
+            batch_manager=context_batch_manager,
             optimizer=optimizer,
             scheduler=scheduler,
             gradient_clip_norm=model_config.training["gradient_clip_norm"],
@@ -298,9 +253,8 @@ def main(
         eval_state = evaluate(
             model=model,
             tokenizer=tokenizer,
-            validation_dataset=validation_dataset,
-            batch_size=model_config.training["batch_size"],
-            context_size=model_config.model["context_size"],
+            data=dataloader.iter_validation(),
+            batch_manager=context_batch_manager,
             device=device,
         )
         logger.info(
@@ -334,7 +288,7 @@ def main(
 
         checkpoint = Checkpoint(
             run_id=run_id,
-            model_config=model_config.to_dict(),
+            model_config=model_config.config,
             model_state_dict=model.state_dict(),
             optimizer_state_dict=optimizer.state_dict(),
             scheduler_state_dict=scheduler.state_dict(),
@@ -347,18 +301,20 @@ def main(
             time_taken=total_time_taken,
         )
 
-        is_checkpoint_interval = epoch % CHECKPOINT_INTERVAL == 0
+        is_checkpoint_interval = (
+            epoch % model_config.training["checkpoint_interval"] == 0
+        )
         if is_checkpoint_interval and checkpoint_manager is not None:
             logger.info("Saving epoch checkpoint...")
             checkpoint_manager.save_checkpoint(
-                model_name, CheckpointType.EPOCH, checkpoint
+                run_name, CheckpointType.EPOCH, checkpoint
             )
             logger.info("Checkpoint saved successfully")
 
         if eval_state.avg_loss == best_loss and checkpoint_manager is not None:
             logger.info("Saving best checkpoint...")
             checkpoint_manager.save_checkpoint(
-                model_name, CheckpointType.BEST, checkpoint
+                run_name, CheckpointType.BEST, checkpoint
             )
             logger.info("Checkpoint saved successfully")
 
@@ -379,22 +335,23 @@ def main(
     )
 
     if checkpoint_manager is not None:
-        checkpoint_manager.save_checkpoint(model_name, CheckpointType.FINAL, checkpoint)
+        checkpoint_manager.save_checkpoint(run_name, CheckpointType.FINAL, checkpoint)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a model")
 
     parser.add_argument(
-        "model_name",
-        default="transformer-tiny",
-        help="Name of the model to train",
-    )
-    parser.add_argument(
         "--checkpoint-name",
         dest="checkpoint_name",
         default=None,
         help="The checkpoint to resume training from",
+    )
+    parser.add_argument(
+        "--run-id",
+        dest="run_id",
+        default=None,
+        help="The run ID to use (required when loading from checkpoint)",
     )
     parser.add_argument(
         "--disable-local-artifacts",
@@ -459,8 +416,11 @@ if __name__ == "__main__":
             local_storage_client=local_storage_client,
         )
 
+    if args.checkpoint_name is not None and args.run_id is None:
+        raise ValueError("run_id is required when loading from checkpoint")
+
     main(
-        args.model_name,
+        run_id=args.run_id,
         checkpoint_name=args.checkpoint_name,
         checkpoint_manager=checkpoint_manager,
         tokenizer_manager=tokenizer_manager,

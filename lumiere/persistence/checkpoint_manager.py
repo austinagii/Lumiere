@@ -9,32 +9,29 @@ from lumiere.persistence.storage_client import LocalStorageClient, RemoteStorage
 from lumiere.training.checkpoint import Checkpoint, CheckpointType
 
 
-DEFAULT_CHECKPOINT_DIR = Path("artifacts/checkpoints")
-CHECKPOINT_PATH_TEMPLATE = "{model_name}/{checkpoint_name}.pth"
+CHECKPOINT_PATH_TEMPLATE = "runs/{run_name}/checkpoints/{checkpoint_name}.pth"
 
 
 class CheckpointManager:
     def __init__(
         self,
-        checkpoint_dir: Path = DEFAULT_CHECKPOINT_DIR,
         remote_storage_client: RemoteStorageClient = None,
         local_storage_client: LocalStorageClient = None,
         should_cache: bool = True,
     ):
-        self.checkpoint_dir = checkpoint_dir
         self.remote_storage_client = remote_storage_client
         self.local_storage_client = local_storage_client
         self.should_cache = should_cache
 
     def save_checkpoint(
         self,
-        model_name: str,
+        run_name: str,
         checkpoint_type: CheckpointType,
         checkpoint: Checkpoint,
     ) -> None:
         checkpoint_bytes = bytes(checkpoint)
         checkpoint_name = _get_checkpoint_name(checkpoint_type, checkpoint)
-        checkpoint_path = self._get_checkpoint_path(model_name, checkpoint_name)
+        checkpoint_path = self._get_checkpoint_path(run_name, checkpoint_name)
 
         if self.local_storage_client is not None:
             self.local_storage_client.store(checkpoint_path, checkpoint_bytes)
@@ -44,7 +41,7 @@ class CheckpointManager:
 
     def load_checkpoint(
         self,
-        model_name: str,
+        run_name: str,
         checkpoint_name: str,
         device: torch.device = torch.device("cpu"),
     ) -> dict[str, Any]:
@@ -53,7 +50,7 @@ class CheckpointManager:
         If the checkpoint is not found in local storage, it will be first be downloaded
         to local storage from blob storage.
         """
-        checkpoint_path = self._get_checkpoint_path(model_name, checkpoint_name)
+        checkpoint_path = self._get_checkpoint_path(run_name, checkpoint_name)
 
         # TODO: Allow checkpoint to be overwritten by remote.
         if self.local_storage_client is not None and self.local_storage_client.exists(
@@ -82,7 +79,7 @@ class CheckpointManager:
 
         return loaded_checkpoint
 
-    def _get_checkpoint_path(self, model_name: str, checkpoint_name: str) -> Path:
+    def _get_checkpoint_path(self, run_name: str, checkpoint_name: str) -> Path:
         """Returns the path to the specified model checkpoint"""
 
         checkpoint_type, checkpoint_uid = _parse_checkpoint_name(checkpoint_name)
@@ -93,16 +90,16 @@ class CheckpointManager:
                 checkpoint_name = f"{checkpoint_type}_{epoch}"
                 checkpoint_path = Path(
                     CHECKPOINT_PATH_TEMPLATE.format(
-                        model_name=model_name, checkpoint_name=checkpoint_name
+                        run_name=run_name, checkpoint_name=checkpoint_name
                     )
                 )
             case _:
                 checkpoint_path = Path(
                     CHECKPOINT_PATH_TEMPLATE.format(
-                        model_name=model_name, checkpoint_name=checkpoint_type.value
+                        run_name=run_name, checkpoint_name=checkpoint_type.value
                     )
                 )
-        return DEFAULT_CHECKPOINT_DIR / checkpoint_path
+        return checkpoint_path
 
 
 def _get_checkpoint_name(

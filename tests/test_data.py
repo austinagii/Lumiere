@@ -2,7 +2,8 @@ import string
 
 import torch
 
-from lumiere.utils.data import to_batches
+from lumiere.data.wikitext import to_batches
+
 
 class SimpleTokenizer:
     def __init__(self):
@@ -21,7 +22,7 @@ class SimpleTokenizer:
 class SimpleEncoding:
     def __init__(self, ids):
         self.ids_ = ids
-    
+
     @property
     def ids(self):
         return self.ids_
@@ -39,14 +40,7 @@ def test_tokenizer():
     assert token_ids == [0, 1, 2, 0, 1, 2]
 
     batches = to_batches(tokenizer, dataset, batch_size=1, context_size=3)
-    expected_batch = torch.tensor([
-        [0, 1, 2],
-        [0, 1, 2]
-    ], dtype=torch.long)
+    expected_batch = torch.tensor([[0, 1, 2], [0, 1, 2]], dtype=torch.long)
 
     for batch in batches:
         assert torch.allclose(batch, expected_batch)
-
-
-
-

@@ -8,12 +8,12 @@ from azure.storage.blob import BlobServiceClient
 from torch.nn import functional as F
 from tqdm import tqdm
 
+from lumiere.data.wikitext import to_batches
 from lumiere.persistence.checkpoint_manager import CheckpointManager
 from lumiere.persistence.model_manager import ModelManager
 from lumiere.persistence.storage_client import LocalStorageClient, RemoteStorageClient
 from lumiere.persistence.tokenizer_manager import TokenizerManager
 from lumiere.utils import get_device
-from lumiere.utils.data import to_batches
 
 
 MODEL_CONFIG_DIR = "configs/models"

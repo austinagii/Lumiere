@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from time import time
+from typing import Iterable
 
 import torch
 from torch.nn import functional as F
@@ -7,7 +8,7 @@ from tqdm import tqdm
 
 from lumiere.persistence.storage_client import disable_tokenizer_parallelism
 from lumiere.preprocessing.tokenizer import Tokenizer
-from lumiere.utils.data import to_batches
+from lumiere.training.utils import ContextBatchManager
 
 
 @dataclass
@@ -24,12 +25,11 @@ def train(
     run,
     model: torch.nn.Module,
     tokenizer: Tokenizer,
-    dataset: torch.utils.data.Dataset,
+    data: Iterable[str],
     current_epoch: int,
     global_step: int,
     max_epochs: int,
-    batch_size: int,
-    context_size: int,
+    batch_manager: ContextBatchManager,
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler._LRScheduler,
     gradient_clip_norm: float,
@@ -41,10 +41,17 @@ def train(
     num_batches = 0
     epoch_steps = 0
 
-    batches = to_batches(tokenizer, dataset, batch_size, context_size + 1)
+    tokenized_text = tokenizer.tokenize_all(data, lazy=True)
+    batches = batch_manager.to_batches(tokenized_text)
+
     start_time = time()
     with tqdm(batches, desc=f"Epoch {current_epoch}/{max_epochs}", leave=False) as pbar:
         for batch in pbar:
+            (tokenized_batch, mask) = batch
+            encoded_batch = tokenizer.encode_all(tokenized_batch)
+            batch = torch.tensor(encoded_batch, dtype=torch.long)
+            mask = torch.tensor(mask, dtype=torch.long)
+
             # Evaluate the model on the current batch.
             x, y = (batch[:, :-1].to(device), batch[:, 1:].to(device))
             logits, _ = model(x)

@@ -3,7 +3,7 @@ from typing import Tuple
 
 import torch
 
-from lumiere.config.config import ModelConfig
+from lumiere.config.config import TransformerConfig
 from lumiere.models import Transformer
 from lumiere.persistence.checkpoint_manager import CheckpointManager
 from lumiere.persistence.tokenizer_manager import TokenizerManager
@@ -28,7 +28,7 @@ class ModelManager:
         model_name: str,
         checkpoint_name: str = None,
         device: torch.device = torch.device("cpu"),
-    ) -> Tuple[Transformer, ModelConfig, Tokenizer]:
+    ) -> Tuple[Transformer, TransformerConfig, Tokenizer]:
         """Load the model from local storage or blob storage.
 
         This function returns the model, fully constructed from the model config
@@ -46,7 +46,7 @@ class ModelManager:
         checkpoint = self.checkpoint_manager.load_checkpoint(
             model_name, checkpoint_name, device
         )
-        model_config = ModelConfig.from_dict(checkpoint["model_config"])
+        model_config = TransformerConfig.from_dict(checkpoint["model_config"])
 
         tokenizer = self.tokenizer_manager.load_tokenizer(
             model_config.model["tokenizer"]

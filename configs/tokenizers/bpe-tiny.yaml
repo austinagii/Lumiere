@@ -1,3 +1,0 @@
-tokenizer:
-  vocab_size: 4096
-  batch_size: 128

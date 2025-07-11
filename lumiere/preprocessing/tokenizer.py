@@ -1,52 +1,77 @@
-from pathlib import Path
-from typing import Iterable
+from typing import Generator, Iterable, Sequence
 
 import tokenizers
-from datasets import Dataset
 from tokenizers import decoders, models, normalizers, pre_tokenizers, trainers
 
 
 class Tokenizer:
-    def __init__(self):
+    def __init__(self, vocab_size: int = 30000, min_frequency: int = 2):
         self.tokenizer = tokenizers.Tokenizer(models.BPE())
         self.tokenizer.normalizer = normalizers.NFKC()
         self.tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel()
         self.tokenizer.decoder = decoders.ByteLevel()
+        self.trainer = trainers.BpeTrainer(
+            vocab_size=vocab_size, min_frequency=min_frequency
+        )
+        self.special_tokens = {
+            "start_of_text": "<|sot|>",
+            "end_of_text": "<|eot|>",
+            "padding": "<|pad|>",
+        }
+        self.tokenizer.add_special_tokens(list(self.special_tokens.values()))
 
-    def train(
-        self, dataset: Dataset, text_column: str, batch_size: int, vocab_size: int
-    ):
-        # If we're trying to not tie the implementation to a specific dataset
-        # how do we communicate which column the text is in?
-        if not isinstance(batch_size, int) or batch_size <= 0:
-            raise ValueError("Batch size must be an integer greater than zero")
+    def tokenize(self, text: str) -> list[str]:
+        """Tokenizes the specified text"""
+        return self.tokenizer.encode(text).tokens
 
-        def _train_iter():
-            for batch in dataset.select_columns(text_column).iter(batch_size):
-                yield batch[text_column]
+    def tokenize_all(
+        self, corpus: Iterable[str], lazy: bool = False
+    ) -> list[list[str]] | Generator[list[str], None, None]:
+        """Tokenizes the specified text in chunks of the given size
 
-        trainer = trainers.BpeTrainer(vocab_size=vocab_size, min_frequency=2)
-        self.tokenizer.train_from_iterator(_train_iter(), trainer, length=len(dataset))
-        return self
+        When `chunk_size` is not specified the encoding behavior becomes dynamic based
+        on the type of `text`. If text is a string type, then the entire str is encoded,
+        however, if text is a sequence of string types, then an iterator is returned
+        where containing the token ids of the encoded text sequence. Note that the
+        chunks do not cross sample boundaries and the chunks are not padded.
+        """
+        if lazy:
+            for text in corpus:
+                yield self.tokenize(text)
+        else:
+            return [self.tokenize(text) for text in corpus]
 
-    def encode(self, text: str):
-        return self.tokenizer.encode(text)
+    def encode(self, tokens: list[str]) -> list[str]:
+        return self.tokenizer.encode(tokens, is_pretokenized=True).ids
 
-    def decode(self, token_ids: Iterable[str]) -> str:
+    def encode_all(
+        self, corpus: Sequence[str], lazy: bool = False
+    ) -> list[list[str]] | Generator[list[str], None, None]:
+        # if lazy:
+        #     for text in corpus:
+        #         yield self.tokenizer.encode(text, is_pretokenized=True).ids
+        # else:
+        #     return [
+        #         self.tokenizer.encode(text, is_pretokenized=True).ids for text in corpus
+        #     ]
+        return [
+            [self.tokenizer.token_to_id(token) for token in text] for text in corpus
+        ]
+
+    def decode(self, token_ids: list[str]) -> str:
         return self.tokenizer.decode(token_ids)
+
+    def decode_all(self, corpus: Sequence[list[str]]) -> Generator[str, None, None]:
+        for ids in corpus:
+            yield self.decode(ids)
+
+    def train(self, corpus: Iterable[str]):
+        self.tokenizer.train_from_iterator(corpus, self.trainer)
+        return self
 
     @property
     def vocab_size(self) -> int:
         return self.tokenizer.get_vocab_size()
-
-    def save(self, path: str):
-        self.tokenizer.save(path)
-
-    @staticmethod
-    def load(path: Path):
-        tokenizer = Tokenizer()
-        tokenizer.tokenizer = tokenizers.Tokenizer.from_file(str(path))
-        return tokenizer
 
     @staticmethod
     def from_bytes(bytes: bytes):
