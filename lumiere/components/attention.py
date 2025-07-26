@@ -4,9 +4,6 @@ from torch import nn
 from lumiere.utils import validation
 
 
-NEG_INF = -1e9
-
-
 class MultiHeadAttention(nn.Module):
     """Performs the multi-head self attention operation on a batch of token embeddings.
 
@@ -118,10 +115,12 @@ class MultiHeadAttention(nn.Module):
             padding_mask_combined = padding_mask_cols | padding_mask_rows
             mask = mask | padding_mask_combined
 
-        scaled_attention_scores = scaled_attention_scores.masked_fill(mask, NEG_INF)
+        scaled_attention_scores = scaled_attention_scores.masked_fill(
+            mask, -float("inf")
+        )
 
-        attention_weights = softermax(scaled_attention_scores)
-        # attention_weights = self._dropout(attention_weights)
+        attention_weights = stable_softmax(scaled_attention_scores)
+        attention_weights = self._dropout(attention_weights)
         attention_values = torch.matmul(attention_weights, values)
 
         attention_values = concat_heads(attention_values)
@@ -181,8 +180,12 @@ def concat_heads(tensor: torch.Tensor) -> torch.Tensor:
     return tensor.transpose(1, 2).reshape(tensor.shape[0], tensor.shape[2], -1)
 
 
-def softermax(x: torch.Tensor) -> torch.Tensor:
-    """Applies a softmax function to the input with an added infinitesimal to prevent div by zero.
+def stable_softmax(x: torch.Tensor) -> torch.Tensor:
+    """Applies softmax with numerical stability.
+
+    This is made to explicity handle the case where the values along the specified
+    dimension are all negative infinity. In this case, the softmax will return all
+    zeros instead of NaN.
 
     Args:
         x: Input tensor
@@ -190,5 +193,4 @@ def softermax(x: torch.Tensor) -> torch.Tensor:
     Returns:
         Tensor of the same shape as the input tensor
     """
-    sum = torch.sum(torch.exp(x), dim=-1, keepdim=True) + 1e-9
-    return torch.exp(x) / sum
+    return torch.exp(x) / (torch.sum(torch.exp(x), dim=-1, keepdim=True) + 1e-9)
