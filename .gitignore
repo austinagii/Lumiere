@@ -186,6 +186,7 @@ cython_debug/
 # Artifact files
 artifacts/**/*.pth
 artifacts/**/*.json
+runs/**/*
 
 !artifacts/**/.gitkeep
 

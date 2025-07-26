@@ -21,12 +21,12 @@ from lumiere.persistence.storage_client import (
     disable_tokenizer_parallelism,
 )
 from lumiere.persistence.tokenizer_manager import TokenizerManager
-from lumiere.preprocessing.tokenizer import Tokenizer
+from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.training import schedulers
 from lumiere.training.checkpoint import Checkpoint, CheckpointType
+from lumiere.training.context_batch_manager import ContextBatchManager
 from lumiere.training.eval import evaluate
 from lumiere.training.train import train
-from lumiere.training.utils import ContextBatchManager
 from lumiere.utils import get_device
 
 
@@ -221,7 +221,7 @@ def main(
     context_batch_manager = ContextBatchManager(
         context_size=model_config.model["context_size"] + 1,
         batch_size=model_config.training["batch_size"],
-        padding_token=tokenizer.special_tokens["padding"],
+        padding_token=SPECIAL_TOKENS["padding"].token,
     )
 
     # Start the training loop.

@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 
+from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS
 from lumiere.utils import validation
 
 
@@ -60,7 +61,16 @@ class Embedding(nn.Module):
         if torch.any(x < 0) or torch.any(x >= self._vocab_size):
             raise IndexError("Token ids are outside of the range [0, vocab_size).")
 
-        return self._embedding(x) + self._positional_encoding[: x.shape[-1], :]
+        token_embeddings = self._embedding(x)
+
+        # Add the positional encoding for the context size.
+        position_encoding = self._positional_encoding[: x.shape[-1], :]
+        token_embeddings += position_encoding
+
+        # Zero the embedding of padding tokens.
+        token_embeddings[x == SPECIAL_TOKENS["padding"].id] = 0
+
+        return token_embeddings
 
     @property
     def vocab_size(self) -> int:

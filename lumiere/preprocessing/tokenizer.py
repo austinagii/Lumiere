@@ -1,7 +1,24 @@
+from collections import OrderedDict
+from dataclasses import dataclass
 from typing import Generator, Iterable, Sequence
 
 import tokenizers
 from tokenizers import decoders, models, normalizers, pre_tokenizers, trainers
+
+
+@dataclass
+class SpecialToken:
+    id: int
+    token: str
+
+
+SPECIAL_TOKENS = OrderedDict(
+    {
+        "start_of_text": SpecialToken(0, "<|sot|>"),
+        "end_of_text": SpecialToken(1, "<|eot|>"),
+        "padding": SpecialToken(2, "<|pad|>"),
+    }
+)
 
 
 class Tokenizer:
@@ -13,12 +30,9 @@ class Tokenizer:
         self.trainer = trainers.BpeTrainer(
             vocab_size=vocab_size, min_frequency=min_frequency
         )
-        self.special_tokens = {
-            "start_of_text": "<|sot|>",
-            "end_of_text": "<|eot|>",
-            "padding": "<|pad|>",
-        }
-        self.tokenizer.add_special_tokens(list(self.special_tokens.values()))
+        self.tokenizer.add_special_tokens(
+            [token.token for token in SPECIAL_TOKENS.values()]
+        )
 
     def tokenize(self, text: str) -> list[str]:
         """Tokenizes the specified text"""

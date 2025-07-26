@@ -82,7 +82,9 @@ class TransformerBlock(nn.Module):
         self.dropout = nn.Dropout(self._dropout)
         self.normalization_2 = nn.RMSNorm(self._embedding_size)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor, padding_mask: torch.Tensor = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         if x.dim() != 3:
             raise ValueError(
                 "Input tensor must have shape (batch_size, context_size, "
@@ -95,7 +97,9 @@ class TransformerBlock(nn.Module):
 
         # Compute the attention values and weights.
         norm_x1 = self.normalization_1(x)
-        attention_values, attention_weights = self.attention(norm_x1)
+        attention_values, attention_weights = self.attention(
+            norm_x1, padding_mask=padding_mask
+        )
         x = x + self.dropout(attention_values)
 
         # Compute the feed-forward output.

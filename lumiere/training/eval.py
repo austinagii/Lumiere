@@ -5,8 +5,8 @@ from typing import Iterable
 import torch
 from torch.nn import functional as F
 
-from lumiere.preprocessing.tokenizer import Tokenizer
-from lumiere.training.utils import ContextBatchManager
+from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
+from lumiere.training.context_batch_manager import ContextBatchManager
 
 
 @dataclass
@@ -37,18 +37,22 @@ def evaluate(
     start_time = time()
     with torch.no_grad():
         for validation_batch in validation_batches:
-            tokenized_batch, mask = validation_batch
+            tokenized_batch, padding_mask = validation_batch
             encoded_batch = tokenizer.encode_all(tokenized_batch)
             tokenized_batch = torch.tensor(encoded_batch, dtype=torch.long)
-            mask = torch.tensor(mask, dtype=torch.long)
+            padding_mask = torch.tensor(padding_mask, dtype=torch.bool)
 
             x, y = (
                 tokenized_batch[:, :-1].to(device),
                 tokenized_batch[:, 1:].to(device),
             )
-            logits, _ = model(x)
+            # Slice padding mask to match input sequence length
+            padding_mask_input = padding_mask[:, :-1].to(device)
+            logits, _ = model(x, padding_mask_input)
             loss = F.cross_entropy(
-                logits.reshape(-1, tokenizer.vocab_size), y.reshape(-1)
+                logits.reshape(-1, tokenizer.vocab_size),
+                y.reshape(-1),
+                ignore_index=SPECIAL_TOKENS["padding"].id,
             )
             total_loss += loss.item()
             total_perplexity += torch.exp(loss).item()

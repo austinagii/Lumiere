@@ -34,14 +34,14 @@ class ContextBatchManager:
         Returns:
             An iterable of tensor batches of shape [batch_size, context_size]
         """
-        batch, batch_mask = [], []
+        batch, batch_padding_mask = [], []
 
         for text in data:
             total_tokens = len(text)
             start_idx = 0
 
             while start_idx < total_tokens:
-                context, mask = [], []
+                context, context_padding_mask = [], []
 
                 # Calculate how many tokens to read for this context.
                 remaining_tokens = total_tokens - start_idx
@@ -50,7 +50,7 @@ class ContextBatchManager:
 
                 # Read tokens into context
                 context.extend(text[start_idx : start_idx + num_tokens_to_read])
-                mask.extend([1] * len(context))
+                context_padding_mask.extend([False] * len(context))
                 start_idx += num_tokens_to_read
 
                 # If at end of text and context is not full, pad the context and mask
@@ -59,12 +59,14 @@ class ContextBatchManager:
                     context.extend(
                         [self.padding_token] * (self.context_size - len(context))
                     )
-                    mask.extend([0] * (self.context_size - len(mask)))
+                    context_padding_mask.extend(
+                        [True] * (self.context_size - len(context_padding_mask))
+                    )
 
                 batch.append(context)
-                batch_mask.append(mask)
+                batch_padding_mask.append(context_padding_mask)
 
                 # Yield the batch when it's full.
                 if len(batch) == self.batch_size:
-                    yield batch, batch_mask
-                    batch, batch_mask = [], []
+                    yield batch, batch_padding_mask
+                    batch, batch_padding_mask = [], []

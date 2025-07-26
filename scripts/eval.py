@@ -75,7 +75,11 @@ def main(
             y = y.to(device)
             with torch.no_grad():
                 logits, _ = model(x)
-                loss = F.cross_entropy(logits.view(-1, logits.size(-1)), y.view(-1))
+                loss = F.cross_entropy(
+                    logits.view(-1, logits.size(-1)),
+                    y.view(-1),
+                    ignore_index=tokenizer.SPECIAL_TOKENS.padding.id,
+                )
                 perplexity = torch.exp(loss)
                 total_loss += loss.item()
                 total_perplexity += perplexity.item()

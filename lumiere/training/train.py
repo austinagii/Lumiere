@@ -7,8 +7,8 @@ from torch.nn import functional as F
 from tqdm import tqdm
 
 from lumiere.persistence.storage_client import disable_tokenizer_parallelism
-from lumiere.preprocessing.tokenizer import Tokenizer
-from lumiere.training.utils import ContextBatchManager
+from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
+from lumiere.training.context_batch_manager import ContextBatchManager
 
 
 @dataclass
@@ -47,16 +47,20 @@ def train(
     start_time = time()
     with tqdm(batches, desc=f"Epoch {current_epoch}/{max_epochs}", leave=False) as pbar:
         for batch in pbar:
-            (tokenized_batch, mask) = batch
+            (tokenized_batch, padding_mask) = batch
             encoded_batch = tokenizer.encode_all(tokenized_batch)
             batch = torch.tensor(encoded_batch, dtype=torch.long)
-            mask = torch.tensor(mask, dtype=torch.long)
+            padding_mask = torch.tensor(padding_mask, dtype=torch.bool)
 
             # Evaluate the model on the current batch.
             x, y = (batch[:, :-1].to(device), batch[:, 1:].to(device))
-            logits, _ = model(x)
+            # Slice padding mask to match input sequence length
+            padding_mask_input = padding_mask[:, :-1].to(device)
+            logits, _ = model(x, padding_mask_input)
             batch_loss = F.cross_entropy(
-                logits.view(-1, tokenizer.vocab_size), y.reshape(-1)
+                logits.view(-1, tokenizer.vocab_size),
+                y.reshape(-1),
+                ignore_index=SPECIAL_TOKENS["padding"].id,
             )
             batch_perplexity = torch.exp(batch_loss)
 

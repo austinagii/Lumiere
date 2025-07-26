@@ -4,6 +4,9 @@ from torch import nn
 from lumiere.utils import validation
 
 
+NEG_INF = -1e9
+
+
 class MultiHeadAttention(nn.Module):
     """Performs the multi-head self attention operation on a batch of token embeddings.
 
@@ -71,7 +74,9 @@ class MultiHeadAttention(nn.Module):
         self._v_proj = nn.Linear(embedding_size, d_value * num_heads)
         self._o_proj = nn.Linear(d_value * num_heads, embedding_size)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, padding_mask: torch.Tensor = None
+    ) -> torch.Tensor:
         if x.dim() != 3:
             raise ValueError(
                 "The input tensor must have the shape (batch_size, context_size, "
@@ -91,6 +96,7 @@ class MultiHeadAttention(nn.Module):
             torch.tensor(self._d_key, dtype=queries.dtype, device=queries.device)
         )
 
+        # Define the mask to prevent each token from attending to future tokens.
         mask = torch.triu(
             torch.ones(
                 queries.shape[2],
@@ -98,14 +104,24 @@ class MultiHeadAttention(nn.Module):
                 dtype=torch.bool,
                 device=queries.device,
             ),
-            diagonal=1,
-        )
-        scaled_attention_scores = scaled_attention_scores.masked_fill(
-            mask.unsqueeze(0).unsqueeze(0), -float("inf")
         )
 
-        attention_weights = torch.softmax(scaled_attention_scores, dim=-1)
-        attention_weights = self._dropout(attention_weights)
+        mask = mask.unsqueeze(0).unsqueeze(0)
+
+        # Add the padding mask to prevent attention to/from padding tokens
+        if padding_mask is not None:
+            # Mask columns: prevent attention TO padding tokens
+            padding_mask_cols = padding_mask.unsqueeze(1).unsqueeze(1)
+            # Mask rows: prevent attention FROM padding tokens
+            padding_mask_rows = padding_mask.unsqueeze(1).unsqueeze(3)
+            # Combine both column and row masks
+            padding_mask_combined = padding_mask_cols | padding_mask_rows
+            mask = mask | padding_mask_combined
+
+        scaled_attention_scores = scaled_attention_scores.masked_fill(mask, NEG_INF)
+
+        attention_weights = softermax(scaled_attention_scores)
+        # attention_weights = self._dropout(attention_weights)
         attention_values = torch.matmul(attention_weights, values)
 
         attention_values = concat_heads(attention_values)
@@ -163,3 +179,16 @@ def concat_heads(tensor: torch.Tensor) -> torch.Tensor:
         torch.Size([1, 3, 12])
     """
     return tensor.transpose(1, 2).reshape(tensor.shape[0], tensor.shape[2], -1)
+
+
+def softermax(x: torch.Tensor) -> torch.Tensor:
+    """Applies a softmax function to the input with an added infinitesimal to prevent div by zero.
+
+    Args:
+        x: Input tensor
+
+    Returns:
+        Tensor of the same shape as the input tensor
+    """
+    sum = torch.sum(torch.exp(x), dim=-1, keepdim=True) + 1e-9
+    return torch.exp(x) / sum

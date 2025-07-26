@@ -83,7 +83,9 @@ class Transformer(nn.Module):
         )
         self.final_norm = nn.RMSNorm(self._embedding_size)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor, padding_mask: torch.Tensor = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         if x.ndim != 2:
             raise ValueError(
                 f"The input tensor must have 2 dimensions, but got {x.ndim}."
@@ -94,12 +96,11 @@ class Transformer(nn.Module):
                 f"The input tensor must have a context size of at most"
                 f"{self._context_size}, but got {x.shape[1]}."
             )
-
         x = self.embedding(x)
 
         attention_weights = []
         for block in self.blocks:
-            x, block_attention_weights = block(x)
+            x, block_attention_weights = block(x, padding_mask)
             attention_weights.append(block_attention_weights)
         attention_weights = torch.stack(attention_weights, dim=1)
 
