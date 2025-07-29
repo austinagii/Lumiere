@@ -49,27 +49,22 @@ class MultiHeadAttention(nn.Module):
         embedding_size: int,
         d_key: int,
         d_value: int,
-        dropout: float = 0.0,
     ) -> None:
+        super().__init__()
+
         validation.validate_positive_integer(num_heads, "num_heads")
         validation.validate_positive_integer(embedding_size, "embedding_size")
         validation.validate_positive_integer(d_key, "d_key")
         validation.validate_positive_integer(d_value, "d_value")
-        validation.validate_probability(dropout, "dropout")
 
-        super().__init__()
         self._d_key = d_key
         self._d_value = d_value
         self._num_heads = num_heads
-        if dropout > 0.0:
-            self._dropout = nn.Dropout(dropout)
-        else:
-            self._dropout = nn.Identity()
 
-        self._q_proj = nn.Linear(embedding_size, d_key * num_heads)
-        self._k_proj = nn.Linear(embedding_size, d_key * num_heads)
-        self._v_proj = nn.Linear(embedding_size, d_value * num_heads)
-        self._o_proj = nn.Linear(d_value * num_heads, embedding_size)
+        self._q_proj = nn.Linear(embedding_size, d_key * num_heads, bias=False)
+        self._k_proj = nn.Linear(embedding_size, d_key * num_heads, bias=False)
+        self._v_proj = nn.Linear(embedding_size, d_value * num_heads, bias=False)
+        self._o_proj = nn.Linear(d_value * num_heads, embedding_size, bias=False)
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
@@ -93,39 +88,54 @@ class MultiHeadAttention(nn.Module):
             torch.tensor(self._d_key, dtype=queries.dtype, device=queries.device)
         )
 
-        # Define the mask to prevent each token from attending to future tokens.
-        mask = torch.triu(
-            torch.ones(
-                queries.shape[2],
-                queries.shape[2],
-                dtype=torch.bool,
-                device=queries.device,
-            ),
-        )
+        mask = create_causal_mask(queries.shape[2], padding_mask).to(queries.device)
 
-        mask = mask.unsqueeze(0).unsqueeze(0)
-
-        # Add the padding mask to prevent attention to/from padding tokens
-        if padding_mask is not None:
-            # Mask columns: prevent attention TO padding tokens
-            padding_mask_cols = padding_mask.unsqueeze(1).unsqueeze(1)
-            # Mask rows: prevent attention FROM padding tokens
-            padding_mask_rows = padding_mask.unsqueeze(1).unsqueeze(3)
-            # Combine both column and row masks
-            padding_mask_combined = padding_mask_cols | padding_mask_rows
-            mask = mask | padding_mask_combined
-
-        scaled_attention_scores = scaled_attention_scores.masked_fill(
+        masked_attention_scores = scaled_attention_scores.masked_fill(
             mask, -float("inf")
         )
 
-        attention_weights = stable_softmax(scaled_attention_scores)
-        attention_weights = self._dropout(attention_weights)
+        attention_weights = stable_softmax(masked_attention_scores)
         attention_values = torch.matmul(attention_weights, values)
-
         attention_values = concat_heads(attention_values)
         output = self._o_proj(attention_values)
+
         return output, attention_weights
+
+
+def create_causal_mask(
+    context_size: int, padding_mask: torch.Tensor = None
+) -> torch.Tensor:
+    """Creates a causal mask for the attention operation.
+
+    This mask is used to prevent each token from attending to itself, future tokens,
+    and padding tokens (if a padding mask is provided).
+
+    Args:
+        context_size: The size of the context.
+        padding_mask: A mask indicating which tokens are padding.
+
+    Returns:
+        A mask of shape (1, 1, context_size, context_size).
+    """
+    # Create a mask that prevents each token from attending to itself and future tokens.
+    mask = torch.triu(
+        torch.ones(
+            context_size,
+            context_size,
+            dtype=torch.bool,
+        ),
+    )
+    mask = mask.unsqueeze(0).unsqueeze(0)
+
+    # Add the padding mask to prevent attention to/from padding tokens
+    if padding_mask is not None:
+        # TODO: Make this more explicit, unsqueeze is obfuscating the intent.
+        padding_mask_cols = padding_mask.unsqueeze(1).unsqueeze(1)
+        padding_mask_rows = padding_mask.unsqueeze(1).unsqueeze(3)
+        padding_mask_combined = padding_mask_cols | padding_mask_rows
+        mask = mask | padding_mask_combined
+
+    return mask
 
 
 def split_heads(

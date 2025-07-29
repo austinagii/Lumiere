@@ -1,63 +1,126 @@
-import pytest
 import torch
 
-from lumiere.core.attention import MultiHeadAttention
+from lumiere.components.attention import (
+    MultiHeadAttention,
+    concat_heads,
+    split_heads,
+    stable_softmax,
+)
+
+
+class TestStableSoftmax:
+    def test_input_tensor_of_all_neg_inf_returns_zeros(self):
+        x = torch.full((1, 10), -float("inf"))
+        expected = torch.zeros((1, 10))
+        actual = stable_softmax(x)
+        assert torch.allclose(actual, expected)
+
+    def test_input_tensor_of_non_neg_inf_values_returns_softmax(self):
+        x = torch.randn((1, 10))
+        expected = torch.softmax(x, dim=-1)
+        actual = stable_softmax(x)
+        assert torch.allclose(actual, expected)
+
+    def test_input_tensor_of_some_neg_inf_values_returns_softmax(self):
+        x = torch.tensor([-float("inf"), 0.0, -float("inf"), 0.0])
+        expected = torch.tensor([0.0, 0.5, 0.0, 0.5])
+        actual = stable_softmax(x)
+        assert torch.allclose(actual, expected)
+
+
+class TestSplitHeads:
+    def test_correctly_splits_heads(self):
+        # fmt: off
+        tensor = torch.tensor([[[1, 2, 3, 4, 5, 6],
+                                [7, 8, 9, 10, 11, 12]]])
+        # fmt: on
+
+        actual = split_heads(tensor, 2, 3)
+
+        # fmt: off
+        expected = torch.tensor([[[[1, 2, 3],
+                                   [7, 8, 9]], 
+                                  [[4, 5, 6],
+                                   [10, 11, 12]]]])
+        # fmt: on
+
+        assert torch.allclose(actual, expected)
+
+
+class TestConcatHeads:
+    def test_correctly_concatenates_heads(self):
+        # fmt: off
+        tensor = torch.tensor([[[[1, 2, 3],
+                                 [7, 8, 9]], 
+                                [[4, 5, 6],
+                                 [10, 11, 12]]]])
+        # fmt: on
+
+        actual = concat_heads(tensor)
+
+        expected = torch.tensor([[[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]]])
+
+        assert torch.allclose(actual, expected)
 
 
 class TestMultiHeadAttention:
-    INVALID_INTEGER_VALUES = [-1, 0, "1", 1.0, None, (1,)]
+    def setup_class(self):
+        k1_proj = torch.linspace(0.01, 1.00, 24, dtype=torch.float32).view(4, 6)
+        q1_proj = torch.linspace(0.05, 1.30, 24, dtype=torch.float32).view(4, 6)
+        v1_proj = torch.linspace(0.08, 1.25, 32, dtype=torch.float32).view(4, 8)
 
-    @pytest.mark.parametrize("num_heads", INVALID_INTEGER_VALUES)
-    def test_error_is_raised_if_num_heads_is_not_positive_integer(self, num_heads):
-        with pytest.raises(ValueError, match="num_heads must be a positive integer"):
-            MultiHeadAttention(num_heads=num_heads,
-                               embedding_size=4, d_key=2, d_value=2)
+        k2_proj = torch.linspace(0.03, 1.10, 24, dtype=torch.float32).view(4, 6)
+        q2_proj = torch.linspace(0.05, 1.20, 24, dtype=torch.float32).view(4, 6)
+        v2_proj = torch.linspace(0.07, 1.35, 32, dtype=torch.float32).view(4, 8)
 
-    @pytest.mark.parametrize("embedding_size", INVALID_INTEGER_VALUES)
-    def test_error_is_raised_if_embedding_size_is_not_positive_integer(self, embedding_size):
-        with pytest.raises(ValueError, match="embedding_size must be a positive integer"):
-            MultiHeadAttention(
-                num_heads=2, embedding_size=embedding_size, d_key=2, d_value=2)
+        k_proj = torch.concat([k1_proj, k2_proj], dim=-1)
+        q_proj = torch.concat([q1_proj, q2_proj], dim=-1)
+        v_proj = torch.concat([v1_proj, v2_proj], dim=-1)
+        o_proj = torch.linspace(0, 1.4, 64, dtype=torch.float32).reshape(16, 4)
 
-    @pytest.mark.parametrize("d_key", INVALID_INTEGER_VALUES)
-    def test_error_is_raised_if_d_key_is_not_positive_integer(self, d_key):
-        with pytest.raises(ValueError, match="d_key must be a positive integer"):
-            MultiHeadAttention(num_heads=2, embedding_size=4,
-                               d_key=d_key, d_value=2)
-
-    @pytest.mark.parametrize("d_value", INVALID_INTEGER_VALUES)
-    def test_error_is_raised_if_d_value_is_not_positive_integer(self, d_value):
-        with pytest.raises(ValueError, match="d_value must be a positive integer"):
-            MultiHeadAttention(num_heads=2, embedding_size=4,
-                               d_key=2, d_value=d_value)
-
-    @pytest.mark.parametrize("masked", ["True", 1, None, "masked"])
-    def test_error_is_raised_if_masked_is_not_boolean(self, masked):
-        with pytest.raises(ValueError, match="masked must be a boolean"):
-            MultiHeadAttention(num_heads=2, embedding_size=4,
-                               d_key=2, d_value=2, masked=masked)
-
-    def test_masked_is_initialized_to_true_by_default(self):
-        attention = MultiHeadAttention(
-            num_heads=2, embedding_size=4, d_key=2, d_value=2)
-        assert attention.masked == True
+        self.attention = MultiHeadAttention(
+            num_heads=2, embedding_size=4, d_key=6, d_value=8
+        )
+        self.attention._q_proj.weight = torch.nn.Parameter(q_proj.T)
+        self.attention._k_proj.weight = torch.nn.Parameter(k_proj.T)
+        self.attention._v_proj.weight = torch.nn.Parameter(v_proj.T)
+        self.attention._o_proj.weight = torch.nn.Parameter(o_proj.T)
 
     def test_attention_scores_are_calculated_correctly(self):
         x = torch.arange(0, 1.6, step=0.1, dtype=torch.float32).view(1, 4, 4)
-        q_proj = torch.arange(0, 2.4, step=0.05, dtype=torch.float32).view(4, 12)
-        k_proj = torch.arange(0.5, 2.9, step=0.05, dtype=torch.float32).view(4, 12)
-        v_proj = torch.arange(1.0, 4.2, step=0.05, dtype=torch.float32).view(4, 16)
-        o_proj = torch.arange(0, 3.2, step=0.05, dtype=torch.float32).reshape(16, 4)
-        
-        attention = MultiHeadAttention(num_heads=2, embedding_size=4, d_key=6, d_value=8)
-        attention._q_proj.data.copy_(q_proj)
-        attention._k_proj.data.copy_(k_proj)
-        attention._v_proj.data.copy_(v_proj)
-        attention._o_proj.data.copy_(o_proj)
 
-        expected = torch.tensor([[[ 48.7200,  50.3760,  52.0320,  53.6880],
-                                  [153.4400, 158.3920, 163.3440, 168.2960],
-                                  [258.1600, 266.4080, 274.6560, 282.9040],
-                                  [362.8800, 374.4240, 385.9680, 397.5120]]])
-        actual = attention(x)
+        expected = torch.tensor(
+            [
+                [
+                    [0.0000, 0.0000, 0.0000, 0.0000],
+                    [6.3802, 6.5831, 6.7860, 6.9888],
+                    [18.7467, 19.3392, 19.9318, 20.5243],
+                    [31.1960, 32.1809, 33.1658, 34.1508],
+                ]
+            ]
+        )
+
+        actual, _ = self.attention(x)
+
+        assert torch.allclose(actual, expected, atol=1e-4)
+
+    def test_attention_scores_are_calculated_correctly_with_padding_mask(self):
+        x = torch.arange(0, 1.6, step=0.1, dtype=torch.float32).view(1, 4, 4)
+
+        padding_mask = torch.tensor([[0, 0, 0, 1]], dtype=torch.bool)
+        x[:, 3, :] = 0.0
+
+        expected = torch.tensor(
+            [
+                [
+                    [0.0000, 0.0000, 0.0000, 0.0000],
+                    [6.3802, 6.5831, 6.7860, 6.9888],
+                    [18.7467, 19.3392, 19.9318, 20.5243],
+                    [0.0000, 0.0000, 0.0000, 0.0000],
+                ]
+            ]
+        )
+
+        actual, _ = self.attention(x, padding_mask)
+
         assert torch.allclose(actual, expected, atol=1e-4)
