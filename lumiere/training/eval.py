@@ -5,8 +5,8 @@ from typing import Iterable
 import torch
 from torch.nn import functional as F
 
+from lumiere.preprocessing.batch_manager import BatchManager
 from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
-from lumiere.training.context_batch_manager import ContextBatchManager
 
 
 @dataclass
@@ -21,7 +21,7 @@ def evaluate(
     model: torch.nn.Module,
     tokenizer: Tokenizer,
     data: Iterable[str],
-    batch_manager: ContextBatchManager,
+    batch_manager: BatchManager,
     device: torch.device,
 ) -> EvaluationState:
     """Evaluates the model on the dataset"""

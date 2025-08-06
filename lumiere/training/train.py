@@ -7,8 +7,8 @@ from torch.nn import functional as F
 from tqdm import tqdm
 
 from lumiere.persistence.storage_client import disable_tokenizer_parallelism
+from lumiere.preprocessing.batch_manager import BatchManager
 from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
-from lumiere.training.context_batch_manager import ContextBatchManager
 
 
 @dataclass
@@ -29,7 +29,7 @@ def train(
     current_epoch: int,
     global_step: int,
     max_epochs: int,
-    batch_manager: ContextBatchManager,
+    batch_manager: BatchManager,
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler._LRScheduler,
     gradient_clip_norm: float,
