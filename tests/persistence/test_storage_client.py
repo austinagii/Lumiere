@@ -38,12 +38,12 @@ class TestLocalStorageClient:
     ):
         assert not (local_storage_client.base_dir / file_path).exists()
 
-        local_storage_client.store(b"test", file_path)
+        local_storage_client.store(file_path, b"test")
 
         assert (local_storage_client.base_dir / file_path).exists()
 
     def test_store_correctly_stores_the_artifact(self, local_storage_client, file_path):
-        local_storage_client.store(b"test", file_path)
+        local_storage_client.store(file_path, b"test")
 
         assert (local_storage_client.base_dir / file_path).exists()
         assert (local_storage_client.base_dir / file_path).read_text() == "test"
@@ -53,7 +53,7 @@ class TestLocalStorageClient:
         expected_file_path.parent.mkdir(parents=True, exist_ok=True)
 
         expected_file_path.write_text("test")
-        local_storage_client.store(b"test2", file_path)
+        local_storage_client.store(file_path, b"test2")
 
         assert expected_file_path.read_text() == "test2"
 
