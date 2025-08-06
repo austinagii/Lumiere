@@ -49,7 +49,7 @@ class WikiText2DataLoader:
             if re.match(r"^=[^=]*=$", text.strip()):
                 # If we have accumulated content, yield the previous article
                 if current_article:
-                    article_text = "\n".join(current_article).strip()
+                    article_text = "".join(current_article)
                     yield f"<|sot|>{article_text}<|eot|>"
                     current_article = []
 
@@ -66,5 +66,5 @@ class WikiText2DataLoader:
 
         # Yield the last article if it exists
         if current_article:
-            article_text = "\n".join(current_article).strip()
+            article_text = "".join(current_article)
             yield f"<|sot|>{article_text}<|eot|>"
