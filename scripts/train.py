@@ -12,7 +12,7 @@ from azure.storage.blob import BlobServiceClient
 
 import wandb
 from lumiere.config.config import Config
-from lumiere.data.data_loader_factory import DataLoaderFactory
+from lumiere.data.dataloader import DataLoaderFactory
 from lumiere.models.transformer import Transformer
 from lumiere.persistence.checkpoint_manager import CheckpointManager
 from lumiere.persistence.storage_client import (
@@ -21,10 +21,10 @@ from lumiere.persistence.storage_client import (
     disable_tokenizer_parallelism,
 )
 from lumiere.persistence.tokenizer_manager import TokenizerManager
+from lumiere.preprocessing.batch_manager import BatchManager
 from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.training import schedulers
 from lumiere.training.checkpoint import Checkpoint, CheckpointType
-from lumiere.training.context_batch_manager import ContextBatchManager
 from lumiere.training.eval import evaluate
 from lumiere.training.train import train
 from lumiere.utils import get_device
@@ -112,7 +112,6 @@ def main(
     logger.info("Loading the dataset...")
     dataloader = DataLoaderFactory.get_data_loader(
         dataset_name=model_config.dataset["name"],
-        dataset_subset=model_config.dataset["subset"],
         train_dataset_portion=model_config.dataset["train_portion"],
         validation_dataset_portion=model_config.dataset["validation_portion"],
     )
@@ -152,6 +151,7 @@ def main(
         d_value=model_config.model["d_value"],
         d_ff=model_config.model["d_ff"],
         dropout=model_config.model["dropout"],
+        padding_id=SPECIAL_TOKENS["padding"].id,
     ).to(device)
 
     optimizer = torch.optim.AdamW(
@@ -218,7 +218,7 @@ def main(
             )
             wandb_run.watch(model, log="all")
 
-    context_batch_manager = ContextBatchManager(
+    context_batch_manager = BatchManager(
         context_size=model_config.model["context_size"] + 1,
         batch_size=model_config.training["batch_size"],
         padding_token=SPECIAL_TOKENS["padding"].token,

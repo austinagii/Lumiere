@@ -52,6 +52,7 @@ class Transformer(nn.Module):
         d_value: int,
         d_ff: int,
         dropout: float = 0.1,
+        padding_id: int | None = None,
     ):
         super().__init__()
 
@@ -66,7 +67,10 @@ class Transformer(nn.Module):
         self._dropout = dropout
 
         self.embedding = Embedding(
-            self._vocab_size, self._context_size, self._embedding_size
+            self._vocab_size,
+            self._context_size,
+            self._embedding_size,
+            padding_id=padding_id,
         )
         self.blocks = nn.ModuleList(
             [
@@ -96,7 +100,8 @@ class Transformer(nn.Module):
                 f"The input tensor must have a context size of at most"
                 f"{self._context_size}, but got {x.shape[1]}."
             )
-        x = self.embedding(x)
+
+        x = self.embedding(x, padding_mask)
 
         attention_weights = []
         for block in self.blocks:

@@ -1,7 +1,7 @@
-import torch
 import pytest
+import torch
 
-from lumiere.core.model import Model
+from lumiere.models.transformer import Transformer
 
 
 class TestModel:
@@ -10,24 +10,28 @@ class TestModel:
     @pytest.mark.parametrize("context_size", [16])
     @pytest.mark.parametrize("batch_size", [2])
     def test_model_forward(
-        self,
-        vocab_size: int,
-        embedding_size: int,
-        context_size: int,
-        batch_size: int
+        self, vocab_size: int, embedding_size: int, context_size: int, batch_size: int
     ) -> None:
-        model = Model(
+        model = Transformer(
             vocab_size=vocab_size,
             embedding_size=embedding_size,
-            context_size=context_size
+            context_size=context_size,
+            num_layers=2,
+            num_heads=4,
+            d_key=16,
+            d_value=16,
+            d_ff=32,
+            dropout=0.0,
+            padding_id=0,
         )
-        
+
         # Create random token IDs
         token_ids = torch.randint(
-            0, vocab_size, (batch_size, context_size), dtype=torch.int)
-        
+            0, vocab_size, (batch_size, context_size), dtype=torch.int
+        )
+
         # Forward pass
-        output = model(token_ids)
-        
+        output, _ = model(token_ids)
+
         # Check shape
         assert output.shape == (batch_size, context_size, vocab_size)
