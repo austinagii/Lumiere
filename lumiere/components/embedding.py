@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 
-from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS
 from lumiere.utils import validation
 
 
@@ -41,6 +40,7 @@ class Embedding(nn.Module):
         vocab_size: int,
         context_size: int,
         embedding_size: int,
+        padding_id: int | None = None,
     ) -> None:
         super().__init__()
         validation.validate_positive_integer(vocab_size, "vocab_size")
@@ -50,27 +50,38 @@ class Embedding(nn.Module):
         self._vocab_size = vocab_size
         self._context_size = context_size
         self._embedding_size = embedding_size
+        self._padding_id = padding_id
 
-        self._embedding = nn.Embedding(self._vocab_size, self._embedding_size)
+        self._embedding = nn.Embedding(
+            self._vocab_size, self._embedding_size, padding_idx=self._padding_id
+        )
         positional_encoding = sinusoidal_positional_encoding(
             self._context_size, self._embedding_size
         )
         self.register_buffer("_positional_encoding", positional_encoding)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, padding_mask: torch.Tensor = None
+    ) -> torch.Tensor:
         if torch.any(x < 0) or torch.any(x >= self._vocab_size):
             raise IndexError("Token ids are outside of the range [0, vocab_size).")
 
         token_embeddings = self._embedding(x)
 
-        # Add the positional encoding for the context size.
         position_encoding = self._positional_encoding[: x.shape[-1], :]
-        token_embeddings += position_encoding
 
-        # Zero the embedding of padding tokens.
-        token_embeddings[x == SPECIAL_TOKENS["padding"].id] = 0
+        # Ensure that padding tokens do not receive positional encoding.
+        if padding_mask is not None:
+            # padding mask shape: [batch_size, context_size]
+            # pos encoding shape: [context_size, embedding_size]
+            # needed out shape  : [batch_size, context_size, embedding_size]
+            position_encoding = position_encoding.expand(
+                padding_mask.shape[0], -1, -1
+            ).clone()
 
-        return token_embeddings
+            position_encoding[padding_mask] = 0
+
+        return token_embeddings + position_encoding
 
     @property
     def vocab_size(self) -> int:
@@ -84,7 +95,7 @@ class Embedding(nn.Module):
 
 
 def sinusoidal_positional_encoding(
-    context_size: int, embedding_size: int
+    context_size: int, embedding_size: int, padding_mask: torch.Tensor = None
 ) -> torch.Tensor:
     """Computes sinusoidal positional encodings for a given context size and embedding
     size.
@@ -116,4 +127,6 @@ def sinusoidal_positional_encoding(
     pos_encoding = torch.zeros((context_size, embedding_size), dtype=torch.float32)
     pos_encoding[:, 0::2] = torch.sin(angles)
     pos_encoding[:, 1::2] = torch.cos(angles)
+    return pos_encoding
+
     return pos_encoding
