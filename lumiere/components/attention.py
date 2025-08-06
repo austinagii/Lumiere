@@ -88,7 +88,7 @@ class MultiHeadAttention(nn.Module):
             torch.tensor(self._d_key, dtype=queries.dtype, device=queries.device)
         )
 
-        mask = create_causal_mask(queries.shape[2], padding_mask).to(queries.device)
+        mask = create_causal_mask(queries.shape[2], padding_mask)
 
         masked_attention_scores = scaled_attention_scores.masked_fill(
             mask, -float("inf")
@@ -133,7 +133,8 @@ def create_causal_mask(
         padding_mask_cols = padding_mask.unsqueeze(1).unsqueeze(1)
         padding_mask_rows = padding_mask.unsqueeze(1).unsqueeze(3)
         padding_mask_combined = padding_mask_cols | padding_mask_rows
-        mask = mask | padding_mask_combined
+
+        mask = mask.to(padding_mask.device) | padding_mask_combined
 
     return mask
 
