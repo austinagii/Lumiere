@@ -73,7 +73,6 @@ class TransformerBlock(nn.Module):
             embedding_size=self._embedding_size,
             d_key=self._d_key,
             d_value=self._d_value,
-            dropout=self._dropout,
         )
         self.normalization_1 = nn.RMSNorm(self._embedding_size)
         self.feedforward = FeedForward(
