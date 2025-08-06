@@ -88,8 +88,10 @@ class BatchManager:
                 prev_context = context
 
                 # Yield the batch when it's full.
-                if len(batch) == self.batch_size or (
-                    ix == len(data) - 1 and start_idx == total_tokens
-                ):
+                if len(batch) == self.batch_size:
                     yield batch, batch_padding_mask
                     batch, batch_padding_mask = [], []
+
+        # Yield the last batch if it's not empty.
+        if len(batch) > 0:
+            yield batch, batch_padding_mask

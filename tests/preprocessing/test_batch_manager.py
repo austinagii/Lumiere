@@ -145,3 +145,66 @@ class TestContextBatchManager:
                 for actual, expected in zip(actual_batch_masks, expected_batch_masks)
             ]
         )
+
+    def test_token_batching_works_across_multiple_iterable_types(self, batch_manager):
+        """Test that BatchManager works with different types of iterables."""
+
+        # Define the same token sequences using different iterable types
+        # Test with list of lists (baseline)
+        list_data = [["a", "b", "c", "d"], ["e", "f", "g", "h"]]
+
+        # Test with list of tuples
+        tuple_data = [("a", "b", "c", "d"), ("e", "f", "g", "h")]
+
+        # Test with tuple of lists
+        tuple_of_lists_data = (["a", "b", "c", "d"], ["e", "f", "g", "h"])
+
+        # Test with generator
+        def generator_data():
+            yield ["a", "b", "c", "d"]
+            yield ["e", "f", "g", "h"]
+
+        # Test with custom iterable class
+        class CustomIterable:
+            def __init__(self, sequences):
+                self.sequences = sequences
+
+            def __iter__(self):
+                return iter(self.sequences)
+
+        custom_data = CustomIterable([["a", "b", "c", "d"], ["e", "f", "g", "h"]])
+
+        # Expected results (should be the same for all iterable types)
+        expected_batches = [[["a", "b", "c", "d"], ["e", "f", "g", "h"]]]
+        expected_padding_masks = [
+            [[False, False, False, False], [False, False, False, False]]
+        ]
+
+        # Test each iterable type
+        test_cases = [
+            ("list of lists", list_data),
+            ("list of tuples", tuple_data),
+            ("tuple of lists", tuple_of_lists_data),
+            ("generator", generator_data()),
+            ("custom iterable", custom_data),
+        ]
+
+        for case_name, data in test_cases:
+            actual_batches, actual_padding_masks = list(
+                zip(*batch_manager.to_batches(data))
+            )
+
+            assert all(
+                [
+                    actual == expected
+                    for actual, expected in zip(actual_batches, expected_batches)
+                ]
+            )
+            assert all(
+                [
+                    actual == expected
+                    for actual, expected in zip(
+                        actual_padding_masks, expected_padding_masks
+                    )
+                ]
+            )
