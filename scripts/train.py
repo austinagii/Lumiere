@@ -14,6 +14,7 @@ import wandb
 from lumiere.config.config import Config
 from lumiere.data.dataloader import DataLoaderFactory
 from lumiere.models.transformer import Transformer
+from lumiere.persistence.checkpoint import Checkpoint, CheckpointType
 from lumiere.persistence.checkpoint_manager import CheckpointManager
 from lumiere.persistence.storage_client import (
     LocalStorageClient,
@@ -24,7 +25,6 @@ from lumiere.persistence.tokenizer_manager import TokenizerManager
 from lumiere.preprocessing.batch_manager import BatchManager
 from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.training import schedulers
-from lumiere.training.checkpoint import Checkpoint, CheckpointType
 from lumiere.training.eval import evaluate
 from lumiere.training.train import train
 from lumiere.utils import get_device
