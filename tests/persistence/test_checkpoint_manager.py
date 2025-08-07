@@ -7,7 +7,7 @@ import pytest
 from lumiere.persistence.checkpoint_manager import CheckpointManager
 from lumiere.persistence.errors import PersistenceError
 from lumiere.persistence.storage_client import LocalStorageClient, RemoteStorageClient
-from lumiere.training import Checkpoint, CheckpointType
+from lumiere.persistence.checkpoint import Checkpoint, CheckpointType
 
 
 @pytest.fixture
