@@ -53,3 +53,26 @@ known-local-folder = ["tests"]
 lines-after-imports = 2
 relative-imports-order = "closest-to-furthest"
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+
+[tool.coverage.run]
+source = ["lumiere"]
+omit = ["tests/*", "*/migrations/*", "venv/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+show_missing = true
+skip_covered = false
+
+[tool.coverage.html]
+directory = "htmlcov"

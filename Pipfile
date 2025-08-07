@@ -17,6 +17,7 @@ numpy = "~=2.3"
 jupyter = "*"
 jupyterlab = "*"
 ruff = "~=0.11"
+coverage = "*"
 
 [requires]
 python_version = "3.12"
