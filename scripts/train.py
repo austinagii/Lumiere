@@ -126,7 +126,8 @@ def main(
             )
 
         logger.info(
-            f"Loading tokenizer for run '{run_id}' with config:\n{model_config.tokenizer}"
+            f"Loading tokenizer for run '{run_id}' with config:\n"
+            f"{model_config.tokenizer}"
         )
         tokenizer = tokenizer_manager.load_tokenizer(run_name)
         logger.info("Tokenizer loaded successfully\n")

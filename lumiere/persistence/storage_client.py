@@ -75,7 +75,8 @@ class RemoteStorageClient:
                 return blob_client.exists()
             except Exception as e:
                 raise PersistenceError(
-                    "An error occurred while checking if the artifact exists in blob storage",
+                    "An error occurred while checking if the artifact exists on the "
+                    "remote device",
                     e,
                 )
 
@@ -106,7 +107,8 @@ class RemoteStorageClient:
                 artifact = blob_client.download_blob().readall()
             except Exception as e:
                 raise PersistenceError(
-                    "An error occurred while downloading the artifact from blob storage",
+                    "An error occurred while downloading the artifact from the remote "
+                    "device",
                     e,
                 )
 

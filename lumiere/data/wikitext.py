@@ -45,7 +45,7 @@ class WikiText2DataLoader:
         for sample in dataset:
             text = sample["text"]
 
-            # Check if this is an article title (starts with " = " and ends with " = \n")
+            # Check if this is an article title (starts with " = ")
             if re.match(r"^=[^=]*=$", text.strip()):
                 # If we have accumulated content, yield the previous article
                 if current_article:

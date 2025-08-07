@@ -3,9 +3,9 @@ from typing import Any, Optional
 
 import torch
 
+from lumiere.persistence.checkpoint import Checkpoint, CheckpointType
 from lumiere.persistence.errors import PersistenceError
 from lumiere.persistence.storage_client import LocalStorageClient, RemoteStorageClient
-from lumiere.persistence.checkpoint import Checkpoint, CheckpointType
 
 
 CHECKPOINT_PATH_TEMPLATE = "runs/{run_name}/checkpoints/{checkpoint_name}.pth"
