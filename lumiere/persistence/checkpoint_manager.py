@@ -1,4 +1,3 @@
-import io
 from pathlib import Path
 from typing import Any, Optional
 
@@ -70,10 +69,7 @@ class CheckpointManager:
                 self.local_storage_client.store(checkpoint_path, checkpoint_bytes)
 
         try:
-            loaded_checkpoint = torch.load(
-                io.BytesIO(checkpoint_bytes), map_location=device
-            )
-            loaded_checkpoint = Checkpoint.from_dict(loaded_checkpoint)
+            loaded_checkpoint = Checkpoint.from_bytes(checkpoint_bytes, device)
         except Exception as e:
             raise PersistenceError("An error occurred while loading the checkpoint", e)
 
