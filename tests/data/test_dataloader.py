@@ -5,7 +5,12 @@ from lumiere.data.wikitext import WikiText2DataLoader
 
 
 class TestDataLoaderFactory:
-    def test_creates_wikitext_2_dataloader(self):
+    def test_creates_wikitext_2_dataloader(self, mocker):
+        mocker.patch(
+            "datasets.load_dataset",
+            return_value=(mocker.Mock(), mocker.Mock()),
+        )
+
         dataloader = DataLoaderFactory.get_data_loader("wikitext")
 
         assert isinstance(dataloader, WikiText2DataLoader)
