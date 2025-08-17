@@ -22,7 +22,7 @@ from lumiere.persistence.storage_client import (
     disable_tokenizer_parallelism,
 )
 from lumiere.persistence.tokenizer_manager import TokenizerManager
-from lumiere.preprocessing.batch_manager import BatchManager
+from lumiere.preprocessing.batch_manager import BatchManager, to_batches
 from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.training import schedulers
 from lumiere.training.eval import evaluate
@@ -223,22 +223,27 @@ def main(
         context_size=model_config.model["context_size"] + 1,
         batch_size=model_config.training["batch_size"],
         padding_token=SPECIAL_TOKENS["padding"].token,
+        # TODO: Add sliding window size
     )
 
     # Start the training loop.
     for epoch in itertools.count(current_epoch + 1):
+        batches = to_batches(
+            dataloader.iter_train(),
+            tokenizer,
+            context_batch_manager,
+            device,
+        )
+
         train_state = train(
-            run=wandb_run,
+            wandb_run=wandb_run,
             model=model,
-            tokenizer=tokenizer,
-            data=dataloader.iter_train(),
-            current_epoch=epoch,
-            global_step=global_step,
-            max_epochs=max_epochs,
-            batch_manager=context_batch_manager,
+            batches=batches,
             optimizer=optimizer,
             scheduler=scheduler,
             gradient_clip_norm=model_config.training["gradient_clip_norm"],
+            current_epoch=epoch,
+            global_step=global_step,
             device=device,
         )
         global_step = train_state.global_step

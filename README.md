@@ -1,15 +1,19 @@
-# Lumiére: Transformer-Based Multimodal Learning
+# Lumiére: Text-Based Transformer for Interpretability
 ![Lumiére Logo](assets/logo.png)
 
-Lumiére is a multimodal transformer built for interpretability research and easy experimentation. 
+Lumiére is a text-based transformer built for interpretability research and easy experimentation. 
 
-The project aims to provide a lightweight canvas for exploring and interpreting the internals of transformer models 
-by It provides a beginner friendly, modular implementation of a modern(ish) multimodal transformer architecture
-along with many of the common building blocks. 
+The project aims to provide a lightweight canvas for exploring and interpreting the internals of transformer models. It provides a beginner friendly, modular implementation of a modern transformer architecture along with many of the common building blocks.
+
+**⚠️ Under Active Development**: This project is currently under active development. APIs and interfaces may change.
 
 ## Features
-- **PyTorch-Based**: Built on top of PyTorch for efficient tensor operations and GPU acceleration
+- **Text-Only Focus**: Streamlined for text-based language modeling without multimodal complexity
+- **PyTorch-Based**: Built on top of PyTorch for efficient tensor operations and GPU acceleration  
 - **Modular Architecture**: Each component is implemented as a separate module for clarity and reusability
+- **Interpretability-First**: Returns attention weights and intermediate representations for analysis
+- **Modern Architecture**: Implements RMSNorm, SwiGLU, and other contemporary improvements
+- **Comprehensive Tooling**: Complete training pipeline with checkpointing, evaluation, and monitoring
 
 ## Installation
 
@@ -23,41 +27,46 @@ pipenv install
 
 ## Getting Started
 
-```python
-from prism.tokenizer import Tokenizer
-from prism.model import Model
-from prism.data import to_batches
+### Training a Model
 
-# Initialize a tokenizer and train it on your dataset
-tokenizer = Tokenizer().train(dataset, "text", batch_size=64, vocab_size=16384)
+```bash
+# Train a new model with default settings
+python scripts/train.py
 
-# Create a transformer model
-model = Model(
-    vocab_size=16384, 
-    embedding_size=256, 
-    context_size=512,
-    num_heads=12
-)
+# Resume training from a checkpoint
+python scripts/train.py --run-id <run_id> --checkpoint-name best.pth
 
-# Process data in batches
-for batch in to_batches(tokenizer, dataset, batch_size=64, context_size=512):
-    output = model(batch)
-    # Your training code here
+# Train without logging to wandb
+python scripts/train.py --disable-wandb-logging
 ```
 
-## Model Components
+The model will be trained on WikiText-2 dataset and checkpoints will be saved to `artifacts/checkpoints/`.
 
-- **Embedding**: Token embedding layer
-- **PositionalEncoding**: Adds position information to token embeddings
-- **MultiHeadAttention**: Performs the self-attention mechanism
-- **Tokenizer**: BPE tokenization for text processing
-- **Data Utilities**: Tools for dataset batching and processing
+## Architecture
+
+The transformer implementation includes:
+
+- **Transformer Blocks**: Multi-head attention with RMSNorm and SwiGLU feed-forward networks
+- **Embedding Layer**: Token and positional embeddings
+- **BPE Tokenizer**: Byte-pair encoding for text preprocessing
+- **Attention Visualization**: Full attention weight extraction for interpretability analysis
+
+## Model Configuration
+
+Models are configured via `configs/transformer.yaml`. Key parameters:
+- `embedding_size`: Dimensionality of token embeddings (default: 128)
+- `context_size`: Maximum sequence length (default: 64)  
+- `num_layers`: Number of transformer blocks (default: 4)
+- `num_heads`: Number of attention heads per block (default: 4)
 
 ## Development
 
 ```bash
 # Run tests
 pytest tests/
+
+# Run with coverage
+pytest tests/ --cov=lumiere --cov-report=html
 ```
 
 ## License

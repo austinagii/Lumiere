@@ -7,18 +7,18 @@ import datasets
 class WikiText2DataLoader:
     def __init__(
         self,
-        train_dataset_portion: int = 100,
-        validation_dataset_portion: int = 100,
+        train_dataset_percentage: int = 100,
+        validation_dataset_percentage: int = 100,
     ):
-        self.train_dataset_portion = train_dataset_portion
-        self.validation_dataset_portion = validation_dataset_portion
+        self.train_dataset_percentage = train_dataset_percentage
+        self.validation_dataset_percentage = validation_dataset_percentage
 
         self.train_dataset, self.validation_dataset = datasets.load_dataset(
             "wikitext",
             "wikitext-2-raw-v1",
             split=[
-                f"train[:{self.train_dataset_portion}%]",
-                f"validation[:{self.validation_dataset_portion}%]",
+                f"train[:{self.train_dataset_percentage}%]",
+                f"validation[:{self.validation_dataset_percentage}%]",
             ],
         )
 

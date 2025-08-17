@@ -9,17 +9,16 @@ class DataLoader(Protocol):
     def iter_validation(self) -> Generator[str, None, None]: ...
 
 
-class DataLoaderFactory:
-    @staticmethod
-    def get_data_loader(
-        dataset_name: str,
-        train_dataset_portion: int = 100,
-        validation_dataset_portion: int = 100,
-    ) -> DataLoader:
-        if dataset_name == "wikitext":
-            return WikiText2DataLoader(
-                train_dataset_portion,
-                validation_dataset_portion,
-            )
-        else:
-            raise ValueError(f"Dataset {dataset_name} not supported")
+@staticmethod
+def get_data_loader(
+    dataset_name: str,
+    train_dataset_percentage: int = 100,
+    validation_dataset_percentage: int = 100,
+) -> DataLoader:
+    if dataset_name == "wikitext":
+        return WikiText2DataLoader(
+            train_dataset_percentage,
+            validation_dataset_percentage,
+        )
+    else:
+        raise ValueError(f"Dataset {dataset_name} not supported")

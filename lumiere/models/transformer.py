@@ -117,3 +117,8 @@ class Transformer(nn.Module):
     def context_size(self) -> int:
         """The maximum number of tokens in a sequence."""
         return self._context_size
+
+    @property
+    def vocab_size(self) -> int:
+        """The number of unique tokens in the vocabulary."""
+        return self._vocab_size

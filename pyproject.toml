@@ -1,3 +1,8 @@
+[tool.pytest.ini_options]
+markers = [
+    "integration: Marks tests integration tests",
+]
+
 [tool.ruff]
 line-length = 88
 indent-width = 4

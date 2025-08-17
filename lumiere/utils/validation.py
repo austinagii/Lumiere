@@ -9,7 +9,8 @@ def validate_boolean(value: bool, name: str) -> None:
 
 
 def validate_probability(value: float, name: str) -> None:
-    if not isinstance(value, float) or value < 0.0 or value > 1.0:
+    float_value = float(value)
+    if float_value < 0.0 or float_value > 1.0:
         raise ValueError(f"{name} must be a float between 0.0 and 1.0")
 
 
