@@ -2,31 +2,22 @@ import argparse
 import logging
 import os
 
-import datasets
 import torch
 from azure.storage.blob import BlobServiceClient
 from torch.nn import functional as F
 from tqdm import tqdm
 
-from lumiere.data.wikitext import to_batches
+from lumiere.config.config import Config
+from lumiere.data.dataloader import get_data_loader
+from lumiere.data.preprocessing import to_training_batches
+from lumiere.data.tokenizer import SPECIAL_TOKENS
+from lumiere.models.transformer import Transformer
 from lumiere.persistence.checkpoint_manager import CheckpointManager
-from lumiere.persistence.model_manager import ModelManager
 from lumiere.persistence.storage_client import LocalStorageClient, RemoteStorageClient
 from lumiere.persistence.tokenizer_manager import TokenizerManager
 from lumiere.utils import get_device
+from lumiere.utils.run_finder import RunFinder
 
-
-MODEL_CONFIG_DIR = "configs/models"
-TOKENIZER_CONFIG_DIR = "configs/tokenizers"
-CONFIG_FILE_EXTENSION = "yaml"
-
-MODEL_OUTPUT_DIR = "artifacts/models"
-MODEL_FILE_EXTENSION = "pth"
-TOKENIZER_OUTPUT_DIR = "artifacts/tokenizers"
-
-DATASET_NAME = "wikitext"
-DATASET_CONFIG = "wikitext-2-raw-v1"
-TEXT_COLUMN_NAME = "text"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,43 +33,97 @@ logger = logging.getLogger(__name__)
 
 
 def main(
-    model_name: str,
+    run_id: str,
     checkpoint_name: str = None,
-    model_manager: ModelManager = None,
+    checkpoint_manager: CheckpointManager = None,
+    tokenizer_manager: TokenizerManager = None,
 ) -> None:
     device = get_device()
     print(f"Using device: {device}")
 
-    model, model_config, tokenizer = model_manager.load_model(
-        model_name, checkpoint_name, device
+    # Load the checkpoint
+    if checkpoint_name is None:
+        raise ValueError("checkpoint_name is required")
+
+    if checkpoint_manager is None:
+        raise ValueError("A checkpoint manager is required to load from checkpoint")
+
+    # Try to find the run name for the given run ID locally first
+    run_name = RunFinder(
+        BlobServiceClient.from_connection_string(
+            os.getenv("BLOB_STORAGE_CONNECTION_STRING")
+        )
+    ).find_run(run_id)
+
+    if run_name is None:
+        raise ValueError(f"Run with ID '{run_id}' not found")
+
+    checkpoint = checkpoint_manager.load_checkpoint(run_name, checkpoint_name, device)
+    logger.info("Checkpoint loaded successfully")
+
+    # Load the model config from checkpoint
+    model_config = Config(checkpoint["model_config"])
+    logger.info(f"Loaded model config: {model_config}")
+
+    logger.info(f"Loading tokenizer for run '{run_name}'...")
+    tokenizer = tokenizer_manager.load_tokenizer(run_name)
+    logger.info("Tokenizer loaded successfully")
+
+    # Initialize the model
+    logger.info("Initializing model...")
+    model = Transformer(
+        vocab_size=tokenizer.vocab_size,
+        embedding_size=model_config.model["embedding_size"],
+        context_size=model_config.model["context_size"],
+        num_layers=model_config.model["num_layers"],
+        num_heads=model_config.model["num_heads"],
+        d_key=model_config.model["d_key"],
+        d_value=model_config.model["d_value"],
+        d_ff=model_config.model["d_ff"],
+        dropout=model_config.model["dropout"],
+        padding_id=SPECIAL_TOKENS["padding"].id,
+    ).to(device)
+
+    # Load the model state
+    model.load_state_dict(checkpoint["model_state_dict"])
+    logger.info("Model loaded successfully")
+
+    # Load the dataset
+    logger.info("Loading the dataset...")
+    dataloader = get_data_loader(
+        dataset_name=model_config.dataset["name"],
+        train_dataset_percentage=model_config.dataset["train_portion"],
+        validation_dataset_percentage=model_config.dataset["validation_portion"],
     )
+    logger.info("Dataset loaded successfully")
 
-    dataset = datasets.load_dataset(DATASET_NAME, DATASET_CONFIG, split="test")
-    print(f"Loaded {len(dataset)} samples")
-
-    batches = to_batches(
+    # Use validation dataset for evaluation
+    validation_batches = to_training_batches(
+        corpus=dataloader.iter_validation(),
         tokenizer=tokenizer,
-        dataset=dataset,
-        batch_size=model_config.training["batch_size"],
         context_size=model_config.model["context_size"] + 1,
+        batch_size=model_config.training["batch_size"],
+        pad_id=SPECIAL_TOKENS["padding"].id,
+        sliding_window_size=model_config.dataset["sliding_window_size"],
     )
 
     total_loss = 0.0
     total_perplexity = 0.0
     num_batches = 0
 
-    with tqdm(batches, desc="Test Evaluation:") as pbar:
-        for batch in batches:
+    with tqdm(validation_batches, desc="Validation Evaluation:") as pbar:
+        for batch, padding_mask in pbar:
             num_batches += 1
-            x, y = batch[:, :-1], batch[:, 1:]
-            x = x.to(device)
-            y = y.to(device)
+            x = batch[:, :-1].to(device)
+            y = batch[:, 1:].to(device)
+            padding_mask = padding_mask[:, :-1].to(device)
+
             with torch.no_grad():
-                logits, _ = model(x)
+                logits, _ = model(x, padding_mask)
                 loss = F.cross_entropy(
                     logits.view(-1, logits.size(-1)),
                     y.view(-1),
-                    ignore_index=tokenizer.SPECIAL_TOKENS.padding.id,
+                    ignore_index=SPECIAL_TOKENS["padding"].id,
                 )
                 perplexity = torch.exp(loss)
                 total_loss += loss.item()
@@ -93,7 +138,7 @@ def main(
     avg_batch_loss = total_loss / num_batches
     avg_batch_perplexity = total_perplexity / num_batches
     print(
-        f"Test set evaluation complete. "
+        f"Validation set evaluation complete. "
         f"Avg loss: {avg_batch_loss:.4f} Avg perplexity: {avg_batch_perplexity:.4f}"
     )
 
@@ -102,9 +147,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate a model")
 
     parser.add_argument(
-        "model_name",
-        default="transformer-tiny",
-        help="Name of the model to evaluate",
+        "--run-id",
+        dest="run_id",
+        default=None,
+        help="The run ID to evaluate",
     )
     parser.add_argument(
         "--checkpoint-name",
@@ -114,6 +160,9 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    if args.run_id is None and args.checkpoint_name is None:
+        raise ValueError("Either run_id or checkpoint_name is required")
 
     local_storage_client = LocalStorageClient()
 
@@ -133,6 +182,5 @@ if __name__ == "__main__":
         remote_storage_client=remote_storage_client,
         local_storage_client=local_storage_client,
     )
-    model_manager = ModelManager(checkpoint_manager, tokenizer_manager)
 
-    main(args.model_name, args.checkpoint_name, model_manager)
+    main(args.run_id, args.checkpoint_name, checkpoint_manager, tokenizer_manager)

@@ -5,7 +5,6 @@ import os
 import signal
 import sys
 from datetime import datetime
-from pathlib import Path
 
 import torch
 from azure.storage.blob import BlobServiceClient
@@ -28,6 +27,7 @@ from lumiere.training import schedulers
 from lumiere.training.eval import evaluate
 from lumiere.training.train import train
 from lumiere.utils import get_device
+from lumiere.utils.run_finder import RunFinder
 
 
 CONFIG_PATH = "configs/transformer.yaml"
@@ -53,14 +53,6 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-def _find_run(run_id: str) -> str:
-    """Find the run name for the given run ID."""
-    for run_path in Path("runs").iterdir():
-        if run_path.is_dir() and run_id in run_path.name:
-            return run_path.name
-    return None
-
-
 def main(
     run_id: str = None,
     checkpoint_name: str = None,
@@ -76,11 +68,18 @@ def main(
         run_id = wandb.util.generate_id()
         run_name = f"run_{run_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         logger.info(f"Starting new training run with ID: {run_id}")
+        logger.info(f"Run name: {run_name}")
     else:
-        run_name = _find_run(run_id)
+        run_name = RunFinder(
+            BlobServiceClient.from_connection_string(
+                os.getenv("BLOB_STORAGE_CONNECTION_STRING")
+            )
+        ).find_run(run_id)
         if run_name is None:
             raise ValueError(f"Run with ID '{run_id}' not found")
         logger.info(f"Resuming training run with ID: {run_id}")
+
+        logger.info(f"Run name: {run_name}")
 
     # Select the device to use for training.
     logger.info("Selecting device...")
