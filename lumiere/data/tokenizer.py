@@ -37,22 +37,30 @@ class Tokenizer:
             [token.token for token in SPECIAL_TOKENS.values()]
         )
 
-    def tokenize(self, text: str) -> list[str]:
-        """Returns a list of tokens for the specified text"""
-        return self.tokenizer.encode(text).tokens
+    def tokenize(self, text: str, to_ids: bool = False) -> list[str] | list[int]:
+        """Tokenizes the specified text.
+
+        If `to_ids` is `True`, the tokens are converted to their corresponding IDs.
+        """
+        return (
+            self.tokenizer.encode(text).ids
+            if to_ids
+            else self.tokenizer.encode(text).tokens
+        )
 
     def tokenize_all(
-        self, corpus: Iterable[str], lazy: bool = False
+        self, corpus: Iterable[str], lazy: bool = False, to_ids: bool = False
     ) -> list[list[str]] | Generator[list[str], None, None]:
-        """Tokenizes the specified text
+        """Tokenizes the specified text.
 
         When `lazy` is `True`, a generator of lists of tokens is returned.
-        Otherwise, a list of lists of tokens is returned.
+        Otherwise, a list of lists of tokens is returned. If `to_ids` is `True`,
+        the tokens are converted to their corresponding IDs.
         """
         if lazy:
-            return (self.tokenize(text) for text in corpus)
+            return (self.tokenize(text, to_ids) for text in corpus)
         else:
-            return [self.tokenize(text) for text in corpus]
+            return [self.tokenize(text, to_ids) for text in corpus]
 
     def encode(self, tokens: list[str]) -> list[int]:
         return [self.tokenizer.token_to_id(token) for token in tokens]

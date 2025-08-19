@@ -6,9 +6,9 @@ import torch
 from torch.nn import functional as F
 from tqdm import tqdm
 
+from lumiere.data.tokenizer import SPECIAL_TOKENS
 from lumiere.models.transformer import Transformer
 from lumiere.persistence.storage_client import disable_tokenizer_parallelism
-from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS
 from wandb.sdk.wandb_run import Run
 
 
@@ -24,11 +24,12 @@ class TrainingState:
 
 def train(
     model: Transformer,
-    batches: Iterable[tuple[torch.Tensor, torch.Tensor, torch.Tensor]],
+    data: Iterable[tuple[torch.Tensor, torch.Tensor]],
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler._LRScheduler,
     gradient_clip_norm: float,
     global_step: int,
+    device: torch.device = torch.device("cpu"),
     wandb_run: Run | None = None,
     wandb_log_interval: int = 50,
 ) -> TrainingState:
@@ -36,28 +37,24 @@ def train(
 
     Args:
         model: Transformer model to train.
-        batches: Iterable of training batches, each batch is a tuple of
-            - input_tokens: shape (batch_size, sequence_length)
-            - padding_mask: shape (batch_size, sequence_length)
-            - target_tokens: shape (batch_size, sequence_length)
+        data: Iterable over batches of training data, each batch should be a tuple of
+            - input_tokens: shape (batch_size, context_size)
+            - padding_mask: shape (batch_size, context_size)
         optimizer: PyTorch optimizer for updating model parameters.
         scheduler: Learning rate scheduler that steps after each batch.
         gradient_clip_norm: Maximum norm for gradient clipping.
         global_step: Global step count across all epochs.
-        run: Wandb run for logging. Set to None to disable logging (default: None)
-        log_interval: Log training metrics to wandb every N steps (default: 50).
+        device: Device to run the training on. Defaults to CPU.
+        wandb_run: Wandb run for logging. Set to None to disable logging (default: None)
+        wandb_log_interval: Log training metrics to wandb every N steps (default: 50).
 
     Returns:
         TrainingState: The training state after the epoch.
-
-    Raises:
-        ValueError: If model is not on the specified device or has non-zero gradients.
     """
-    for param in model.parameters():
-        if param.grad is not None:
-            raise ValueError(
-                f"Model parameter {param} has non-zero gradient. This should be zero."
-            )
+    # Prepare the model for training.
+    model.to(device)
+    model.zero_grad()
+    model.train()
 
     total_loss = 0.0
     total_perplexity = 0.0
@@ -65,8 +62,14 @@ def train(
     epoch_steps = 0
 
     start_time = time()
-    with tqdm(batches, desc=f"Step {global_step}", leave=False) as pbar:
-        for x, padding_mask, y in pbar:
+    with tqdm(data, desc=f"Step {global_step}", leave=False) as pbar:
+        for x, padding_mask in pbar:
+            # Shift the input tokens to the left by one position to get the targets.
+            y = x[:, 1:].to(device)
+            # Shift x and its padding mask accordingly.
+            x = x[:, :-1].to(device)
+            padding_mask = padding_mask[:, :-1].to(device)
+
             # Process the batch and calculate the loss.
             logits, _ = model(x, padding_mask)
             batch_loss = F.cross_entropy(

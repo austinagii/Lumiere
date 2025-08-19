@@ -43,9 +43,9 @@ class Embedding(nn.Module):
         padding_id: int | None = None,
     ) -> None:
         super().__init__()
-        validation.validate_positive_integer(vocab_size, "vocab_size")
-        validation.validate_positive_integer(context_size, "context_size")
-        validation.validate_positive_integer(embedding_size, "embedding_size")
+        validation.validate_integer(vocab_size, "vocab_size", min_value=1)
+        validation.validate_integer(context_size, "context_size", min_value=1)
+        validation.validate_integer(embedding_size, "embedding_size", min_value=1)
 
         self._vocab_size = vocab_size
         self._context_size = context_size
@@ -116,7 +116,7 @@ def sinusoidal_positional_encoding(
         ValueError: If the context size or embedding size is not a positive
             integer.
     """
-    validation.validate_positive_integer(context_size, "context_size")
+    validation.validate_integer(context_size, "context_size", min_value=1)
     validation.validate_positive_even_integer(embedding_size, "embedding_size")
 
     positions = torch.arange(context_size, dtype=torch.float32)

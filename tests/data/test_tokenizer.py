@@ -3,7 +3,7 @@ from typing import Generator
 import pytest
 
 from lumiere.data.dataloader import get_data_loader
-from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
+from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
 
 
 @pytest.fixture

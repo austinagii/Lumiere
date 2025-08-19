@@ -4,10 +4,10 @@ from typing import Tuple
 import torch
 
 from lumiere.config.config import TransformerConfig
+from lumiere.data.tokenizer import Tokenizer
 from lumiere.models import Transformer
 from lumiere.persistence.checkpoint_manager import CheckpointManager
 from lumiere.persistence.tokenizer_manager import TokenizerManager
-from lumiere.preprocessing.tokenizer import Tokenizer
 from lumiere.training.checkpoint import CheckpointType
 
 

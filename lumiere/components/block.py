@@ -54,11 +54,11 @@ class TransformerBlock(nn.Module):
     ) -> None:
         super().__init__()
 
-        validation.validate_positive_integer(embedding_size, "embedding_size")
-        validation.validate_positive_integer(num_heads, "num_heads")
-        validation.validate_positive_integer(d_key, "d_key")
-        validation.validate_positive_integer(d_value, "d_value")
-        validation.validate_positive_integer(d_ff, "d_ff")
+        validation.validate_integer(embedding_size, "embedding_size", min_value=1)
+        validation.validate_integer(num_heads, "num_heads", min_value=1)
+        validation.validate_integer(d_key, "d_key", min_value=1)
+        validation.validate_integer(d_value, "d_value", min_value=1)
+        validation.validate_integer(d_ff, "d_ff", min_value=1)
         validation.validate_probability(dropout, "dropout")
 
         self._embedding_size = embedding_size

@@ -12,7 +12,9 @@ from azure.storage.blob import BlobServiceClient
 
 import wandb
 from lumiere.config.config import Config
-from lumiere.data.dataloader import DataLoaderFactory
+from lumiere.data.dataloader import get_data_loader
+from lumiere.data.preprocessing import to_training_batches
+from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.models.transformer import Transformer
 from lumiere.persistence.checkpoint import Checkpoint, CheckpointType
 from lumiere.persistence.checkpoint_manager import CheckpointManager
@@ -22,8 +24,6 @@ from lumiere.persistence.storage_client import (
     disable_tokenizer_parallelism,
 )
 from lumiere.persistence.tokenizer_manager import TokenizerManager
-from lumiere.preprocessing.batch_manager import BatchManager, to_batches
-from lumiere.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.training import schedulers
 from lumiere.training.eval import evaluate
 from lumiere.training.train import train
@@ -110,10 +110,10 @@ def main(
 
     # Load the dataset.
     logger.info("Loading the dataset...")
-    dataloader = DataLoaderFactory.get_data_loader(
+    dataloader = get_data_loader(
         dataset_name=model_config.dataset["name"],
-        train_dataset_portion=model_config.dataset["train_portion"],
-        validation_dataset_portion=model_config.dataset["validation_portion"],
+        train_dataset_percentage=model_config.dataset["train_portion"],
+        validation_dataset_percentage=model_config.dataset["validation_portion"],
     )
     logger.info("Dataset loaded successfully\n")
 
@@ -219,32 +219,27 @@ def main(
             )
             wandb_run.watch(model, log="all")
 
-    context_batch_manager = BatchManager(
-        context_size=model_config.model["context_size"] + 1,
-        batch_size=model_config.training["batch_size"],
-        padding_token=SPECIAL_TOKENS["padding"].token,
-        # TODO: Add sliding window size
-    )
-
     # Start the training loop.
     for epoch in itertools.count(current_epoch + 1):
-        batches = to_batches(
-            dataloader.iter_train(),
-            tokenizer,
-            context_batch_manager,
-            device,
+        train_batches = to_training_batches(
+            corpus=dataloader.iter_train(),
+            tokenizer=tokenizer,
+            context_size=model_config.model["context_size"] + 1,
+            batch_size=model_config.training["batch_size"],
+            pad_id=SPECIAL_TOKENS["padding"].id,
+            sliding_window_size=model_config.dataset["sliding_window_size"],
         )
 
         train_state = train(
-            wandb_run=wandb_run,
             model=model,
-            batches=batches,
+            data=train_batches,
             optimizer=optimizer,
             scheduler=scheduler,
             gradient_clip_norm=model_config.training["gradient_clip_norm"],
-            current_epoch=epoch,
             global_step=global_step,
             device=device,
+            wandb_run=wandb_run,
+            wandb_log_interval=model_config.logging["interval"],
         )
         global_step = train_state.global_step
 
@@ -256,13 +251,22 @@ def main(
             f"Time: {train_state.time_taken:.2f}s, "
         )
 
+        validation_batches = to_training_batches(
+            corpus=dataloader.iter_validation(),
+            tokenizer=tokenizer,
+            context_size=model_config.model["context_size"] + 1,
+            batch_size=model_config.training["batch_size"],
+            pad_id=SPECIAL_TOKENS["padding"].id,
+            sliding_window_size=model_config.dataset["sliding_window_size"],
+        )
+
         eval_state = evaluate(
             model=model,
-            tokenizer=tokenizer,
-            data=dataloader.iter_validation(),
-            batch_manager=context_batch_manager,
+            data=validation_batches,
             device=device,
+            wandb_run=wandb_run,
         )
+
         logger.info(
             f"EPOCH {epoch:04d} - {'VALIDATION':<10}: "
             f"Loss: {eval_state.avg_loss:.4f}, "

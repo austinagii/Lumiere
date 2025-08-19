@@ -38,8 +38,8 @@ class FeedForward(nn.Module):
     ) -> None:
         super().__init__()
 
-        validation.validate_positive_integer(embedding_size, "embedding_size")
-        validation.validate_positive_integer(hidden_size, "hidden_size")
+        validation.validate_integer(embedding_size, "embedding_size", min_value=1)
+        validation.validate_integer(hidden_size, "hidden_size", min_value=1)
         validation.validate_probability(dropout, "dropout")
 
         self._embedding_size = embedding_size

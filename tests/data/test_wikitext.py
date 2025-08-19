@@ -1,4 +1,4 @@
-from lumiere.data.wikitext import WikiText2DataLoader
+from lumiere.data.dataloader import WikiText2DataLoader
 
 
 data = [

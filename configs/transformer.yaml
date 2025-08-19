@@ -17,6 +17,7 @@ dataset:
   subset: "wikitext-2-raw-v1"
   train_portion: 100
   validation_portion: 100
+  sliding_window_size: 8
 
 training:
   batch_size: 32

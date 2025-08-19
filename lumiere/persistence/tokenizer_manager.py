@@ -1,8 +1,8 @@
 from pathlib import Path
 
+from lumiere.data.tokenizer import Tokenizer
 from lumiere.persistence.errors import PersistenceError
 from lumiere.persistence.storage_client import LocalStorageClient, RemoteStorageClient
-from lumiere.preprocessing.tokenizer import Tokenizer
 
 
 TOKENIZER_PATH_TEMPLATE = "runs/{run_name}/tokenizer.json"
