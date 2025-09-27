@@ -1,0 +1,12 @@
+runs:
+  checkpoints:
+    sources:
+      - filesystem
+      - azure-blob
+    destinations:
+      - filesystem
+      - azure-blob
+storage:
+  clients:
+    filesystem:
+      basedir: dsruns

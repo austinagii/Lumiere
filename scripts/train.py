@@ -4,10 +4,13 @@ import logging
 import os
 import signal
 import sys
-from datetime import datetime
 
+import deepscale as ds
 import torch
-from azure.storage.blob import BlobServiceClient
+from deepscale import Checkpoint, CheckpointType
+from deepscale.storage.clients.azure_blob_storage_client import (
+    disable_tokenizer_parallelism,
+)
 
 import wandb
 from lumiere.config.config import Config
@@ -15,19 +18,10 @@ from lumiere.data.dataloader import get_data_loader
 from lumiere.data.preprocessing import to_training_batches
 from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.models.transformer import Transformer
-from lumiere.persistence.checkpoint import Checkpoint, CheckpointType
-from lumiere.persistence.checkpoint_manager import CheckpointManager
-from lumiere.persistence.storage_client import (
-    LocalStorageClient,
-    RemoteStorageClient,
-    disable_tokenizer_parallelism,
-)
-from lumiere.persistence.tokenizer_manager import TokenizerManager
 from lumiere.training import schedulers
 from lumiere.training.eval import evaluate
 from lumiere.training.train import train
 from lumiere.utils import get_device
-from lumiere.utils.run_finder import RunFinder
 
 
 CONFIG_PATH = "configs/transformer.yaml"
@@ -55,57 +49,29 @@ def signal_handler(sig, frame):
 
 def main(
     run_id: str = None,
-    checkpoint_name: str = None,
-    checkpoint_manager: CheckpointManager = None,
-    tokenizer_manager: TokenizerManager = None,
+    checkpoint_tag: str = None,
     log_wandb: bool = True,
 ):
     # Handle Ctrl+C gracefully.
     signal.signal(signal.SIGINT, signal_handler)
-
-    # Determine the run ID and name.
-    if run_id is None:
-        run_id = wandb.util.generate_id()
-        run_name = f"run_{run_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        logger.info(f"Starting new training run with ID: {run_id}")
-        logger.info(f"Run name: {run_name}")
-    else:
-        run_name = RunFinder(
-            BlobServiceClient.from_connection_string(
-                os.getenv("BLOB_STORAGE_CONNECTION_STRING")
-            )
-        ).find_run(run_id)
-        if run_name is None:
-            raise ValueError(f"Run with ID '{run_id}' not found")
-        logger.info(f"Resuming training run with ID: {run_id}")
-
-        logger.info(f"Run name: {run_name}")
 
     # Select the device to use for training.
     logger.info("Selecting device...")
     device = get_device()
     logger.info(f"Using device: {device} for this training run.\n")
 
-    # Load the checkpoint if one is specified.
-    checkpoint = None
-    if checkpoint_name is not None:
-        if checkpoint_manager is None:
-            raise ValueError("A checkpoint manager is required to load from checkpoint")
-
-        logger.info(f"Loading checkpoint '{checkpoint_name}' for run '{run_id}'...")
-        checkpoint = checkpoint_manager.load_checkpoint(
-            run_name, checkpoint_name, device
-        )
-        logger.info("Checkpoint loaded successfully\n")
-
-    # Load the model config.
-    logger.info("Loading model training config...")
-    if checkpoint is not None:
-        model_config = Config(checkpoint["model_config"])
-        logger.info(f"Resuming training run with config:\n{model_config}")
-    else:
+    # Determine the run ID and name.
+    if run_id is None:
         model_config = Config.from_file(CONFIG_PATH)
-        logger.info(f"Starting new training run with config:\n{model_config}")
+        run_id, run_manager = ds.init_run(model_config.config)
+        logger.info(f"Starting new training run with ID: {run_id}")
+        checkpoint = None
+    else:
+        run_config, checkpoint, run_manager = ds.resume_run(
+            run_id, checkpoint_tag, device=device
+        )
+        model_config = Config(run_config)
+        logger.info(f"Resuming training run with ID: {run_id}")
 
     # Load the dataset.
     logger.info("Loading the dataset...")
@@ -118,27 +84,25 @@ def main(
 
     # Load the tokenizer.
     logger.info("Initializing the tokenizer...")
-    if checkpoint is not None:
-        if tokenizer_manager is None:
-            raise ValueError(
-                "A tokenizer manager is required to load tokenizer from checkpoint"
-            )
+    if checkpoint is None:
+        logger.info(f"Training new tokenizer for run '{run_id}'...")
+        tokenizer = Tokenizer(**model_config.tokenizer).train(dataloader.iter_train())
+        logger.info("Tokenizer trained successfully\n")
 
+        logger.info("Saving tokenizer")
+        run_manager.save_artifact("tokenizer", bytes(tokenizer))
+    else:
         logger.info(
             f"Loading tokenizer for run '{run_id}' with config:\n"
             f"{model_config.tokenizer}"
         )
-        tokenizer = tokenizer_manager.load_tokenizer(run_name)
-        logger.info("Tokenizer loaded successfully\n")
-    else:
-        logger.info(f"Training tokenizer for run '{run_id}'...")
-        tokenizer = Tokenizer(**model_config.tokenizer).train(dataloader.iter_train())
-        logger.info("Tokenizer trained successfully\n")
 
-        if tokenizer_manager is not None:
-            logger.info("Saving tokenizer")
-            tokenizer_manager.save_tokenizer(run_name, tokenizer)
-            logger.info("Tokenizer saved successfully\n")
+        tokenizer_bytes = run_manager.load_artifact("tokenizer")
+        if tokenizer_bytes is None:
+            raise ValueError("Could not find tokenizer artifact.")
+
+        tokenizer = Tokenizer.from_bytes(tokenizer_bytes, **model_config.tokenizer)
+        logger.info("Tokenizer loaded successfully\n")
 
     logger.info("Initializing model...")
     model = Transformer(
@@ -187,7 +151,7 @@ def main(
     )
 
     logger.info(
-        f"Starting training run '{run_name}' with model config:\n{model_config}"
+        f"Starting training run '{run_id}' with model config:\n{model_config}"
         f"Total params: {sum(p.numel() for p in model.parameters()):,}, "
         f"Trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
     )
@@ -212,7 +176,7 @@ def main(
                 id=run_id,
                 entity=wandb_entity,
                 project=wandb_project,
-                name=run_name,
+                name=f"lumiere-run-{run_id}",
                 config=model_config.config,
                 resume=True,
             )
@@ -310,21 +274,17 @@ def main(
             time_taken=total_time_taken,
         )
 
-        is_checkpoint_interval = (
+        should_save_checkpoint = (
             epoch % model_config.training["checkpoint_interval"] == 0
         )
-        if is_checkpoint_interval and checkpoint_manager is not None:
+        if should_save_checkpoint:
             logger.info("Saving epoch checkpoint...")
-            checkpoint_manager.save_checkpoint(
-                run_name, CheckpointType.EPOCH, checkpoint
-            )
+            run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint)
             logger.info("Checkpoint saved successfully")
 
-        if eval_state.avg_loss == best_loss and checkpoint_manager is not None:
+        if eval_state.avg_loss == best_loss:
             logger.info("Saving best checkpoint...")
-            checkpoint_manager.save_checkpoint(
-                run_name, CheckpointType.BEST, checkpoint
-            )
+            run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
             logger.info("Checkpoint saved successfully")
 
         # Determine if the training should be stopped.
@@ -343,16 +303,15 @@ def main(
         f"Best validation perplexity: {best_perplexity:.4f}"
     )
 
-    if checkpoint_manager is not None:
-        checkpoint_manager.save_checkpoint(run_name, CheckpointType.FINAL, checkpoint)
+    run_manager.save_checkpoint(CheckpointType.FINAL, checkpoint)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a model")
 
     parser.add_argument(
-        "--checkpoint-name",
-        dest="checkpoint_name",
+        "--checkpoint-tag",
+        dest="checkpoint_tag",
         default=None,
         help="The checkpoint to resume training from",
     )
@@ -361,27 +320,6 @@ if __name__ == "__main__":
         dest="run_id",
         default=None,
         help="The run ID to use (required when loading from checkpoint)",
-    )
-    parser.add_argument(
-        "--disable-local-artifacts",
-        action="store_false",
-        dest="save_local_artifacts",
-        default=True,
-        help="Do not save artifacts to local storage",
-    )
-    parser.add_argument(
-        "--disable-remote-artifacts",
-        action="store_false",
-        dest="save_remote_artifacts",
-        default=True,
-        help="Do not save artifacts to remote storage",
-    )
-    parser.add_argument(
-        "--disable-artifacts",
-        action="store_false",
-        dest="save_artifacts",
-        default=True,
-        help="Do not save artifacts to local or remote storage",
     )
     parser.add_argument(
         "--disable-wandb-logging",
@@ -393,45 +331,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if not args.save_artifacts:
-        args.save_local_artifacts = False
-        args.save_remote_artifacts = False
-
-    local_storage_client = None
-    if args.save_local_artifacts:
-        local_storage_client = LocalStorageClient()
-
-    remote_storage_client = None
-    if args.save_remote_artifacts:
-        remote_storage_client = RemoteStorageClient(
-            BlobServiceClient.from_connection_string(
-                os.getenv("BLOB_STORAGE_CONNECTION_STRING")
-            ),
-            os.getenv("BLOB_STORAGE_CONTAINER_NAME"),
-        )
-
-    # Investigate using factory pattern.
-    checkpoint_manager = None
-    if remote_storage_client is not None or local_storage_client is not None:
-        checkpoint_manager = CheckpointManager(
-            remote_storage_client=remote_storage_client,
-            local_storage_client=local_storage_client,
-        )
-
-    tokenizer_manager = None
-    if remote_storage_client is not None or local_storage_client is not None:
-        tokenizer_manager = TokenizerManager(
-            remote_storage_client=remote_storage_client,
-            local_storage_client=local_storage_client,
-        )
-
-    if args.checkpoint_name is not None and args.run_id is None:
+    if args.checkpoint_tag is not None and args.run_id is None:
         raise ValueError("run_id is required when loading from checkpoint")
 
     main(
         run_id=args.run_id,
-        checkpoint_name=args.checkpoint_name,
-        checkpoint_manager=checkpoint_manager,
-        tokenizer_manager=tokenizer_manager,
+        checkpoint_tag=args.checkpoint_tag,
         log_wandb=args.log_wandb,
     )

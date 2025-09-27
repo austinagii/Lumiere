@@ -96,8 +96,11 @@ class Tokenizer:
     def vocab_size(self) -> int:
         return self.tokenizer.get_vocab_size()
 
-    @staticmethod
-    def from_bytes(bytes: bytes):
-        tokenizer = Tokenizer()
+    @classmethod
+    def from_bytes(cls, bytes: bytes, *args, **kwargs):
+        tokenizer = Tokenizer(*args, **kwargs)
         tokenizer.tokenizer = tokenizers.Tokenizer.from_str(bytes.decode("utf-8"))
         return tokenizer
+
+    def __bytes__(self):
+        return bytes(self.tokenizer.to_str(), "utf-8")

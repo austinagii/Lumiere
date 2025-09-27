@@ -5,10 +5,10 @@ from typing import Iterable
 import torch
 from torch.nn import functional as F
 from tqdm import tqdm
+from deepscale.storage.clients.azure_blob_storage_client import disable_tokenizer_parallelism
 
 from lumiere.data.tokenizer import SPECIAL_TOKENS
 from lumiere.models.transformer import Transformer
-from lumiere.persistence.storage_client import disable_tokenizer_parallelism
 from wandb.sdk.wandb_run import Run
 
 
