@@ -33,6 +33,7 @@ show_usage() {
     echo "Commands:"
     echo "  train       Train a machine learning model."
     echo "  eval        Evaluate a language model."
+    echo "  info        Generate a model card."
     echo "  inference   Run inference with a language model."
     echo "  help        Show this help message."
     echo
@@ -74,9 +75,9 @@ main() {
     shift # Remove command from arguments, leaving all other args in "$@"
 
     # Validate command
-    if [[ "$command" != "train" && "$command" != "eval" && "$command" != "inference" ]]; then
+    if [[ "$command" != "train" && "$command" != "eval" && "$command" != "info" ]]; then
         log_error "Unrecognized command: '$command'"
-        log_error "Supported commands are: train, eval, inference, help"
+        log_error "Supported commands are: train, eval, info, help"
         echo
         show_usage
         exit 1
@@ -97,10 +98,10 @@ main() {
         run_with_pipenv "${CMD_BASE_DIR}/scripts/eval.py" "$@"
         log_info "Evaluation completed"
         ;;
-    "inference")
-        log_info "Starting inference..."
-        run_with_pipenv "${CMD_BASE_DIR}/scripts/inference.py" "$@"
-        log_info "Inference completed"
+    "info")
+        log_info "Starting info..."
+        run_with_pipenv "${CMD_BASE_DIR}/scripts/info.py" "$@"
+        log_info "Info completed"
         ;;
     esac
 }

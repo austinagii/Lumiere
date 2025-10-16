@@ -13,13 +13,13 @@
 ### Core Architecture
 
 - **Base Architecture:** Transformer decoder with modern improvements
-- **Layers:** 4 transformer blocks
-- **Attention Heads:** 4 per layer
-- **Embedding Dimension:** 128
-- **Context Length:** 64 tokens
-- **Feed-forward Dimension:** 256
-- **Key/Value Dimensions:** 32 each
-- **Dropout:** 0.1
+- **Layers:** {num_layers} transformer blocks
+- **Attention Heads:** {num_attention_heads} per layer
+- **Embedding Dimension:** {embedding_size}
+- **Context Length:** {context_size} tokens
+- **Feed-forward Dimension:** {d_ff}
+- **Key/Value Dimensions:** {d_key} each
+- **Dropout:** {dropout}
 
 ### Modern Improvements
 
@@ -29,8 +29,8 @@
 
 ### Parameter Count
 
-- **Vocabulary Size:** 4096 tokens
-- **Total Parameters:** Approximately 1180800 parameters
+- **Vocabulary Size:** {vocab_size} tokens
+- **Total Parameters:** Approximately {num_params} parameters
 
 ## Training Details
 
@@ -41,14 +41,14 @@
 ### Tokenization
 
 - **Tokenizer Type:** Byte-Pair Encoding (BPE)
-- **Vocabulary Size:** 4096 tokens
+- **Vocabulary Size:** {vocab_size} tokens
 
 ## Performance Metrics
 
 ### Validation Results
 
-- **Test Loss:** 4.280
-- **Test Perplexity:** 75.586
+- **Test Loss:** {loss:.3f}
+- **Test Perplexity:** {perplexity:.3f}
 
 ## Model Capabilities
 
@@ -62,7 +62,7 @@
 ### Limitations
 
 - **Small Scale:** Limited capacity due to small parameter count
-- **Context Length:** Short 64-token context window
+- **Context Length:** Short {context_size}-token context window
 - **Single Language:** Trained only on English text
 - **Domain:** Limited to WikiText-2 domain knowledge
 
@@ -81,7 +81,7 @@ MIT License - See project LICENSE file for details.
 
 ## Model Card Authors
 
-This model card was generated on Oct 14, 2025 using model checkpoint 'best' from run 'K7XftOhD'.
+This model card was generated on {generated_date} using model checkpoint '{checkpoint_tag}' from run '{run_id}'.
 
 ---
 
