@@ -7,7 +7,7 @@ class TestDataLoaderFactory:
     def test_creates_wikitext_2_dataloader(self, mocker):
         mocker.patch(
             "datasets.load_dataset",
-            return_value=(mocker.Mock(), mocker.Mock()),
+            return_value=(mocker.Mock(), mocker.Mock(), mocker.Mock()),
         )
 
         dataloader = get_data_loader("wikitext")
@@ -68,7 +68,7 @@ data = [
 
 class TestWikitextDataLoader:
     def test_iterates_correctly_over_articles(self, mocker):
-        mocker.patch("datasets.load_dataset", return_value=(data, data))
+        mocker.patch("datasets.load_dataset", return_value=(data, data, data))
 
         dataloader = WikiText2DataLoader()
 

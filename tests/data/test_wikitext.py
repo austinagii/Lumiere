@@ -34,7 +34,7 @@ data = [
 
 
 def test_iterates_correctly_over_articles(mocker):
-    mocker.patch("datasets.load_dataset", return_value=(data, data))
+    mocker.patch("datasets.load_dataset", return_value=(data, data, data))
 
     dataloader = WikiText2DataLoader()
 
