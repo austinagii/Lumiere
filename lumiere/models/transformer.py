@@ -41,6 +41,7 @@ class Transformer(nn.Module):
               size.
     """
 
+    # TODO: Create transformer configuration object to avoid passing all these args.
     def __init__(
         self,
         vocab_size: int,
@@ -53,6 +54,8 @@ class Transformer(nn.Module):
         d_ff: int,
         dropout: float = 0.1,
         padding_id: int | None = None,
+        pre_norm: bool = True,
+        post_norm: bool = False,
     ):
         super().__init__()
 
@@ -65,6 +68,8 @@ class Transformer(nn.Module):
         self._d_value = d_value
         self._d_ff = d_ff
         self._dropout = dropout
+        self._pre_norm = pre_norm
+        self._post_norm = post_norm
 
         self.embedding = Embedding(
             self._vocab_size,
@@ -81,6 +86,8 @@ class Transformer(nn.Module):
                     d_value=self._d_value,
                     d_ff=self._d_ff,
                     dropout=self._dropout,
+                    pre_norm=self._pre_norm,
+                    post_norm=self._post_norm,
                 )
                 for _ in range(self._num_layers)
             ]

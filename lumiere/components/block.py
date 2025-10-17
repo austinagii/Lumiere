@@ -51,6 +51,8 @@ class TransformerBlock(nn.Module):
         d_value: int,
         d_ff: int,
         dropout: float = 0.1,
+        pre_norm: bool = True,
+        post_norm: bool = False,
     ) -> None:
         super().__init__()
 
@@ -60,6 +62,8 @@ class TransformerBlock(nn.Module):
         validation.validate_integer(d_value, "d_value", min_value=1)
         validation.validate_integer(d_ff, "d_ff", min_value=1)
         validation.validate_probability(dropout, "dropout")
+        validation.validate_boolean(pre_norm, "pre_norm")
+        validation.validate_boolean(post_norm, "post_norm")
 
         self._embedding_size = embedding_size
         self._num_heads = num_heads
@@ -67,6 +71,11 @@ class TransformerBlock(nn.Module):
         self._d_value = d_value
         self._d_ff = d_ff
         self._dropout = dropout
+        self._pre_norm = pre_norm
+        self._post_norm = post_norm
+
+        if self._pre_norm:
+            self.normalization_1 = nn.RMSNorm(self._embedding_size)
 
         self.attention = MultiHeadAttention(
             num_heads=self._num_heads,
@@ -74,12 +83,17 @@ class TransformerBlock(nn.Module):
             d_key=self._d_key,
             d_value=self._d_value,
         )
-        self.normalization_1 = nn.RMSNorm(self._embedding_size)
+
+        if self._pre_norm or self._post_norm:
+            self.normalization_2 = nn.RMSNorm(self._embedding_size)
+
         self.feedforward = FeedForward(
             self._embedding_size, self._d_ff, dropout=self._dropout
         )
         self.dropout = nn.Dropout(self._dropout)
-        self.normalization_2 = nn.RMSNorm(self._embedding_size)
+
+        if self._post_norm:
+            self.normalization_3 = nn.RMSNorm(self._embedding_size)
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
@@ -95,15 +109,22 @@ class TransformerBlock(nn.Module):
             )
 
         # Compute the attention values and weights.
-        norm_x1 = self.normalization_1(x)
+        if hasattr(self, "normalization_1"):
+            x = self.normalization_1(x)
+
         attention_values, attention_weights = self.attention(
-            norm_x1, padding_mask=padding_mask
+            x, padding_mask=padding_mask
         )
         x = x + self.dropout(attention_values)
 
         # Compute the feed-forward output.
-        norm_x2 = self.normalization_2(x)
-        output = self.feedforward(norm_x2)
-        x = x + output
+        if hasattr(self, "normalization_2"):
+            x = self.normalization_2(x)
+
+        feedforward_out = self.feedforward(x)
+        x = x + self.dropout(feedforward_out)
+
+        if hasattr(self, "normalization_3"):
+            x = self.normalization_3(x)
 
         return x, attention_weights

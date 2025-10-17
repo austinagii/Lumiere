@@ -116,6 +116,8 @@ def main(
         d_ff=model_config.model["d_ff"],
         dropout=model_config.model["dropout"],
         padding_id=SPECIAL_TOKENS["padding"].id,
+        pre_norm=model_config.model["pre_norm"],
+        post_norm=model_config.model["post_norm"],
     ).to(device)
 
     optimizer = torch.optim.AdamW(
