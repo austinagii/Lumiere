@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-torch = "~=2.9"
+torch = "~=2.8"
 datasets = "~=3.5"
 pytest = "~=8.3"
 tokenizers = "~=0.21"
