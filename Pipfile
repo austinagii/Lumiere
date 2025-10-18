@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-torch = "==2.6.0"
+torch = "~=2.9"
 datasets = "~=3.5"
 pytest = "~=8.3"
 tokenizers = "~=0.21"
@@ -16,9 +16,8 @@ numpy = "~=2.3"
 [dev-packages]
 jupyter = "*"
 jupyterlab = "*"
-ruff = "~=0.11"
+ruff = "*"
 coverage = "*"
 
 [requires]
 python_version = "3.12"
-python_full_version = "3.12.4"
