@@ -18,6 +18,7 @@ jupyter = "*"
 jupyterlab = "*"
 ruff = "*"
 coverage = "*"
+pre-commit = "*"
 
 [requires]
 python_version = "3.12"
