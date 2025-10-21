@@ -9,4 +9,4 @@ runs:
 storage:
   clients:
     filesystem:
-      basedir: dsruns
+      basedir: ./runs

@@ -1,0 +1,37 @@
+model:
+  embedding_size: 128
+  context_size: 64
+  num_layers: 4
+  num_heads: 4
+  d_key: 32
+  d_value: 32
+  d_ff: 256
+  dropout: 0.1
+  pre_norm: false
+  post_norm: true
+
+tokenizer:
+  vocab_size: 4096
+  min_frequency: 2
+
+dataset:
+  name: "wikitext"
+  subset: "wikitext-2-raw-v1"
+  train_portion: 100
+  validation_portion: 100
+  sliding_window_size: 8
+
+training:
+  batch_size: 32
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  gradient_clip_norm: 1.0
+  max_epochs: 250
+  epoch_steps: 2000
+  warmup_steps: 500
+  patience: 5
+  stopping_threshold: 0.0001
+  checkpoint_interval: 3
+
+logging:
+  interval: 50

@@ -54,14 +54,14 @@ convention = "google"
 combine-as-imports = true
 force-wrap-aliases = true
 known-first-party = ["lumiere"]
-known-local-folder = ["tests"]
+known-local-folder = ["lumiere.research.tests"]
 lines-after-imports = 2
 relative-imports-order = "closest-to-furthest"
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 
 [tool.coverage.run]
 source = ["lumiere"]
-omit = ["tests/*", "*/migrations/*", "venv/*"]
+omit = ["lumiere/research/tests/*", "*/migrations/*", "venv/*"]
 
 [tool.coverage.report]
 exclude_lines = [
