@@ -4,25 +4,25 @@ import torch
 from lumiere.research.src.components import TransformerBlock
 
 
-def _is_rms_normalized(t):
-    rms = torch.sqrt(torch.mean(t**2, dim=-1, keepdim=True))
+def _is_rms_normalized(tensor):
+    rms = torch.sqrt(torch.mean(tensor**2, dim=-1, keepdim=True))
     return torch.allclose(rms, torch.ones_like(rms))
 
 
-def _capture_input(captured_dict, key):
-    """Returns a hook that capture the input tensor into a dict."""
+def _capture_input(storage, key):
+    """Returns a hook that captures the input tensor into a dict."""
 
-    def hook(module, args):
-        captured_dict[key] = args[0]
+    def hook(module, input, output):
+        storage[key] = input[0]
 
     return hook
 
 
-def _capture_output(captured_dict, key):
-    """Returns a hook that capture the output tensor into a dict."""
+def _capture_output(storage, key):
+    """Returns a hook that captures the output tensor into a dict."""
 
-    def hook(module, args, output):
-        captured_dict[key] = output[0]
+    def hook(module, input, output):
+        storage[key] = output[0]
 
     return hook
 
@@ -86,23 +86,28 @@ class TestTransformerBlock:
         self, transformer_block_factory, pre_norm, post_norm, expected_normalized
     ):
         block = transformer_block_factory(pre_norm=pre_norm, post_norm=post_norm)
-        captured = {}
+        intermediate_tensors = {}
 
         # Register hooks to capture tensors at key points
-        block.register_forward_pre_hook(_capture_input(captured, "block_input"))
-        block.attention.register_forward_pre_hook(
-            _capture_input(captured, "attention_input")
+        block.register_forward_hook(
+            _capture_input(intermediate_tensors, "block_input")
         )
-        block.feedforward.register_forward_pre_hook(
-            _capture_input(captured, "feedforward_input")
+        block.attention.register_forward_hook(
+            _capture_input(intermediate_tensors, "attention_input")
         )
-        block.register_forward_hook(_capture_output(captured, "block_output"))
+        block.feedforward.register_forward_hook(
+            _capture_input(intermediate_tensors, "feedforward_input")
+        )
+        block.register_forward_hook(
+            _capture_output(intermediate_tensors, "block_output")
+        )
 
-        block(torch.rand(3, 8, 16))
+        batch_size, seq_length, embedding_size = 3, 8, 16
+        block(torch.rand(batch_size, seq_length, embedding_size))
 
         # Assert normalization state at each point.
         for location, should_be_normalized in expected_normalized.items():
-            is_normalized = _is_rms_normalized(captured[location])
+            is_normalized = _is_rms_normalized(intermediate_tensors[location])
             if should_be_normalized:
                 assert is_normalized, f"{location} should be RMS normalized."
             else:
