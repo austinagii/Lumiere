@@ -47,8 +47,8 @@
 
 ### Validation Results
 
-- **Test Loss:** 4.280
-- **Test Perplexity:** 75.586
+- **Test Loss:** 4.235
+- **Test Perplexity:** 71.806
 
 ## Model Capabilities
 
@@ -81,7 +81,7 @@ MIT License - See project LICENSE file for details.
 
 ## Model Card Authors
 
-This model card was generated on Oct 14, 2025 using model checkpoint 'best' from run 'K7XftOhD'.
+This model card was generated on Oct 17, 2025 using model checkpoint 'best' from run 'GyefN9L6'.
 
 ---
 

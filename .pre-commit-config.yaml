@@ -1,0 +1,47 @@
+repos:
+  # Run tests with coverage
+  - repo: local
+    hooks:
+      - id: pytest-coverage
+        name: Run tests with coverage
+        entry: bash -c 'pipenv run coverage run -m pytest -v'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+
+      - id: coverage-check
+        name: Check individual file coverage (minimum 60%)
+        entry: bash -c
+        args:
+          - |
+            coverage_output=$(pipenv run coverage report --format=text)
+            echo "$coverage_output"
+            failed_files=""
+            while IFS= read -r line; do
+              if [[ $line == *"Name"* ]] || [[ $line == *"----"* ]] || [[ $line == *"TOTAL"* ]]; then
+                continue
+              fi
+              if [[ $line =~ ^[^[:space:]]+[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+([0-9]+)% ]]; then
+                coverage_percent=${BASH_REMATCH[1]}
+                filename=$(echo $line | awk '{print $1}')
+                if [ "$coverage_percent" -lt 60 ]; then
+                  failed_files="$failed_files\n  $filename: ${coverage_percent}%"
+                fi
+              fi
+            done <<< "$coverage_output"
+            if [ -n "$failed_files" ]; then
+              echo ""
+              echo -e "❌ Files with coverage below 60%:$failed_files"
+              echo "Please add tests to increase coverage before committing."
+              echo ""
+              exit 1
+            else
+              echo "✅ All files meet 60% coverage requirement! Proceeding with commit."
+              echo ""
+              exit 0
+            fi
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
