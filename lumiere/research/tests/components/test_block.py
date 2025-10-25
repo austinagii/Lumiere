@@ -151,7 +151,7 @@ class TestTransformerBlock:
 
         assert validation_fn(intermediate_tensors["attention"])
 
-    def test_block_is_rms_normalized_by_default(self):
+    def test_rms_normalization_is_used_by_default(self):
         block = TransformerBlock(
             embedding_size=16,
             num_heads=2,
@@ -175,8 +175,30 @@ class TestTransformerBlock:
 
         assert all([_is_rms_normalized(t) for t in intermediate_tensors.values()])
 
-    def test_error_is_raised_if_norm_scheme_is_invalid(self):
-        pass
+    @pytest.mark.parametrize("norm_scheme", ["test", "", "   "])
+    def test_error_is_raised_if_norm_scheme_is_invalid(
+        self, transformer_block_factory, norm_scheme
+    ):
+        with pytest.raises(ValueError):
+            TransformerBlock(
+                embedding_size=2,
+                num_heads=1,
+                d_key=4,
+                d_value=4,
+                d_ff=8,
+                norm_scheme=norm_scheme,
+            )
 
-    def test_error_is_raised_if_norm_scheme_is_not_string(self):
-        pass
+    @pytest.mark.parametrize(
+        "norm_scheme", [1, 1.0, set("rms"), {"scheme": "rms"}, True, False, ["rms"]]
+    )
+    def test_error_is_raised_if_norm_scheme_is_not_string(self, norm_scheme):
+        with pytest.raises(TypeError):
+            TransformerBlock(
+                embedding_size=2,
+                num_heads=1,
+                d_key=4,
+                d_value=4,
+                d_ff=8,
+                norm_scheme=norm_scheme,
+            )

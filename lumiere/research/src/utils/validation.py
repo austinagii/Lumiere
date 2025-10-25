@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from typing import Optional
+from typing import Any, Optional
 
 
 def validate_integer(
@@ -48,3 +48,17 @@ def validate_iterable(corpus: Iterable, name: str = "corpus") -> None:
 
     if not isinstance(corpus, Iterable):
         raise TypeError(f"Expected {name} to be an iterable, but got {type(corpus)}")
+
+
+def validate_string(value: Any, name: str) -> None:
+    """Validate that the specified value is a string.
+
+    Args:
+        value: The value to be validated.
+        name: The value's name.
+
+    Raises:
+        TypeError: If the specified value is not a string.
+    """
+    if not isinstance(value, str):
+        raise TypeError(f"Expected '{name}' to be a string, but got {type(value)}.")
