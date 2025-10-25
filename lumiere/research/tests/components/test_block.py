@@ -45,7 +45,7 @@ def transformer_block_factory():
     """Create a transformer block with preconfigured sizes."""
 
     def factory(
-        pre_norm: bool, post_norm: bool, norm_scheme: str = "rms"
+        pre_norm: bool, post_norm: bool, norm_type: str = "rms"
     ) -> TransformerBlock:
         return TransformerBlock(
             embedding_size=16,
@@ -55,7 +55,7 @@ def transformer_block_factory():
             d_ff=16,
             pre_norm=pre_norm,
             post_norm=post_norm,
-            norm_scheme=norm_scheme,
+            norm_type=norm_type,
         )
 
     return factory
@@ -131,14 +131,14 @@ class TestTransformerBlock:
     # =======##=== TEST NORMALIZATION ==============
     # ==============================================
     @pytest.mark.parametrize(
-        "norm_scheme, validation_fn",
+        "norm_type, validation_fn",
         [("rms", _is_rms_normalized), ("layer", _is_layer_normalized)],
     )
-    def test_specified_normalization_scheme_is_applied(
-        self, transformer_block_factory, norm_scheme, validation_fn
+    def test_specified_normalization_type_is_applied(
+        self, transformer_block_factory, norm_type, validation_fn
     ):
         block = transformer_block_factory(
-            pre_norm=True, post_norm=False, norm_scheme=norm_scheme
+            pre_norm=True, post_norm=False, norm_type=norm_type
         )
         intermediate_tensors = {}
 
@@ -175,9 +175,9 @@ class TestTransformerBlock:
 
         assert all([_is_rms_normalized(t) for t in intermediate_tensors.values()])
 
-    @pytest.mark.parametrize("norm_scheme", ["test", "", "   "])
-    def test_error_is_raised_if_norm_scheme_is_invalid(
-        self, transformer_block_factory, norm_scheme
+    @pytest.mark.parametrize("norm_type", ["test", "", "   "])
+    def test_error_is_raised_if_norm_type_is_invalid(
+        self, transformer_block_factory, norm_type
     ):
         with pytest.raises(ValueError):
             TransformerBlock(
@@ -186,13 +186,13 @@ class TestTransformerBlock:
                 d_key=4,
                 d_value=4,
                 d_ff=8,
-                norm_scheme=norm_scheme,
+                norm_type=norm_type,
             )
 
     @pytest.mark.parametrize(
-        "norm_scheme", [1, 1.0, set("rms"), {"scheme": "rms"}, True, False, ["rms"]]
+        "norm_type", [1, 1.0, set("rms"), {"scheme": "rms"}, True, False, ["rms"]]
     )
-    def test_error_is_raised_if_norm_scheme_is_not_string(self, norm_scheme):
+    def test_error_is_raised_if_norm_type_is_not_string(self, norm_type):
         with pytest.raises(TypeError):
             TransformerBlock(
                 embedding_size=2,
@@ -200,5 +200,5 @@ class TestTransformerBlock:
                 d_key=4,
                 d_value=4,
                 d_ff=8,
-                norm_scheme=norm_scheme,
+                norm_type=norm_type,
             )

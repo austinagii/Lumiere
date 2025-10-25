@@ -54,7 +54,7 @@ class TransformerBlock(nn.Module):
         dropout: float = 0.1,
         pre_norm: bool = True,
         post_norm: bool = False,
-        norm_scheme: str = "rms",
+        norm_type: str = "rms",
     ) -> None:
         """Initialize a new transformer block.
 
@@ -70,7 +70,7 @@ class TransformerBlock(nn.Module):
             dropout: The dropout probability. Defaults to 0.1.
             pre_norm: Whether layer inputs should be normalized. Defaults to True.
             post_norm: Whether layer outputs should be normalized. Defaults to False.
-            norm_scheme: The normalization algorithm to use. Possible values are:
+            norm_type: The normalization algorithm to use. Possible values are:
                 ['rms', 'layer']. Defaults to 'rms'
         """
         super().__init__()
@@ -83,7 +83,7 @@ class TransformerBlock(nn.Module):
         validation.validate_probability(dropout, "dropout")
         validation.validate_boolean(pre_norm, "pre_norm")
         validation.validate_boolean(post_norm, "post_norm")
-        validation.validate_string(norm_scheme, "norm_scheme")
+        validation.validate_string(norm_type, "norm_type")
 
         self._embedding_size = embedding_size
         self._num_heads = num_heads
@@ -93,8 +93,8 @@ class TransformerBlock(nn.Module):
         self._dropout = dropout
         self._pre_norm = pre_norm
         self._post_norm = post_norm
-        self._norm_scheme = norm_scheme
-        self._norm_scheme = norm_scheme.strip().lower()
+        self._norm_type = norm_type
+        self._norm_type = norm_type.strip().lower()
 
         if self._pre_norm:
             self.normalization_1 = self._create_norm_layer()
@@ -119,13 +119,13 @@ class TransformerBlock(nn.Module):
 
     def _create_norm_layer(self) -> nn.Module:
         """Create a normalization layer using the current block's configuration."""
-        match self._norm_scheme:
+        match self._norm_type:
             case "rms":
                 return nn.RMSNorm(self._embedding_size)
             case "layer":
                 return nn.LayerNorm(self._embedding_size)
             case _:
-                raise ValueError(f"Invalid normalization scheme: '{self._norm_scheme}'")
+                raise ValueError(f"Invalid normalization type: '{self._norm_type}'")
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
