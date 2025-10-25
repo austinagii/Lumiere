@@ -152,7 +152,28 @@ class TestTransformerBlock:
         assert validation_fn(intermediate_tensors["attention"])
 
     def test_block_is_rms_normalized_by_default(self):
-        pass
+        block = TransformerBlock(
+            embedding_size=16,
+            num_heads=2,
+            d_key=8,
+            d_ff=8,
+            d_value=8,
+            pre_norm=True,
+            post_norm=True,
+        )
+        intermediate_tensors = {}
+
+        block.attention.register_forward_hook(
+            _capture_input(intermediate_tensors, "attention_input")
+        )
+        block.feedforward.register_forward_hook(
+            _capture_input(intermediate_tensors, "attention_input")
+        )
+        block.register_forward_hook(
+            _capture_output(intermediate_tensors, "attention_input")
+        )
+
+        assert all([_is_rms_normalized(t) for t in intermediate_tensors.values()])
 
     def test_error_is_raised_if_norm_scheme_is_invalid(self):
         pass
