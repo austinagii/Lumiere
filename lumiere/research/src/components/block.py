@@ -24,6 +24,7 @@ class TransformerBlock(nn.Module):
         d_ff (int): The dimensionality of the feed-forward network's hidden
             representations.
         dropout (float): The dropout probability. Defaults to 0.1.
+        pre_norm
 
     Shape:
         - Input: `(batch_size, context_size, embedding_size)`
@@ -53,7 +54,25 @@ class TransformerBlock(nn.Module):
         dropout: float = 0.1,
         pre_norm: bool = True,
         post_norm: bool = False,
+        norm_scheme: str = "rms",
     ) -> None:
+        """Initialize a new transformer block.
+
+        Args:
+            embedding_size: The dimensionality of the token embeddings.
+            num_heads: The number of attention heads.
+            d_key: The dimensionality of the key vectors in the multi-head
+                attention layer.
+            d_value: The dimensionality of the value vectors in the multi-head
+                attention layer.
+            d_ff: The dimensionality of the feed-forward network's hidden
+                representations.
+            dropout: The dropout probability. Defaults to 0.1.
+            pre_norm: Whether layer inputs should be normalized. Defaults to True.
+            post_norm: Whether layer outputs should be normalized. Defaults to False.
+            norm_scheme: The normalization algorithm to use. Possible values are:
+                ['rms', 'layer']. Defaults to 'rms'
+        """
         super().__init__()
 
         validation.validate_integer(embedding_size, "embedding_size", min_value=1)
@@ -73,9 +92,11 @@ class TransformerBlock(nn.Module):
         self._dropout = dropout
         self._pre_norm = pre_norm
         self._post_norm = post_norm
+        self._norm_scheme = norm_scheme
+        self._norm_scheme = norm_scheme
 
         if self._pre_norm:
-            self.normalization_1 = nn.RMSNorm(self._embedding_size)
+            self.normalization_1 = self._create_norm_layer()
 
         self.attention = MultiHeadAttention(
             num_heads=self._num_heads,
@@ -85,7 +106,7 @@ class TransformerBlock(nn.Module):
         )
 
         if self._pre_norm or self._post_norm:
-            self.normalization_2 = nn.RMSNorm(self._embedding_size)
+            self.normalization_2 = self._create_norm_layer()
 
         self.feedforward = FeedForward(
             self._embedding_size, self._d_ff, dropout=self._dropout
@@ -93,7 +114,17 @@ class TransformerBlock(nn.Module):
         self.dropout = nn.Dropout(self._dropout)
 
         if self._post_norm:
-            self.normalization_3 = nn.RMSNorm(self._embedding_size)
+            self.normalization_3 = self._create_norm_layer()
+
+    def _create_norm_layer(self) -> nn.Module:
+        """Create a normalization layer using the current block's configuration."""
+        match self._norm_scheme:
+            case "rms":
+                return nn.RMSNorm(self._embedding_size)
+            case "layer":
+                return nn.LayerNorm(self._embedding_size)
+            case _:
+                raise ValueError(f"Invalid normalization scheme: '{self._norm_scheme}'")
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
