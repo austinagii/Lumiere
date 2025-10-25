@@ -83,6 +83,7 @@ class TransformerBlock(nn.Module):
         validation.validate_probability(dropout, "dropout")
         validation.validate_boolean(pre_norm, "pre_norm")
         validation.validate_boolean(post_norm, "post_norm")
+        validation.validate_string(norm_scheme, "norm_scheme")
 
         self._embedding_size = embedding_size
         self._num_heads = num_heads
@@ -93,7 +94,7 @@ class TransformerBlock(nn.Module):
         self._pre_norm = pre_norm
         self._post_norm = post_norm
         self._norm_scheme = norm_scheme
-        self._norm_scheme = norm_scheme
+        self._norm_scheme = norm_scheme.strip().lower()
 
         if self._pre_norm:
             self.normalization_1 = self._create_norm_layer()
