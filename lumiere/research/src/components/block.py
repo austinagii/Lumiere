@@ -10,27 +10,12 @@ from .feedforward import FeedForward
 class TransformerBlock(nn.Module):
     """Applies a transformer block over a batch of token embeddings.
 
-    This transformer block applies the following operations in sequence:
-    1. RMS normalization → Multi-head attention → Dropout → Residual connection
-    2. RMS normalization → Feed-forward network → Dropout → Residual connection
-
-    Args:
-        embedding_size (int): The dimensionality of the token embeddings.
-        num_heads (int): The number of attention heads.
-        d_key (int): The dimensionality of the key vectors in the multi-head
-            attention layer.
-        d_value (int): The dimensionality of the value vectors in the multi-head
-            attention layer.
-        d_ff (int): The dimensionality of the feed-forward network's hidden
-            representations.
-        dropout (float): The dropout probability. Defaults to 0.1.
-        pre_norm
-
-    Shape:
-        - Input: `(batch_size, context_size, embedding_size)`
-        - Output: `Tuple[torch.Tensor, torch.Tensor]`
-            1. `(batch_size, context_size, embedding_size)`
-            2. `(batch_size, num_heads, context_size, context_size)`
+    This module is modeled after the decoder block from the "Attention Is All You Need"
+    paper (https://arxiv.org/pdf/1706.03762). Like the paper, this transformer block is
+    made up of two main sub-layers: a masked multi-head attention layer, followed by a
+    position-wise feed forward layer. It also provides various parameters to slightly
+    tweak the architecture of the block: enabling/disabling dropout, specifying pre/post
+    normalization, swapping the normalization algorithm and more.
 
     Example:
         >>> import torch
@@ -59,19 +44,30 @@ class TransformerBlock(nn.Module):
         """Initialize a new transformer block.
 
         Args:
-            embedding_size: The dimensionality of the token embeddings.
-            num_heads: The number of attention heads.
-            d_key: The dimensionality of the key vectors in the multi-head
+            embedding_size (int): The expected dimensionality of the token embeddings.
+            num_heads (int): The number of attention heads in the multi-head attention
+                layer.
+            d_key (int): The dimensionality of the key vectors in the multi-head
                 attention layer.
-            d_value: The dimensionality of the value vectors in the multi-head
+            d_value (int): The dimensionality of the value vectors in the multi-head
                 attention layer.
-            d_ff: The dimensionality of the feed-forward network's hidden
+            d_ff (int): The dimensionality of the feed-forward network's hidden
                 representations.
-            dropout: The dropout probability. Defaults to 0.1.
-            pre_norm: Whether layer inputs should be normalized. Defaults to True.
-            post_norm: Whether layer outputs should be normalized. Defaults to False.
+            dropout (float): The dropout probability. Setting this value to 0 disables
+                dropout. If enabled (any value in the range (0, 1]), dropout will be
+                configured just before the residual connection for both sub-layers.
+                Defaults to 0.1.
+            pre_norm: Whether inputs flowing into both sub-layers should be normalized.
+                Defaults to True.
+            post_norm: Whether outputs flowing out of both sub-layers should be
+                normalized. Defaults to False.
             norm_type: The normalization algorithm to use. Possible values are:
-                ['rms', 'layer']. Defaults to 'rms'
+                'rms' and 'layer'. Defaults to 'rms'.
+
+        Raises:
+            TypeError: If any of the specified argument values is of the incorrect type.
+            ValueEror: If any of the specified argument values is not one of the
+                allowed values for that parameter.
         """
         super().__init__()
 
@@ -130,6 +126,26 @@ class TransformerBlock(nn.Module):
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply the transformer block to the specified input tensor.
+
+        Args:
+            x: A batch of token embeddings. Expcted to have the shape:
+                `(batch_size, context_size, embedding_size)`.
+            padding_mask: A boolean mask indicating which of the tokens in the batch
+                are padding tokens, with `True` indicating the presence of a padding
+                token and `False` for non-padding tokens. Expected to have the shape:
+                `(batch_size, context_size)`.
+
+        Returns:
+            A tuple of (output_embeddings, attention_weights). With the output
+            embeddings, having the same shape as the input embeddings:
+            `(batch_size, context_size, embedding_size)` and the attention weights
+            having the shape: `(batch_size, num_heads, context_size, context_size)`.
+
+        Raises:
+            ValueError: If the specified token embeddings have the incorrect shape.
+
+        """
         if x.dim() != 3:
             raise ValueError(
                 "Input tensor must have shape (batch_size, context_size, "
