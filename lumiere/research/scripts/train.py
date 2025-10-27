@@ -118,6 +118,7 @@ def main(
         padding_id=SPECIAL_TOKENS["padding"].id,
         pre_norm=model_config.model["pre_norm"],
         post_norm=model_config.model["post_norm"],
+        norm_type=model_config.model["norm_type"],
     ).to(device)
 
     optimizer = torch.optim.AdamW(

@@ -90,17 +90,17 @@ main() {
     case "$command" in
     "train")
         log_info "Starting model training..."
-        run_with_pipenv "${CMD_BASE_DIR}/scripts/train.py" "$@"
+        run_with_pipenv "${CMD_BASE_DIR}/lumiere/research/scripts/train.py" "$@"
         log_info "Training completed"
         ;;
     "eval")
         log_info "Starting evaluation..."
-        run_with_pipenv "${CMD_BASE_DIR}/scripts/eval.py" "$@"
+        run_with_pipenv "${CMD_BASE_DIR}/lumiere/research/scripts/eval.py" "$@"
         log_info "Evaluation completed"
         ;;
     "info")
         log_info "Starting info..."
-        run_with_pipenv "${CMD_BASE_DIR}/scripts/info.py" "$@"
+        run_with_pipenv "${CMD_BASE_DIR}/lumiere/research/scripts/info.py" "$@"
         log_info "Info completed"
         ;;
     esac

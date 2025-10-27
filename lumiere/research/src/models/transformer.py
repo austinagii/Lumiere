@@ -56,6 +56,7 @@ class Transformer(nn.Module):
         padding_id: int | None = None,
         pre_norm: bool = True,
         post_norm: bool = False,
+        norm_type: str = "rms",
     ):
         super().__init__()
 
@@ -70,6 +71,7 @@ class Transformer(nn.Module):
         self._dropout = dropout
         self._pre_norm = pre_norm
         self._post_norm = post_norm
+        self._norm_type = norm_type
 
         self.embedding = Embedding(
             self._vocab_size,
@@ -88,10 +90,13 @@ class Transformer(nn.Module):
                     dropout=self._dropout,
                     pre_norm=self._pre_norm,
                     post_norm=self._post_norm,
+                    norm_type=self._norm_type,
                 )
                 for _ in range(self._num_layers)
             ]
         )
+
+        # TODO: Fix to use the norm type that is specified.
         self.final_norm = nn.RMSNorm(self._embedding_size)
 
     def forward(
