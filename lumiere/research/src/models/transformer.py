@@ -7,40 +7,6 @@ from torch.nn import functional as F
 from lumiere.research.src.components import Embedding, TransformerBlock
 
 
-"""
-def feedforward_factory(*args, **kwargs):
-    # Do some stuff here.
-    def _factory():
-        return ffmodule 
-
-def transformer_block_factory(*args, **kwargs):
-    # Do some stuff here.
-    def _factory():
-        return block
-
-feedforward_factory = LinearFeedForwardFactory(embedding_size)
-transformer_block_factory = TransformerBlockFactory(
-    num_heads=10, d_key=12, feedforward=feedforward_factory
-)
-"""
-
-# @dataclass
-# class TransformerArgs:
-#     vocab_size: int
-#     embedding_size: int
-#     context_size: int
-#     num_layers: int
-#     num_heads: int
-#     d_key: int
-#     d_value: int
-#     d_ff: int
-#     dropout: float = 0.1
-#     padding_id: int | None = None
-#     pre_norm: bool = True
-#     post_norm: bool = False
-#     norm_type: str = "rms"
-
-
 class Transformer(nn.Module):
     """A transformer model."""
 
