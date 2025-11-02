@@ -1,21 +1,20 @@
+from collections.abc import Callable
+
 import torch
 from torch import nn
 
 from lumiere.research.src.utils import validation
 
 from .attention import MultiHeadAttention
-from .feedforward import FeedForward
 
 
 class TransformerBlock(nn.Module):
-    """Applies a transformer block over a batch of token embeddings.
+    """A decoder transformer block.
 
-    This module is modeled after the decoder block from the "Attention Is All You Need"
-    paper (https://arxiv.org/pdf/1706.03762). Like the paper, this transformer block is
-    made up of two main sub-layers: a masked multi-head attention layer, followed by a
-    position-wise feed forward layer. It also provides various parameters to slightly
-    tweak the architecture of the block: enabling/disabling dropout, specifying pre/post
-    normalization, swapping the normalization algorithm and more.
+    This module is modeled after the decoder block from the "Attention Is All
+    You Need" paper (https://arxiv.org/pdf/1706.03762). Like the paper, this
+    transformer block is made up of two main sub-layers: a masked multi-head
+    attention layer, followed by a position-wise feed-forward layer.
 
     Example:
         >>> import torch
@@ -27,6 +26,7 @@ class TransformerBlock(nn.Module):
         torch.Size([1, 10, 128])
         >>> print(attention_weights.shape)
         torch.Size([1, 12, 10, 10])
+
     """
 
     def __init__(
@@ -35,39 +35,35 @@ class TransformerBlock(nn.Module):
         num_heads: int,
         d_key: int,
         d_value: int,
-        d_ff: int,
+        feedforward_factory: Callable,
+        # d_ff: int,
         dropout: float = 0.1,
         pre_norm: bool = True,
         post_norm: bool = False,
         norm_type: str = "rms",
     ) -> None:
-        """Initialize a new transformer block.
+        """Initialize a decoder transformer block.
 
         Args:
-            embedding_size (int): The expected dimensionality of the token embeddings.
-            num_heads (int): The number of attention heads in the multi-head attention
-                layer.
-            d_key (int): The dimensionality of the key vectors in the multi-head
-                attention layer.
-            d_value (int): The dimensionality of the value vectors in the multi-head
-                attention layer.
-            d_ff (int): The dimensionality of the feed-forward network's hidden
-                representations.
-            dropout (float): The dropout probability. Setting this value to 0 disables
-                dropout. If enabled (any value in the range (0, 1]), dropout will be
-                configured just before the residual connection for both sub-layers.
-                Defaults to 0.1.
-            pre_norm: Whether inputs flowing into both sub-layers should be normalized.
-                Defaults to True.
-            post_norm: Whether outputs flowing out of both sub-layers should be
-                normalized. Defaults to False.
-            norm_type: The normalization algorithm to use. Possible values are:
-                'rms' and 'layer'. Defaults to 'rms'.
+            embedding_size: The dimensionality of the token embeddings.
+            num_heads: The number of attention heads.
+            d_key: The dimensionality of the key vectors.
+            d_value: The dimensionality of the value vectors.
+            feedforward_factory: A callable that produces feedforwward modules.
+            dropout: The dropout probability.
+            pre_norm: Whether to apply normalization before attention and
+                feed-forward layers. Defaults to True.
+            post_norm: Whether to apply normalization after attention and
+                feed-forward layers. Defaults to False.
+            norm_type: The type of normalization to use. Possible values are 'rms'
+                and 'layer'. Defaults to 'rms'.
 
         Raises:
-            TypeError: If any of the specified argument values is of the incorrect type.
-            ValueEror: If any of the specified argument values is not one of the
+            TypeError: If any of the specified argument values is of the incorrect
+                type.
+            ValueError: If any of the specified argument values is not one of the
                 allowed values for that parameter.
+
         """
         super().__init__()
 
@@ -75,7 +71,6 @@ class TransformerBlock(nn.Module):
         validation.validate_integer(num_heads, "num_heads", min_value=1)
         validation.validate_integer(d_key, "d_key", min_value=1)
         validation.validate_integer(d_value, "d_value", min_value=1)
-        validation.validate_integer(d_ff, "d_ff", min_value=1)
         validation.validate_probability(dropout, "dropout")
         validation.validate_boolean(pre_norm, "pre_norm")
         validation.validate_boolean(post_norm, "post_norm")
@@ -85,7 +80,6 @@ class TransformerBlock(nn.Module):
         self._num_heads = num_heads
         self._d_key = d_key
         self._d_value = d_value
-        self._d_ff = d_ff
         self._dropout = dropout
         self._pre_norm = pre_norm
         self._post_norm = post_norm
@@ -105,16 +99,23 @@ class TransformerBlock(nn.Module):
         if self._pre_norm or self._post_norm:
             self.normalization_2 = self._create_norm_layer()
 
-        self.feedforward = FeedForward(
-            self._embedding_size, self._d_ff, dropout=self._dropout
-        )
+        self.feedforward = feedforward_factory()
         self.dropout = nn.Dropout(self._dropout)
 
         if self._post_norm:
             self.normalization_3 = self._create_norm_layer()
 
     def _create_norm_layer(self) -> nn.Module:
-        """Create a normalization layer using the current block's configuration."""
+        """Create a normalization layer using the current block's configuration.
+
+        Returns:
+            A normalization layer (RMSNorm or LayerNorm) based on the configured
+            norm_type.
+
+        Raises:
+            ValueError: If the norm_type is not 'rms' or 'layer'.
+
+        """
         match self._norm_type:
             case "rms":
                 return nn.RMSNorm(self._embedding_size)
@@ -126,21 +127,21 @@ class TransformerBlock(nn.Module):
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Apply the transformer block to the specified input tensor.
+        """Pass a batch of token embeddings through the transformer block.
 
         Args:
-            x: A batch of token embeddings. Expcted to have the shape:
+            x: A batch of token embeddings of shape
                 `(batch_size, context_size, embedding_size)`.
-            padding_mask: A boolean mask indicating which of the tokens in the batch
-                are padding tokens, with `True` indicating the presence of a padding
-                token and `False` for non-padding tokens. Expected to have the shape:
-                `(batch_size, context_size)`.
+            padding_mask: A boolean mask indicating which of the tokens in the
+                batch are padding tokens, with `True` indicating the presence of
+                a padding token and `False` for non-padding tokens. Expected to
+                have the shape: `(batch_size, context_size)`.
 
         Returns:
-            A tuple of (output_embeddings, attention_weights). With the output
-            embeddings, having the same shape as the input embeddings:
-            `(batch_size, context_size, embedding_size)` and the attention weights
-            having the shape: `(batch_size, num_heads, context_size, context_size)`.
+            A tuple of output embeddings and attention weights. The output
+            embeddings have shape `(batch_size, context_size, embedding_size)` and
+            the attention weights have shape
+            `(batch_size, num_heads, context_size, context_size)`.
 
         Raises:
             ValueError: If the specified token embeddings have the incorrect shape.

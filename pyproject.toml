@@ -90,5 +90,5 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = ["torch.*", "wandb.*", "transformers.*"]
+module = ["torch.*", "wandb.*", "transformers.*", "pytest.*"]
 ignore_missing_imports = true

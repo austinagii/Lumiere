@@ -2,6 +2,10 @@ import pytest
 import torch
 
 from lumiere.research.src.components import TransformerBlock
+from lumiere.research.src.components.feedforward import (
+    LinearFeedForward,
+    SwigluFeedForward,
+)
 
 
 def _is_layer_normalized(tensor: torch.Tensor) -> bool:
@@ -45,14 +49,17 @@ def transformer_block_factory():
     """Create a transformer block with preconfigured sizes."""
 
     def factory(
-        pre_norm: bool, post_norm: bool, norm_type: str = "rms"
+        pre_norm: bool,
+        post_norm: bool,
+        norm_type: str = "rms",
+        feedforward=lambda: LinearFeedForward(embedding_size=16, d_ff=8),
     ) -> TransformerBlock:
         return TransformerBlock(
             embedding_size=16,
             num_heads=1,
             d_key=16,
             d_value=16,
-            d_ff=16,
+            feedforward_factory=feedforward,
             pre_norm=pre_norm,
             post_norm=post_norm,
             norm_type=norm_type,
@@ -128,7 +135,7 @@ class TestTransformerBlock:
                 assert not is_normalized, f"{location} should NOT be RMS normalized."
 
     # ==============================================
-    # =======##=== TEST NORMALIZATION ==============
+    # ============ TEST NORMALIZATION ==============
     # ==============================================
     @pytest.mark.parametrize(
         "norm_type, validation_fn",
@@ -156,7 +163,7 @@ class TestTransformerBlock:
             embedding_size=16,
             num_heads=2,
             d_key=8,
-            d_ff=8,
+            feedforward_factory=lambda: LinearFeedForward(16, 2),
             d_value=8,
             pre_norm=True,
             post_norm=True,
@@ -185,7 +192,7 @@ class TestTransformerBlock:
                 num_heads=1,
                 d_key=4,
                 d_value=4,
-                d_ff=8,
+                feedforward_factory=lambda: LinearFeedForward(2, 4),
                 norm_type=norm_type,
             )
 
@@ -199,6 +206,30 @@ class TestTransformerBlock:
                 num_heads=1,
                 d_key=4,
                 d_value=4,
-                d_ff=8,
+                feedforward_factory=lambda: LinearFeedForward(2, 4),
                 norm_type=norm_type,
             )
+
+    @pytest.mark.parametrize(
+        "factory,expected_module",
+        [
+            (
+                lambda: LinearFeedForward(embedding_size=2, d_ff=8),
+                LinearFeedForward,
+            ),
+            (
+                lambda: SwigluFeedForward(embedding_size=2, hidden_size=8),
+                SwigluFeedForward,
+            ),
+        ],
+    )
+    def test_specified_feedforward_factory_is_used(self, factory, expected_module):
+        block = TransformerBlock(
+            embedding_size=8,
+            num_heads=2,
+            d_key=8,
+            d_value=8,
+            feedforward_factory=factory,
+        )
+
+        assert isinstance(block.feedforward, expected_module)

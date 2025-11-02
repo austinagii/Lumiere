@@ -60,6 +60,19 @@ class TransformerBlock(nn.Module):
         # implementation
 ```
 
+**Class docstrings with additional context:**
+
+When a class implements a specific technique from a paper or requires additional context, add a second paragraph to the class docstring:
+
+```python
+class LinearFeedForward(nn.Module):
+    """A position-wise feed-forward network.
+
+    This class implements the position-wise feed-forward network as described in the
+    paper `Attention Is All You Need <https://arxiv.org/abs/1706.03762>`_.
+    """
+```
+
 ### Function Docstrings
 
 Private helper functions should have:
@@ -95,6 +108,22 @@ Properties should have minimal, single-line docstrings:
 def vocab_size(self) -> int:
     """The number of unique tokens in the vocabulary."""
     return self._vocab_size
+```
+
+**Properties that return neural network layers:**
+
+For properties that expose internal layers, describe what the layer does functionally:
+
+```python
+@property
+def up_proj(self):
+    """The linear layer that projects embeddings to the hidden dimension."""
+    return self._layers.up_proj
+
+@property
+def down_proj(self):
+    """The linear layer that projects hidden states back to embeddings."""
+    return self._layers.down_proj
 ```
 
 ## Formatting Rules
