@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -5,41 +7,42 @@ from torch.nn import functional as F
 from lumiere.research.src.components import Embedding, TransformerBlock
 
 
+"""
+def feedforward_factory(*args, **kwargs):
+    # Do some stuff here.
+    def _factory():
+        return ffmodule 
+
+def transformer_block_factory(*args, **kwargs):
+    # Do some stuff here.
+    def _factory():
+        return block
+
+feedforward_factory = LinearFeedForwardFactory(embedding_size)
+transformer_block_factory = TransformerBlockFactory(
+    num_heads=10, d_key=12, feedforward=feedforward_factory
+)
+"""
+
+# @dataclass
+# class TransformerArgs:
+#     vocab_size: int
+#     embedding_size: int
+#     context_size: int
+#     num_layers: int
+#     num_heads: int
+#     d_key: int
+#     d_value: int
+#     d_ff: int
+#     dropout: float = 0.1
+#     padding_id: int | None = None
+#     pre_norm: bool = True
+#     post_norm: bool = False
+#     norm_type: str = "rms"
+
+
 class Transformer(nn.Module):
-    """A transformer model.
-
-    Implements the transformer architecture as described in the paper:
-    https://arxiv.org/abs/1706.03762 with the following modifications:
-    - Pre-normalization using RMSNorm in the multi-head attention and feed-forward
-      layers instead of Post-normalization with LayerNorm.
-    - SwiGLU feed-forward network instead of regular ReLU activation.
-
-    Args:
-        vocab_size (int): The number of unique tokens in the vocabulary.
-        embedding_size (int): The dimensionality of the token embeddings.
-        context_size (int): The maximum number of tokens in a sequence.
-        num_layers (int): The number of transformer blocks in the network.
-        num_heads (int): The number of attention heads in each transformer block.
-        d_key (int): The dimensionality of the key vectors in each attention head.
-        d_value (int): The dimensionality of the value vectors in each attention head.
-        d_ff (int): The dimensionality of each feed-forward layer's hidden
-            representations.
-        dropout (float): The dropout probability. Defaults to 0.1.
-
-    Shape:
-        - Input: `(batch_size, context_size)`
-        - Output: `Tuple[torch.Tensor, torch.Tensor]`
-            1. `(batch_size, context_size, embedding_size)`
-            2. `(batch_size, num_layers, num_heads, context_size, context_size)`
-
-    Raises:
-        ValueError: If any of the following conditions are met:
-            - The input tensor is not of shape `(batch_size, context_size)`.
-            - The input tensor has a context size greater than the model's
-              context size.
-            - The input tensor has a batch size greater than the model's batch
-              size.
-    """
+    """A transformer model."""
 
     # TODO: Create transformer configuration object to avoid passing all these args.
     def __init__(
@@ -51,13 +54,33 @@ class Transformer(nn.Module):
         num_heads: int,
         d_key: int,
         d_value: int,
-        d_ff: int,
+        feedforward_factory: Callable,
         dropout: float = 0.1,
         padding_id: int | None = None,
         pre_norm: bool = True,
         post_norm: bool = False,
         norm_type: str = "rms",
     ):
+        """Initialize a transformer model.
+
+        Args:
+            vocab_size: The number of unique tokens in the vocabulary.
+            embedding_size: The dimensionality of the token embeddings.
+            context_size: The maximum number of tokens in a sequence.
+            num_layers: The number of transformer blocks in the network.
+            num_heads: The number of attention heads.
+            d_key: The dimensionality of the key vectors.
+            d_value: The dimensionality of the value vectors.
+            feedforward_factory: A callable that produces feedforwward modules.
+            dropout: The dropout probability. Defaults to 0.1.
+            padding_id: The ID of the padding token.
+            pre_norm: Whether to apply normalization before attention and
+                feed-forward layers. Defaults to True.
+            post_norm: Whether to apply normalization after attention and
+                feed-forward layers. Defaults to False.
+            norm_type: The type of normalization to use. Defaults to "rms".
+
+        """
         super().__init__()
 
         self._vocab_size = vocab_size
@@ -67,7 +90,6 @@ class Transformer(nn.Module):
         self._num_heads = num_heads
         self._d_key = d_key
         self._d_value = d_value
-        self._d_ff = d_ff
         self._dropout = dropout
         self._pre_norm = pre_norm
         self._post_norm = post_norm
@@ -86,7 +108,7 @@ class Transformer(nn.Module):
                     num_heads=self._num_heads,
                     d_key=self._d_key,
                     d_value=self._d_value,
-                    d_ff=self._d_ff,
+                    feedforward_factory=feedforward_factory,
                     dropout=self._dropout,
                     pre_norm=self._pre_norm,
                     post_norm=self._post_norm,
@@ -102,6 +124,26 @@ class Transformer(nn.Module):
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Pass a batch of input tokens through the transformer model.
+
+        Args:
+            x: A batch of token IDs of shape `(batch_size, context_size)`.
+            padding_mask: A boolean mask indicating which of the tokens in the
+                batch are padding tokens, with `True` indicating the presence of
+                a padding token and `False` for non-padding tokens. Expected to
+                have the shape: `(batch_size, context_size)`.
+
+        Returns:
+            A tuple of logits and attention weights. The logits have shape
+            `(batch_size, context_size, vocab_size)` and the attention weights have
+            shape `(batch_size, num_layers, num_heads, context_size, context_size)`.
+
+        Raises:
+            ValueError: If the input tensor does not have 2 dimensions or if the
+                input tensor has a context size greater than the model's context
+                size.
+
+        """
         if x.ndim != 2:
             raise ValueError(
                 f"The input tensor must have 2 dimensions, but got {x.ndim}."

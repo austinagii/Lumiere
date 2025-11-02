@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+from lumiere.research.src.components.feedforward import LinearFeedForward
 from lumiere.research.src.models.transformer import Transformer
 
 
@@ -20,7 +21,7 @@ class TestModel:
             num_heads=4,
             d_key=16,
             d_value=16,
-            d_ff=32,
+            feedforward_factory=lambda: LinearFeedForward(embedding_size, 16),
             dropout=0.0,
             padding_id=0,
         )

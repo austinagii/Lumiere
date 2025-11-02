@@ -50,6 +50,13 @@ The dimensionality of the value vectors.
 The hidden dimension of the feed-forward network.
 ```
 
+### Regularization
+
+**`dropout`**
+```
+The dropout probability.
+```
+
 ### Tokenization & Padding
 
 **`padding_id`**
@@ -125,6 +132,23 @@ A tuple of output embeddings and attention weights. The output embeddings have s
 A tuple of attention values and attention weights. The attention values have shape `(batch_size, context_size, embedding_size)` and the attention weights have shape `(batch_size, num_heads, context_size, context_size)`.
 ```
 
+**Multi-layer attention weights**
+```
+Attention weights of shape `(batch_size, num_layers, num_heads, context_size, context_size)`.
+```
+
+### Model Outputs
+
+**Logits**
+```
+A batch of logits of shape `(batch_size, context_size, vocab_size)`.
+```
+
+**Tuple of logits and multi-layer attention weights**
+```
+A tuple of logits and attention weights. The logits have shape `(batch_size, context_size, vocab_size)` and the attention weights have shape `(batch_size, num_layers, num_heads, context_size, context_size)`.
+```
+
 ### Masks
 
 **Causal mask**
@@ -168,23 +192,14 @@ All shapes follow this format:
 
 ## Pattern Templates
 
-### New Parameter Definition Template
+### New Parameter Definition
 
-```
-**`parameter_name`**
-```
-The [description of what this parameter represents].
-```
-```
+**`parameter_name`**: The [description of what this parameter represents].
 
-### New Tensor Description Template
+### New Tensor Description
 
-```
 A batch of [tensor_description] of shape `(dim1, dim2, ...)`.
-```
 
-### New Tuple Return Template
+### New Tuple Return
 
-```
 A tuple of [first_element] and [second_element]. The [first_element] have shape `(...)` and the [second_element] have shape `(...)`.
-```
