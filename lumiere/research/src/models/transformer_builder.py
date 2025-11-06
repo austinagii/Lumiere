@@ -115,30 +115,27 @@ class TransformerBuilder:
         Raises:
             ValueError: If no specification is provided.
         """
-
-        # there's a bug here, where block.type, would apply to feedforward if no type
-        # is on feedforward.
-
-        # Have a spider crawl the spec and construct the necessary function
-        # calls. e.g. traverse spec tree and find attention, check type, see that type is
-        # x, create a builder for x, using the various attention subfields, assign builder to
-        # keyword attention in parent call.
-
         transformer_args = deepcopy(spec.spec)
 
         def _resolve_nested_factories(spec):
+            # Perform a depth first traversal of the spec tree, replacing child
+            # specs with factory functions that produce modules according to that
+            # spec.
             for key, value in spec.items():
-                if isinstance(value, dict):
+                if isinstance(value, dict):  # This value a child spec
                     assert (module_type := value.get("type")) is not None
-                    del value["type"]  # the type of module is no longer needed.
 
-                    # Could counsider prepending module name to disambiguate.
-                    # type "linear" under the "feedforward" section would become
+                    # TODO: Counsider prepending spec name to disambiguate type.
+                    # e.g. type "linear" under the "feedforward" spec would become
                     # "feedforward.linear".
                     module = module_by_type.get(module_type)
                     if module is None:
                         raise ValueError(f"Unrecognized module type: {module_type}")
 
+                    del value["type"]  # Delete to avoid passing as factory arg.
+
+                    # Recursively resolve any grandchild specs to factories before
+                    # generating this child spec's factory.
                     module_args = _resolve_nested_factories(value)
                     module_factory = _wrap_factory(module, **module_args)
                     spec[key] = module_factory
