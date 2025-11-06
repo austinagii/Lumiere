@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from lumiere.research.src import utils
+from lumiere.research.src.components.feedforward import LinearFeedForward
 from lumiere.research.src.data.dataloader import get_data_loader
 from lumiere.research.src.data.preprocessing import to_training_batches
 from lumiere.research.src.data.tokenizer import SPECIAL_TOKENS, Tokenizer
@@ -20,6 +21,13 @@ BATCH_SIZE = 3
 
 @pytest.fixture
 def model():
+    def feedforward_factory():
+        return LinearFeedForward(
+            embedding_size=EMBEDDING_SIZE,
+            d_ff=3,
+            dropout=0,
+        )
+
     return Transformer(
         vocab_size=VOCAB_SIZE,
         embedding_size=EMBEDDING_SIZE,
@@ -28,7 +36,7 @@ def model():
         num_heads=1,
         d_key=3,
         d_value=3,
-        d_ff=3,
+        feedforward_factory=feedforward_factory,
         dropout=0,
         padding_id=SPECIAL_TOKENS["padding"].id,
     ).to(utils.get_device())

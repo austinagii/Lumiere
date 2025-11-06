@@ -19,6 +19,10 @@ class Embedding(nn.Module):
         - Input: `(..., context_size)`
         - Output: `(..., context_size, embedding_size)`
 
+    Attributes:
+        vocab_size (int): The number of unique tokens in the vocabulary.
+        embedding_size (int): The dimensionality of the token embeddings.
+
     Raises:
         ValueError: If the vocabulary size or embedding size is not a positive
             integer.
@@ -47,23 +51,24 @@ class Embedding(nn.Module):
         validation.validate_integer(context_size, "context_size", min_value=1)
         validation.validate_integer(embedding_size, "embedding_size", min_value=1)
 
-        self._vocab_size = vocab_size
-        self._context_size = context_size
-        self._embedding_size = embedding_size
+        self.vocab_size = vocab_size
+        self.context_size = context_size
+        self.embedding_size = embedding_size
+
         self._padding_id = padding_id
 
         self._embedding = nn.Embedding(
-            self._vocab_size, self._embedding_size, padding_idx=self._padding_id
+            self.vocab_size, self.embedding_size, padding_idx=self._padding_id
         )
         positional_encoding = sinusoidal_positional_encoding(
-            self._context_size, self._embedding_size
+            self.context_size, self.embedding_size
         )
         self.register_buffer("_positional_encoding", positional_encoding)
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
     ) -> torch.Tensor:
-        if torch.any(x < 0) or torch.any(x >= self._vocab_size):
+        if torch.any(x < 0) or torch.any(x >= self.vocab_size):
             raise IndexError("Token ids are outside of the range [0, vocab_size).")
 
         token_embeddings = self._embedding(x)
@@ -82,16 +87,6 @@ class Embedding(nn.Module):
             position_encoding[padding_mask] = 0
 
         return token_embeddings + position_encoding
-
-    @property
-    def vocab_size(self) -> int:
-        """The number of unique tokens in the vocabulary."""
-        return self._vocab_size
-
-    @property
-    def embedding_size(self) -> int:
-        """The dimensionality of the token embeddings."""
-        return self._embedding_size
 
 
 def sinusoidal_positional_encoding(
