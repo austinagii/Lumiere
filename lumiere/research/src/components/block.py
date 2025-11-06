@@ -36,7 +36,6 @@ class TransformerBlock(nn.Module):
         d_key: int,
         d_value: int,
         feedforward_factory: Callable,
-        # d_ff: int,
         dropout: float = 0.1,
         pre_norm: bool = True,
         post_norm: bool = False,

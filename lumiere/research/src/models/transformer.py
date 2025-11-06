@@ -8,9 +8,14 @@ from lumiere.research.src.components import Embedding, TransformerBlock
 
 
 class Transformer(nn.Module):
-    """A transformer model."""
+    """A transformer model.
 
-    # TODO: Create transformer configuration object to avoid passing all these args.
+    Attributes:
+        context_size (int): The maximum allowed number of tokens in a single sequence.
+        num_layers (int): The number of transformer blocks in the model.
+
+    """
+
     def __init__(
         self,
         vocab_size: int,
@@ -49,43 +54,34 @@ class Transformer(nn.Module):
         """
         super().__init__()
 
-        self._vocab_size = vocab_size
-        self._context_size = context_size
-        self._embedding_size = embedding_size
-        self._num_layers = num_layers
-        self._num_heads = num_heads
-        self._d_key = d_key
-        self._d_value = d_value
-        self._dropout = dropout
-        self._pre_norm = pre_norm
-        self._post_norm = post_norm
-        self._norm_type = norm_type
+        self.context_size = context_size
+        self.num_layers = num_layers
 
         self.embedding = Embedding(
-            self._vocab_size,
-            self._context_size,
-            self._embedding_size,
+            vocab_size,
+            context_size,
+            embedding_size,
             padding_id=padding_id,
         )
         self.blocks = nn.ModuleList(
             [
                 TransformerBlock(
-                    embedding_size=self._embedding_size,
-                    num_heads=self._num_heads,
-                    d_key=self._d_key,
-                    d_value=self._d_value,
+                    embedding_size=embedding_size,
+                    num_heads=num_heads,
+                    d_key=d_key,
+                    d_value=d_value,
                     feedforward_factory=feedforward_factory,
-                    dropout=self._dropout,
-                    pre_norm=self._pre_norm,
-                    post_norm=self._post_norm,
-                    norm_type=self._norm_type,
+                    dropout=dropout,
+                    pre_norm=pre_norm,
+                    post_norm=post_norm,
+                    norm_type=norm_type,
                 )
-                for _ in range(self._num_layers)
+                for _ in range(self.num_layers)
             ]
         )
 
         # TODO: Fix to use the norm type that is specified.
-        self.final_norm = nn.RMSNorm(self._embedding_size)
+        self.final_norm = nn.RMSNorm(embedding_size)
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
@@ -104,22 +100,9 @@ class Transformer(nn.Module):
             `(batch_size, context_size, vocab_size)` and the attention weights have
             shape `(batch_size, num_layers, num_heads, context_size, context_size)`.
 
-        Raises:
-            ValueError: If the input tensor does not have 2 dimensions or if the
-                input tensor has a context size greater than the model's context
-                size.
-
         """
-        if x.ndim != 2:
-            raise ValueError(
-                f"The input tensor must have 2 dimensions, but got {x.ndim}."
-            )
-
-        if x.shape[1] > self._context_size:
-            raise ValueError(
-                f"The input tensor must have a context size of at most"
-                f"{self._context_size}, but got {x.shape[1]}."
-            )
+        assert x.dim() == 2
+        assert x.shape[-1] <= self.context_size
 
         x = self.embedding(x, padding_mask)
 
@@ -132,13 +115,3 @@ class Transformer(nn.Module):
         x = self.final_norm(x)
         x = F.linear(x, self.embedding._embedding.weight)
         return x, attention_weights
-
-    @property
-    def context_size(self) -> int:
-        """The maximum number of tokens in a sequence."""
-        return self._context_size
-
-    @property
-    def vocab_size(self) -> int:
-        """The number of unique tokens in the vocabulary."""
-        return self._vocab_size

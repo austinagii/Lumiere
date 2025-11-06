@@ -57,9 +57,10 @@ class MultiHeadAttention(nn.Module):
         validation.validate_integer(d_key, "d_key", min_value=1)
         validation.validate_integer(d_value, "d_value", min_value=1)
 
-        self._d_key = d_key
-        self._d_value = d_value
-        self._num_heads = num_heads
+        self.d_key = d_key
+        self.d_value = d_value
+        self.num_heads = num_heads
+        self.embedding_size = embedding_size
 
         self._q_proj = nn.Linear(embedding_size, d_key * num_heads, bias=False)
         self._k_proj = nn.Linear(embedding_size, d_key * num_heads, bias=False)
@@ -79,13 +80,13 @@ class MultiHeadAttention(nn.Module):
         keys = self._k_proj(x)
         values = self._v_proj(x)
 
-        queries = split_heads(queries, self._num_heads, self._d_key)
-        keys = split_heads(keys, self._num_heads, self._d_key)
-        values = split_heads(values, self._num_heads, self._d_value)
+        queries = split_heads(queries, self.num_heads, self.d_key)
+        keys = split_heads(keys, self.num_heads, self.d_key)
+        values = split_heads(values, self.num_heads, self.d_value)
 
         attention_scores = torch.matmul(queries, torch.transpose(keys, -2, -1))
         scaled_attention_scores = attention_scores / torch.sqrt(
-            torch.tensor(self._d_key, dtype=queries.dtype, device=queries.device)
+            torch.tensor(self.d_key, dtype=queries.dtype, device=queries.device)
         )
 
         mask = create_causal_mask(queries.shape[2], padding_mask)
