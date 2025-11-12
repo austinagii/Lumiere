@@ -57,6 +57,7 @@ class Transformer(nn.Module):
         self.context_size = context_size
         self.num_layers = num_layers
 
+        self.vocab_size = vocab_size  # To be deleted.
         self.embedding = Embedding(
             vocab_size,
             context_size,
