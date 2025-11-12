@@ -17,7 +17,7 @@ from lumiere.research.src.config.config import Config
 from lumiere.research.src.data.dataloader import get_data_loader
 from lumiere.research.src.data.preprocessing import to_training_batches
 from lumiere.research.src.data.tokenizer import SPECIAL_TOKENS, Tokenizer
-from lumiere.research.src.models.transformer import Transformer
+from lumiere.research.src.models.builder import TransformerBuilder, TransformerSpec
 from lumiere.research.src.training import schedulers
 from lumiere.research.src.training.eval import evaluate
 from lumiere.research.src.training.train import train
@@ -105,21 +105,12 @@ def main(
         logger.info("Tokenizer loaded successfully\n")
 
     logger.info("Initializing model...")
-    model = Transformer(
-        vocab_size=tokenizer.vocab_size,
-        embedding_size=model_config.model["embedding_size"],
-        context_size=model_config.model["context_size"],
-        num_layers=model_config.model["num_layers"],
-        num_heads=model_config.model["num_heads"],
-        d_key=model_config.model["d_key"],
-        d_value=model_config.model["d_value"],
-        d_ff=model_config.model["d_ff"],
-        dropout=model_config.model["dropout"],
-        padding_id=SPECIAL_TOKENS["padding"].id,
-        pre_norm=model_config.model["pre_norm"],
-        post_norm=model_config.model["post_norm"],
-        norm_type=model_config.model["norm_type"],
-    ).to(device)
+    if checkpoint is None:
+        spec = TransformerSpec.from_yaml("/path/to/transformer/spec.yaml")
+    else:
+        spec = TransformerSpec(checkpoint["transformer_spec"])
+
+    model = TransformerBuilder.build(spec).to(device)
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
