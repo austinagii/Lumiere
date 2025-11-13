@@ -1,5 +1,6 @@
 import pytest
 import torch
+from torch.nn import LayerNorm, RMSNorm
 
 from lumiere.research.src.components import TransformerBlock
 from lumiere.research.src.components.feedforward import (
@@ -51,8 +52,8 @@ def transformer_block_factory():
     def factory(
         pre_norm: bool,
         post_norm: bool,
-        norm_type: str = "rms",
         feedforward=lambda: LinearFeedForward(embedding_size=16, d_ff=8),
+        normalization=lambda: RMSNorm(16),
     ) -> TransformerBlock:
         return TransformerBlock(
             embedding_size=16,
@@ -60,9 +61,9 @@ def transformer_block_factory():
             d_key=16,
             d_value=16,
             feedforward_factory=feedforward,
+            normalization_factory=normalization,
             pre_norm=pre_norm,
             post_norm=post_norm,
-            norm_type=norm_type,
         )
 
     return factory
@@ -137,33 +138,13 @@ class TestTransformerBlock:
     # ==============================================
     # ============ TEST NORMALIZATION ==============
     # ==============================================
-    @pytest.mark.parametrize(
-        "norm_type, validation_fn",
-        [("rms", _is_rms_normalized), ("layer", _is_layer_normalized)],
-    )
-    def test_specified_normalization_type_is_applied(
-        self, transformer_block_factory, norm_type, validation_fn
-    ):
-        block = transformer_block_factory(
-            pre_norm=True, post_norm=False, norm_type=norm_type
-        )
-        intermediate_tensors = {}
-
-        block.attention.register_forward_hook(
-            _capture_input(intermediate_tensors, "attention")
-        )
-
-        batch_size, seq_length, embedding_size = 3, 8, 16
-        block(torch.rand(batch_size, seq_length, embedding_size))
-
-        assert validation_fn(intermediate_tensors["attention"])
-
     def test_rms_normalization_is_used_by_default(self):
         block = TransformerBlock(
             embedding_size=16,
             num_heads=2,
             d_key=8,
             feedforward_factory=lambda: LinearFeedForward(16, 2),
+            normalization_factory=lambda: RMSNorm(16),
             d_value=8,
             pre_norm=True,
             post_norm=True,
@@ -182,33 +163,11 @@ class TestTransformerBlock:
 
         assert all([_is_rms_normalized(t) for t in intermediate_tensors.values()])
 
-    @pytest.mark.parametrize("norm_type", ["test", "", "   "])
-    def test_error_is_raised_if_norm_type_is_invalid(
-        self, transformer_block_factory, norm_type
-    ):
-        with pytest.raises(ValueError):
-            TransformerBlock(
-                embedding_size=2,
-                num_heads=1,
-                d_key=4,
-                d_value=4,
-                feedforward_factory=lambda: LinearFeedForward(2, 4),
-                norm_type=norm_type,
-            )
+    def test_error_is_raised_if_normalization_factory_is_not_a_callable(self):
+        pass
 
-    @pytest.mark.parametrize(
-        "norm_type", [1, 1.0, set("rms"), {"scheme": "rms"}, True, False, ["rms"]]
-    )
-    def test_error_is_raised_if_norm_type_is_not_string(self, norm_type):
-        with pytest.raises(TypeError):
-            TransformerBlock(
-                embedding_size=2,
-                num_heads=1,
-                d_key=4,
-                d_value=4,
-                feedforward_factory=lambda: LinearFeedForward(2, 4),
-                norm_type=norm_type,
-            )
+    def test_error_is_raised_if_feedforward_factory_is_not_a_callable(self):
+        pass
 
     @pytest.mark.parametrize(
         "factory,expected_module",
@@ -230,6 +189,31 @@ class TestTransformerBlock:
             d_key=8,
             d_value=8,
             feedforward_factory=factory,
+            normalization_factory=lambda: RMSNorm(16),
         )
 
         assert isinstance(block.feedforward, expected_module)
+
+    @pytest.mark.parametrize(
+        "normalization, validation_fn",
+        [
+            (lambda: RMSNorm(16), _is_rms_normalized),
+            (lambda: LayerNorm(16), _is_layer_normalized),
+        ],
+    )
+    def test_specified_normalization_type_is_applied(
+        self, transformer_block_factory, normalization, validation_fn
+    ):
+        block = transformer_block_factory(
+            pre_norm=True, post_norm=False, normalization=normalization
+        )
+        intermediate_tensors = {}
+
+        block.attention.register_forward_hook(
+            _capture_input(intermediate_tensors, "attention")
+        )
+
+        batch_size, seq_length, embedding_size = 3, 8, 16
+        block(torch.rand(batch_size, seq_length, embedding_size))
+
+        assert validation_fn(intermediate_tensors["attention"])

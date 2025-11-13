@@ -1,5 +1,6 @@
 import pytest
 import torch
+from torch.nn import RMSNorm
 
 from lumiere.research.src.components.feedforward import LinearFeedForward
 from lumiere.research.src.models.transformer import Transformer
@@ -22,6 +23,7 @@ class TestModel:
             d_key=16,
             d_value=16,
             feedforward_factory=lambda: LinearFeedForward(embedding_size, 16),
+            normalization_factory=lambda: RMSNorm(embedding_size),
             dropout=0.0,
             padding_id=0,
         )

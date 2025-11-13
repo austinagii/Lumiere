@@ -26,11 +26,11 @@ class Transformer(nn.Module):
         d_key: int,
         d_value: int,
         feedforward_factory: Callable,
+        normalization_factory: Callable,
         dropout: float = 0.1,
         padding_id: int | None = None,
         pre_norm: bool = True,
         post_norm: bool = False,
-        norm_type: str = "rms",
     ):
         """Initialize a transformer model.
 
@@ -43,13 +43,13 @@ class Transformer(nn.Module):
             d_key: The dimensionality of the key vectors.
             d_value: The dimensionality of the value vectors.
             feedforward_factory: A callable that produces feedforwward modules.
+            normalization_factory: A callable that produces normalization layers.
             dropout: The dropout probability. Defaults to 0.1.
             padding_id: The ID of the padding token.
             pre_norm: Whether to apply normalization before attention and
                 feed-forward layers. Defaults to True.
             post_norm: Whether to apply normalization after attention and
                 feed-forward layers. Defaults to False.
-            norm_type: The type of normalization to use. Defaults to "rms".
 
         """
         super().__init__()
@@ -75,14 +75,14 @@ class Transformer(nn.Module):
                     dropout=dropout,
                     pre_norm=pre_norm,
                     post_norm=post_norm,
-                    norm_type=norm_type,
+                    normalization_factory=normalization_factory,
                 )
                 for _ in range(self.num_layers)
             ]
         )
 
         # TODO: Fix to use the norm type that is specified.
-        self.final_norm = nn.RMSNorm(embedding_size)
+        self.final_norm = normalization_factory()
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
