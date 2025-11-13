@@ -10,6 +10,9 @@ from typing import Any
 import yaml
 from torch.nn import LayerNorm, RMSNorm
 
+from lumiere.research.src.components.attention import MultiHeadAttention
+from lumiere.research.src.components.block import TransformerBlock
+from lumiere.research.src.components.embedding import Embedding
 from lumiere.research.src.components.feedforward import (
     LinearFeedForward,
     SwigluFeedForward,
@@ -92,7 +95,7 @@ class TransformerSpec:
                 raise ValueError(f"'{path}' is not a valid path")
 
         if not isinstance(path, Path):
-            raise TypeError("'path' must be a string or Path object.")
+            raise ValueError("'path' must be a string or Path object.")
 
         if not path.exists():
             raise FileNotFoundError(f"Specfication file not found: {path}")
@@ -246,6 +249,9 @@ module_by_type = {
     "feedforward_factory.swiglu": SwigluFeedForward,
     "normalization_factory.rms": RMSNorm,
     "normalization_factory.layer": LayerNorm,
+    "attention_factory.multihead": MultiHeadAttention,
+    "embedding_factory.sinusoidal": Embedding,
+    "block_factory.standard": TransformerBlock,
 }
 
 
@@ -320,4 +326,12 @@ class TransformerBuilder:
 
         _resolve_nested_factories("", transformer_args, {})
 
-        return Transformer(**transformer_args)
+        # Filter transformer_args to only include parameters accepted by Transformer
+        transformer_params = inspect.signature(Transformer).parameters
+        filtered_args = {
+            key: value
+            for key, value in transformer_args.items()
+            if key in transformer_params
+        }
+
+        return Transformer(**filtered_args)

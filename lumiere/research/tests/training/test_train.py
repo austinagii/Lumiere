@@ -5,6 +5,9 @@ import torch
 from torch.nn import RMSNorm
 
 from lumiere.research.src import utils
+from lumiere.research.src.components.attention import MultiHeadAttention
+from lumiere.research.src.components.block import TransformerBlock
+from lumiere.research.src.components.embedding import Embedding
 from lumiere.research.src.components.feedforward import LinearFeedForward
 from lumiere.research.src.data.dataloader import get_data_loader
 from lumiere.research.src.data.preprocessing import to_training_batches
@@ -22,25 +25,29 @@ BATCH_SIZE = 3
 
 @pytest.fixture
 def model():
-    def feedforward_factory():
-        return LinearFeedForward(
-            embedding_size=EMBEDDING_SIZE,
-            d_ff=3,
-            dropout=0,
-        )
-
     return Transformer(
         vocab_size=VOCAB_SIZE,
-        embedding_size=EMBEDDING_SIZE,
         context_size=CONTEXT_SIZE,
-        num_layers=1,
-        num_heads=1,
-        d_key=3,
-        d_value=3,
-        feedforward_factory=feedforward_factory,
+        num_blocks=1,
+        embedding_factory=lambda: Embedding(
+            vocab_size=VOCAB_SIZE,
+            context_size=CONTEXT_SIZE,
+            embedding_size=EMBEDDING_SIZE,
+            padding_id=SPECIAL_TOKENS["padding"].id,
+        ),
+        block_factory=lambda: TransformerBlock(
+            attention_factory=lambda: MultiHeadAttention(
+                num_heads=1, embedding_size=EMBEDDING_SIZE, d_key=3, d_value=3
+            ),
+            feedforward_factory=lambda: LinearFeedForward(
+                embedding_size=EMBEDDING_SIZE, d_ff=3, dropout=0
+            ),
+            normalization_factory=lambda: RMSNorm(EMBEDDING_SIZE),
+            dropout=0,
+            pre_norm=True,
+            post_norm=False,
+        ),
         normalization_factory=lambda: RMSNorm(EMBEDDING_SIZE),
-        dropout=0,
-        padding_id=SPECIAL_TOKENS["padding"].id,
     ).to(utils.get_device())
 
 

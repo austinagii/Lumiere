@@ -3,6 +3,7 @@ import torch
 from torch.nn import LayerNorm, RMSNorm
 
 from lumiere.research.src.components import TransformerBlock
+from lumiere.research.src.components.attention import MultiHeadAttention
 from lumiere.research.src.components.feedforward import (
     LinearFeedForward,
     SwigluFeedForward,
@@ -52,14 +53,14 @@ def transformer_block_factory():
     def factory(
         pre_norm: bool,
         post_norm: bool,
+        attention=lambda: MultiHeadAttention(
+            num_heads=1, embedding_size=16, d_key=16, d_value=16
+        ),
         feedforward=lambda: LinearFeedForward(embedding_size=16, d_ff=8),
         normalization=lambda: RMSNorm(16),
     ) -> TransformerBlock:
         return TransformerBlock(
-            embedding_size=16,
-            num_heads=1,
-            d_key=16,
-            d_value=16,
+            attention_factory=attention,
             feedforward_factory=feedforward,
             normalization_factory=normalization,
             pre_norm=pre_norm,
@@ -140,12 +141,11 @@ class TestTransformerBlock:
     # ==============================================
     def test_rms_normalization_is_used_by_default(self):
         block = TransformerBlock(
-            embedding_size=16,
-            num_heads=2,
-            d_key=8,
+            attention_factory=lambda: MultiHeadAttention(
+                num_heads=2, embedding_size=16, d_key=8, d_value=8
+            ),
             feedforward_factory=lambda: LinearFeedForward(16, 2),
             normalization_factory=lambda: RMSNorm(16),
-            d_value=8,
             pre_norm=True,
             post_norm=True,
         )
@@ -184,10 +184,9 @@ class TestTransformerBlock:
     )
     def test_specified_feedforward_factory_is_used(self, factory, expected_module):
         block = TransformerBlock(
-            embedding_size=8,
-            num_heads=2,
-            d_key=8,
-            d_value=8,
+            attention_factory=lambda: MultiHeadAttention(
+                num_heads=2, embedding_size=16, d_key=8, d_value=8
+            ),
             feedforward_factory=factory,
             normalization_factory=lambda: RMSNorm(16),
         )

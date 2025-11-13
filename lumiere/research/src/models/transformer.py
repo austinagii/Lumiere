@@ -4,8 +4,6 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from lumiere.research.src.components import Embedding, TransformerBlock
-
 
 class Transformer(nn.Module):
     """A transformer model.
@@ -19,18 +17,11 @@ class Transformer(nn.Module):
     def __init__(
         self,
         vocab_size: int,
-        embedding_size: int,
         context_size: int,
-        num_layers: int,
-        num_heads: int,
-        d_key: int,
-        d_value: int,
-        feedforward_factory: Callable,
+        num_blocks: int,
+        embedding_factory: Callable,
+        block_factory: Callable,
         normalization_factory: Callable,
-        dropout: float = 0.1,
-        padding_id: int | None = None,
-        pre_norm: bool = True,
-        post_norm: bool = False,
     ):
         """Initialize a transformer model.
 
@@ -55,33 +46,11 @@ class Transformer(nn.Module):
         super().__init__()
 
         self.context_size = context_size
-        self.num_layers = num_layers
+        self.num_blocks = num_blocks
 
         self.vocab_size = vocab_size  # To be deleted.
-        self.embedding = Embedding(
-            vocab_size,
-            context_size,
-            embedding_size,
-            padding_id=padding_id,
-        )
-        self.blocks = nn.ModuleList(
-            [
-                TransformerBlock(
-                    embedding_size=embedding_size,
-                    num_heads=num_heads,
-                    d_key=d_key,
-                    d_value=d_value,
-                    feedforward_factory=feedforward_factory,
-                    dropout=dropout,
-                    pre_norm=pre_norm,
-                    post_norm=post_norm,
-                    normalization_factory=normalization_factory,
-                )
-                for _ in range(self.num_layers)
-            ]
-        )
-
-        # TODO: Fix to use the norm type that is specified.
+        self.embedding = embedding_factory()
+        self.blocks = nn.ModuleList([block_factory() for _ in range(self.num_blocks)])
         self.final_norm = normalization_factory()
 
     def forward(
