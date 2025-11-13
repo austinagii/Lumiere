@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from torch.nn import LayerNorm, RMSNorm
 
 from lumiere.research.src.components.feedforward import (
     LinearFeedForward,
@@ -63,12 +64,10 @@ class TransformerSpec:
         Args:
             args: The arguments for the model and its components.
 
-        Raises:
-            TypeError: If args is None.
-
         """
         if args is None:
-            raise TypeError("args cannot be None")
+            raise ValueError("A dict of spec arguments is required.")
+
         self.args = args
 
     @classmethod
@@ -91,8 +90,9 @@ class TransformerSpec:
                 path = Path(path)
             except Exception:
                 raise ValueError(f"'{path}' is not a valid path")
-        elif not isinstance(path, Path):
-            raise ValueError(f"'{path}' is not a valid path")
+
+        if not isinstance(path, Path):
+            raise TypeError("'path' must be a string or Path object.")
 
         if not path.exists():
             raise FileNotFoundError(f"Specfication file not found: {path}")
@@ -244,6 +244,8 @@ class TransformerSpec:
 module_by_type = {
     "feedforward_factory.linear": LinearFeedForward,
     "feedforward_factory.swiglu": SwigluFeedForward,
+    "normalization_factory.rms": RMSNorm,
+    "normalization_factory.layer": LayerNorm,
 }
 
 

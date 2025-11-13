@@ -3,6 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 import torch
+from torch.nn import RMSNorm
 
 from lumiere.research.src import utils
 from lumiere.research.src.components.feedforward import LinearFeedForward
@@ -37,6 +38,7 @@ def model():
         d_key=3,
         d_value=3,
         feedforward_factory=feedforward_factory,
+        normalization_factory=lambda: RMSNorm(EMBEDDING_SIZE),
         dropout=0,
         padding_id=SPECIAL_TOKENS["padding"].id,
     ).to(utils.get_device())
@@ -273,4 +275,3 @@ class TestEvaluate:
         assert isinstance(result, EvaluationState)
         assert result.avg_loss > 0
         assert result.avg_perplexity > 0
-

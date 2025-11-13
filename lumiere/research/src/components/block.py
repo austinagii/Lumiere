@@ -36,10 +36,10 @@ class TransformerBlock(nn.Module):
         d_key: int,
         d_value: int,
         feedforward_factory: Callable,
+        normalization_factory: Callable,
         dropout: float = 0.1,
         pre_norm: bool = True,
         post_norm: bool = False,
-        norm_type: str = "rms",
     ) -> None:
         """Initialize a decoder transformer block.
 
@@ -49,13 +49,12 @@ class TransformerBlock(nn.Module):
             d_key: The dimensionality of the key vectors.
             d_value: The dimensionality of the value vectors.
             feedforward_factory: A callable that produces feedforwward modules.
+            normalization_factory: A callable that produces normalization layers.
             dropout: The dropout probability.
             pre_norm: Whether to apply normalization before attention and
                 feed-forward layers. Defaults to True.
             post_norm: Whether to apply normalization after attention and
                 feed-forward layers. Defaults to False.
-            norm_type: The type of normalization to use. Possible values are 'rms'
-                and 'layer'. Defaults to 'rms'.
 
         Raises:
             TypeError: If any of the specified argument values is of the incorrect
@@ -73,7 +72,6 @@ class TransformerBlock(nn.Module):
         validation.validate_probability(dropout, "dropout")
         validation.validate_boolean(pre_norm, "pre_norm")
         validation.validate_boolean(post_norm, "post_norm")
-        validation.validate_string(norm_type, "norm_type")
 
         self._embedding_size = embedding_size
         self._num_heads = num_heads
@@ -82,11 +80,9 @@ class TransformerBlock(nn.Module):
         self._dropout = dropout
         self._pre_norm = pre_norm
         self._post_norm = post_norm
-        self._norm_type = norm_type
-        self._norm_type = norm_type.strip().lower()
 
         if self._pre_norm:
-            self.normalization_1 = self._create_norm_layer()
+            self.normalization_1 = normalization_factory()
 
         self.attention = MultiHeadAttention(
             num_heads=self._num_heads,
@@ -96,32 +92,13 @@ class TransformerBlock(nn.Module):
         )
 
         if self._pre_norm or self._post_norm:
-            self.normalization_2 = self._create_norm_layer()
+            self.normalization_2 = normalization_factory()
 
         self.feedforward = feedforward_factory()
         self.dropout = nn.Dropout(self._dropout)
 
         if self._post_norm:
-            self.normalization_3 = self._create_norm_layer()
-
-    def _create_norm_layer(self) -> nn.Module:
-        """Create a normalization layer using the current block's configuration.
-
-        Returns:
-            A normalization layer (RMSNorm or LayerNorm) based on the configured
-            norm_type.
-
-        Raises:
-            ValueError: If the norm_type is not 'rms' or 'layer'.
-
-        """
-        match self._norm_type:
-            case "rms":
-                return nn.RMSNorm(self._embedding_size)
-            case "layer":
-                return nn.LayerNorm(self._embedding_size)
-            case _:
-                raise ValueError(f"Invalid normalization type: '{self._norm_type}'")
+            self.normalization_3 = normalization_factory()
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None

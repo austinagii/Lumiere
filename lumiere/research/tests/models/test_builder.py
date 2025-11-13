@@ -42,7 +42,7 @@ class TestTransformerSpec:
         assert spec["block.feedforward.d_ff"] == 2048
 
     def test_init_raises_an_error_if_args_is_none(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(ValueError):
             TransformerSpec(None)
 
     def test_from_yaml_correctly_builds_spec_from_yaml_file(self):
@@ -160,7 +160,10 @@ class TestTransformerBuilder:
                 "padding_id": 0,
                 "pre_norm": True,
                 "post_norm": True,
-                "norm_type": "rms",
+                "normalization_factory": {
+                    "type": "rms",
+                    "normalized_shape": 128,
+                },
             }
         )
         transformer = TransformerBuilder.build(spec)
@@ -213,7 +216,10 @@ class TestTransformerBuilder:
                 "padding_id": 0,
                 "pre_norm": True,
                 "post_norm": True,
-                "norm_type": "rms",
+                "normalization_factory": {
+                    "type": "rms",
+                    "normalized_shape": 128,
+                },
             }
         )
         transformer = TransformerBuilder.build(spec)
