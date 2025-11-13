@@ -2,8 +2,11 @@ import pytest
 import torch
 from torch.nn import RMSNorm
 
+from lumiere.research.src.components.attention import MultiHeadAttention
+from lumiere.research.src.components.embedding import Embedding
 from lumiere.research.src.components.feedforward import LinearFeedForward
 from lumiere.research.src.models.transformer import Transformer
+from lumiere.research.src.components.block import TransformerBlock
 
 
 class TestModel:
@@ -16,16 +19,25 @@ class TestModel:
     ) -> None:
         model = Transformer(
             vocab_size=vocab_size,
-            embedding_size=embedding_size,
             context_size=context_size,
-            num_layers=2,
-            num_heads=4,
-            d_key=16,
-            d_value=16,
-            feedforward_factory=lambda: LinearFeedForward(embedding_size, 16),
+            num_blocks=2,
+            embedding_factory=lambda: Embedding(
+                vocab_size=vocab_size,
+                context_size=context_size,
+                embedding_size=embedding_size,
+                padding_id=0,
+            ),
+            block_factory=lambda: TransformerBlock(
+                attention_factory=lambda: MultiHeadAttention(
+                    num_heads=4, embedding_size=embedding_size, d_key=16, d_value=16
+                ),
+                feedforward_factory=lambda: LinearFeedForward(embedding_size, 16),
+                normalization_factory=lambda: RMSNorm(embedding_size),
+                dropout=0.0,
+                pre_norm=True,
+                post_norm=False,
+            ),
             normalization_factory=lambda: RMSNorm(embedding_size),
-            dropout=0.0,
-            padding_id=0,
         )
 
         # Create random token IDs

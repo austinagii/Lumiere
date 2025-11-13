@@ -75,6 +75,10 @@ class MultiHeadAttention(nn.Module):
                 "The input tensor must have the shape (batch_size, context_size, "
                 "embedding_size)"
             )
+        if x.size(-1) != self.embedding_size:
+            raise ValueError(
+                f"Expected embedding_size={self.embedding_size}, got {x.size(-1)}"
+            )
 
         queries = self._q_proj(x)
         keys = self._k_proj(x)
