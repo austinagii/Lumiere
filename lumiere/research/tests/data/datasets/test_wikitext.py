@@ -121,7 +121,7 @@ class TestWikiText2Dataset:
         wikitext = WikiText2Dataset()
 
         with pytest.raises(KeyError):
-            next(wikitext["invalid_split"])
+            wikitext["invalid_split"]
 
     def test_getitem_produces_an_iterator_over_wikitext_articles(
         self, mocker, mock_wikitext
