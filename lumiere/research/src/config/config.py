@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import yaml
 
@@ -9,30 +9,30 @@ import yaml
 class Config:
     """Configuration class that loads and provides access to YAML configs."""
 
-    config: Dict[str, Any]
+    config: dict[str, Any]
 
     @property
-    def model(self) -> Dict[str, Any]:
+    def model(self) -> dict[str, Any]:
         """Get model configuration."""
         return self.config["model"]
 
     @property
-    def tokenizer(self) -> Dict[str, Any]:
+    def tokenizer(self) -> dict[str, Any]:
         """Get tokenizer configuration."""
         return self.config["tokenizer"]
 
     @property
-    def dataset(self) -> Dict[str, Any]:
+    def dataset(self) -> dict[str, Any]:
         """Get dataset configuration."""
-        return self.config["dataset"]
+        return self.config["data"]
 
     @property
-    def training(self) -> Dict[str, Any]:
+    def training(self) -> dict[str, Any]:
         """Get training configuration."""
         return self.config["training"]
 
     @property
-    def logging(self) -> Dict[str, Any]:
+    def logging(self) -> dict[str, Any]:
         """Get logging configuration."""
         return self.config["logging"]
 
@@ -45,7 +45,7 @@ class Config:
         if not Path(config_path).exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
 
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = yaml.safe_load(f)
 
         return cls(config=config)

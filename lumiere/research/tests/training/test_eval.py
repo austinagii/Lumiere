@@ -10,7 +10,7 @@ from lumiere.research.src.components.attention import MultiHeadAttention
 from lumiere.research.src.components.block import TransformerBlock
 from lumiere.research.src.components.embedding import Embedding
 from lumiere.research.src.components.feedforward import LinearFeedForward
-from lumiere.research.src.data.dataloader import get_data_loader
+from lumiere.research.src.data.dataset import DataLoader
 from lumiere.research.src.data.preprocessing import to_training_batches
 from lumiere.research.src.data.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.research.src.models.transformer import Transformer
@@ -53,20 +53,20 @@ def model():
 
 @pytest.fixture(scope="class")
 def dataloader():
-    return get_data_loader("wikitext", train_dataset_percentage=1)
+    return DataLoader([{"name": "wikitext", "split": "1"}])
 
 
 @pytest.fixture(scope="class")
 def tokenizer(dataloader):
     tokenizer = Tokenizer(vocab_size=VOCAB_SIZE, min_frequency=2)
-    tokenizer.train(dataloader.iter_train())
+    tokenizer.train(dataloader["train"])
     return tokenizer
 
 
 @pytest.fixture
 def eval_data(dataloader, tokenizer):
     return to_training_batches(
-        corpus=dataloader.iter_validation(),
+        corpus=dataloader["validation"],
         tokenizer=tokenizer,
         context_size=CONTEXT_SIZE,
         batch_size=BATCH_SIZE,
@@ -177,7 +177,7 @@ class TestEvaluate:
     def test_evaluate_batch_count_accuracy(self, model, dataloader, tokenizer):
         # Create data with known batch count
         eval_data = to_training_batches(
-            corpus=dataloader.iter_validation(),
+            corpus=dataloader["validation"],
             tokenizer=tokenizer,
             context_size=CONTEXT_SIZE,
             batch_size=BATCH_SIZE,
@@ -246,7 +246,7 @@ class TestEvaluate:
     def test_evaluate_consistent_results(self, model, dataloader, tokenizer):
         # Create two identical data iterators from the same source
         eval_data1 = to_training_batches(
-            corpus=dataloader.iter_validation(),
+            corpus=dataloader["validation"],
             tokenizer=tokenizer,
             context_size=CONTEXT_SIZE,
             batch_size=BATCH_SIZE,
@@ -256,7 +256,7 @@ class TestEvaluate:
         )
 
         eval_data2 = to_training_batches(
-            corpus=dataloader.iter_validation(),
+            corpus=dataloader["validation"],
             tokenizer=tokenizer,
             context_size=CONTEXT_SIZE,
             batch_size=BATCH_SIZE,

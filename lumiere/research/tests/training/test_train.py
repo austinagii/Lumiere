@@ -9,7 +9,7 @@ from lumiere.research.src.components.attention import MultiHeadAttention
 from lumiere.research.src.components.block import TransformerBlock
 from lumiere.research.src.components.embedding import Embedding
 from lumiere.research.src.components.feedforward import LinearFeedForward
-from lumiere.research.src.data.dataloader import get_data_loader
+from lumiere.research.src.data.dataset import DataLoader
 from lumiere.research.src.data.preprocessing import to_training_batches
 from lumiere.research.src.data.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.research.src.models.transformer import Transformer
@@ -53,13 +53,13 @@ def model():
 
 @pytest.fixture(scope="class")
 def dataloader():
-    return get_data_loader("wikitext", train_dataset_percentage=1)
+    return DataLoader([{"name": "wikitext", "split": "1"}])
 
 
 @pytest.fixture(scope="class")
 def tokenizer(dataloader):
     tokenizer = Tokenizer(vocab_size=VOCAB_SIZE, min_frequency=2)
-    tokenizer.train(dataloader.iter_train())
+    tokenizer.train(dataloader["train"])
     return tokenizer
 
 
@@ -86,7 +86,7 @@ def wandb_run(mocker):
 def _call_train(model, tokenizer, optimizer, scheduler, dataloader, wandb_run):
     def _train(data=None, max_num_batches=1, log_interval=50):
         batches = to_training_batches(
-            corpus=data if data else dataloader.iter_train(),
+            corpus=data if data else dataloader["train"],
             tokenizer=tokenizer,
             context_size=CONTEXT_SIZE,
             batch_size=BATCH_SIZE,
@@ -113,7 +113,7 @@ class TestTrain:
     def test_train_iterates_through_entire_dataset_if_no_max_num_batches(
         self, dataloader, _call_train
     ):
-        data = dataloader.iter_train()
+        data = dataloader["train"]
 
         _call_train(data=data, max_num_batches=None)
 
