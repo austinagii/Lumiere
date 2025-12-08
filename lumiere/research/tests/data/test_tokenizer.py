@@ -1,8 +1,8 @@
-from typing import Generator
+from collections.abc import Generator
 
 import pytest
 
-from lumiere.research.src.data.dataloader import get_data_loader
+from lumiere.research.src.data.dataset import DataLoader
 from lumiere.research.src.data.tokenizer import SPECIAL_TOKENS, Tokenizer
 
 
@@ -253,26 +253,24 @@ class TestTokenizer:
 
     @pytest.mark.integration
     @pytest.mark.parametrize(
-        ("data_size", "vocab_size"),
+        ("split,vocab_size"),
         [
-            (1, 256),
-            (10, 512),
-            (25, 1024),
-            (50, 2048),
-            (100, 4096),
+            ("1", 256),
+            ("10", 512),
+            ("25", 1024),
+            ("50", 2048),
+            ("100", 4096),
         ],
     )
-    def test_tokenizer_respects_vocab_size(self, data_size, vocab_size):
+    def test_tokenizer_respects_vocab_size(self, split, vocab_size):
         tokenizer = Tokenizer(vocab_size=vocab_size, min_frequency=2)
 
-        dataloader = get_data_loader("wikitext", train_dataset_percentage=data_size)
+        dataloader = DataLoader([{"name": "wikitext", "split": split}])
 
-        alphabet = set(
-            [char for sentence in dataloader.iter_train() for char in sentence]
-        )
+        alphabet = {char for sentence in dataloader["train"] for char in sentence}
         alphabet_size = len(alphabet) + len(SPECIAL_TOKENS)
 
-        tokenizer.train(dataloader.iter_train())
+        tokenizer.train(dataloader["train"])
 
         # This line is important, if the specified vocab size is less than the alphabet
         # size of the training set, then the vocab size will be exceeded during training

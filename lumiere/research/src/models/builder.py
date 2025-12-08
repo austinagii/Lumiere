@@ -1,6 +1,4 @@
-"""
-Classes for dynamically building a Transformer model from a specification.
-"""
+"""Classes for dynamically building a Transformer model from a specification."""
 
 import inspect
 from copy import deepcopy
@@ -100,7 +98,7 @@ class TransformerSpec:
         if not path.exists():
             raise FileNotFoundError(f"Specfication file not found: {path}")
 
-        with open(path, "r") as f:
+        with open(path) as f:
             spec = yaml.safe_load(f)
 
         return cls(spec)

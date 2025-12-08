@@ -14,7 +14,7 @@ from deepscale.storage.clients.azure_blob_storage_client import (
 
 import wandb
 from lumiere.research.src.config.config import Config
-from lumiere.research.src.data.dataloader import get_data_loader
+from lumiere.research.src.data import DataLoader
 from lumiere.research.src.data.preprocessing import to_training_batches
 from lumiere.research.src.data.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.research.src.models.builder import TransformerBuilder, TransformerSpec
@@ -48,8 +48,8 @@ def signal_handler(sig, frame):
 
 
 def main(
-    run_id: str = None,
-    checkpoint_tag: str = None,
+    run_id: str | None = None,
+    checkpoint_tag: str | None = None,
     log_wandb: bool = True,
 ):
     # Handle Ctrl+C gracefully.
@@ -75,18 +75,14 @@ def main(
 
     # Load the dataset.
     logger.info("Loading the dataset...")
-    dataloader = get_data_loader(
-        dataset_name=model_config.dataset["name"],
-        train_dataset_percentage=model_config.dataset["train_portion"],
-        validation_dataset_percentage=model_config.dataset["validation_portion"],
-    )
+    dataloader = DataLoader(**model_config.dataset)
     logger.info("Dataset loaded successfully\n")
 
     # Load the tokenizer.
     logger.info("Initializing the tokenizer...")
     if checkpoint is None:
         logger.info(f"Training new tokenizer for run '{run_id}'...")
-        tokenizer = Tokenizer(**model_config.tokenizer).train(dataloader.iter_train())
+        tokenizer = Tokenizer(**model_config.tokenizer).train(dataloader["train"])
         logger.info("Tokenizer trained successfully\n")
 
         logger.info("Saving tokenizer")
@@ -106,7 +102,7 @@ def main(
 
     logger.info("Initializing model...")
     if checkpoint is None:
-        spec = TransformerSpec.from_yaml("/path/to/transformer/spec.yaml")
+        spec = TransformerSpec(model_config.model)
     else:
         spec = TransformerSpec(checkpoint["transformer_spec"])
 
@@ -179,12 +175,12 @@ def main(
     # Start the training loop.
     for epoch in itertools.count(current_epoch + 1):
         train_batches = to_training_batches(
-            corpus=dataloader.iter_train(),
+            corpus=dataloader["train"],
             tokenizer=tokenizer,
             context_size=model_config.model["context_size"] + 1,
             batch_size=model_config.training["batch_size"],
             pad_id=SPECIAL_TOKENS["padding"].id,
-            sliding_window_size=model_config.dataset["sliding_window_size"],
+            sliding_window_size=model_config.training["sliding_window_size"],
         )
 
         train_state = train(
@@ -209,12 +205,12 @@ def main(
         )
 
         validation_batches = to_training_batches(
-            corpus=dataloader.iter_validation(),
+            corpus=dataloader["validation"],
             tokenizer=tokenizer,
             context_size=model_config.model["context_size"] + 1,
             batch_size=model_config.training["batch_size"],
             pad_id=SPECIAL_TOKENS["padding"].id,
-            sliding_window_size=model_config.dataset["sliding_window_size"],
+            sliding_window_size=model_config.training["sliding_window_size"],
         )
 
         eval_state = evaluate(

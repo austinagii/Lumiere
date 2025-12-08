@@ -45,7 +45,7 @@ def mock_wikitext(mocker) -> datasets.Dataset:
     return datasets.Dataset.from_dict({"text": data})
 
 
-class TestWikitText2wikitext:
+class TestWikiText2Dataset:
     # ==============================================
     # ============ TEST INITIALIZATION =============
     # ==============================================
@@ -121,7 +121,7 @@ class TestWikitText2wikitext:
         wikitext = WikiText2Dataset()
 
         with pytest.raises(KeyError):
-            wikitext["invalid_split"]
+            next(wikitext["invalid_split"])
 
     def test_getitem_produces_an_iterator_over_wikitext_articles(
         self, mocker, mock_wikitext

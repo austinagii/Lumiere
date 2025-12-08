@@ -15,7 +15,7 @@ def file(tmp_path):
         tokenizer:
             name: gpt2
             vocab_size: 50257
-        dataset:
+        data:
             name: wikitext2
             split: train
         training:

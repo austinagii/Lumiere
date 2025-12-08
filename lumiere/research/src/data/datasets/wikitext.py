@@ -1,10 +1,12 @@
-"""This module provides a dataset for the WikiText2 dataset."""
+"""This module provides the WikiText2 dataset."""
 
 import re
 from collections.abc import Generator, Iterable
 from typing import Final
 
 import datasets
+
+from lumiere.research.src.data.dataset import dataset
 
 
 _DATASET_ID = "Salesforce/wikitext"
@@ -24,6 +26,7 @@ _ARTICLE_HEADER_PATTERN: Final[re.Pattern] = re.compile(
 )
 
 
+@dataset("wikitext")
 class WikiText2Dataset:
     """Loads the WikiText-2 dataset.
 
@@ -103,7 +106,13 @@ class WikiText2Dataset:
 
     def __getitem__(self, split_name: str) -> Generator[str, None, None]:
         """Return an iterator over samples in the specified split."""
-        return self._iter_articles(self._splits[split_name]["text"])
+        if self._splits.get(split_name) is None:
+            raise KeyError(f"Invalid split '{split_name}'.")
+
+        def _get_split():
+            yield from self._iter_articles(self._splits[split_name]["text"])
+
+        return _get_split()
 
     def _iter_articles(self, dataset: Iterable[str]) -> Generator[str, None, None]:
         """Return an iterator over full articles in the specified dataset.

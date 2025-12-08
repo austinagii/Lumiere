@@ -51,9 +51,12 @@ exclude = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = [
-    "D100",  # Missing docstring in public module
-    "D101",  # Missing docstring in public class
-    "D102",  # Missing docstring in public method
+    "D100",  # Ignore warnings on test modules.
+    "D102",  # Ignore warnings on test methods in test classes.
+    "D103",  # Ignore warnings on top level test functions.
+    "D105",  # Missing docstring in magic method
+    "D107",  # Missing docstring in __init__
+
 ]
 
 [tool.ruff.format]
