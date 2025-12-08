@@ -8,7 +8,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [commit, push]
+        stages: [pre-commit, pre-push]
 
       - id: coverage-check
         name: Check individual file coverage (minimum 60%)
@@ -44,4 +44,4 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [push]
+        stages: [pre-push]
