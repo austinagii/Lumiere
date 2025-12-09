@@ -25,7 +25,7 @@ BATCH_SIZE = 3
 
 @pytest.fixture
 def model():
-    return Transformer(
+    model = Transformer(
         vocab_size=VOCAB_SIZE,
         context_size=CONTEXT_SIZE,
         num_blocks=1,
@@ -49,6 +49,11 @@ def model():
         ),
         normalization_factory=lambda: RMSNorm(EMBEDDING_SIZE),
     ).to(utils.get_device())
+    model.optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    model.scheduler = cosine_annealing_lr_scheduler(
+        model.optimizer, warmup_steps=10, max_epochs=100, epoch_steps=10
+    )
+    return model
 
 
 @pytest.fixture(scope="class")
@@ -64,18 +69,6 @@ def tokenizer(dataloader):
 
 
 @pytest.fixture
-def optimizer(model):
-    return torch.optim.Adam(model.parameters(), lr=0.001)
-
-
-@pytest.fixture()
-def scheduler(optimizer):
-    return cosine_annealing_lr_scheduler(
-        optimizer, warmup_steps=10, max_epochs=100, epoch_steps=10
-    )
-
-
-@pytest.fixture
 def wandb_run(mocker):
     run = mocker.Mock()
     run.log = mocker.Mock()
@@ -83,7 +76,7 @@ def wandb_run(mocker):
 
 
 @pytest.fixture
-def _call_train(model, tokenizer, optimizer, scheduler, dataloader, wandb_run):
+def _call_train(model, tokenizer, dataloader, wandb_run):
     def _train(data=None, max_num_batches=1, log_interval=50):
         batches = to_training_batches(
             corpus=data if data else dataloader["train"],
@@ -98,8 +91,6 @@ def _call_train(model, tokenizer, optimizer, scheduler, dataloader, wandb_run):
             wandb_run=wandb_run,
             model=model,
             data=batches,
-            optimizer=optimizer,
-            scheduler=scheduler,
             gradient_clip_norm=1.0,
             global_step=0,
             wandb_log_interval=log_interval,
@@ -167,16 +158,16 @@ class TestTrain:
         assert training_state.global_step == 50
         assert training_state.num_batches == 50
 
-    def test_train_learning_rate_is_updated(self, scheduler, _call_train):
-        initial_learning_rate = scheduler.get_last_lr()[0]
+    def test_train_learning_rate_is_updated(self, model, _call_train):
+        initial_learning_rate = model.scheduler.get_last_lr()[0]
 
         _call_train()
 
-        assert scheduler.get_last_lr()[0] != initial_learning_rate
+        assert model.scheduler.get_last_lr()[0] != initial_learning_rate
 
-    def test_train_calls_optimizer_step(self, optimizer, _call_train):
+    def test_train_calls_optimizer_step(self, model, _call_train):
         # Track calls by monkey-patching the instance method
-        original_step = optimizer.step
+        original_step = model.optimizer.step
         call_count = 0
 
         def counting_step(*args, **kwargs):
@@ -184,27 +175,27 @@ class TestTrain:
             call_count += 1
             return original_step(*args, **kwargs)
 
-        optimizer.step = counting_step
+        model.optimizer.step = counting_step
 
         _call_train()
 
         assert call_count == 1
 
-    def test_train_calls_scheduler_step(self, mocker, scheduler, _call_train):
-        mocker.spy(scheduler, "step")
+    def test_train_calls_scheduler_step(self, mocker, model, _call_train):
+        mocker.spy(model.scheduler, "step")
 
         _call_train()
 
-        assert scheduler.step.call_count == 1
+        assert model.scheduler.step.call_count == 1
 
     def test_train_calls_optimizer_zero_grad_after_each_batch(
-        self, mocker, optimizer, _call_train
+        self, mocker, model, _call_train
     ):
-        mocker.spy(optimizer, "zero_grad")
+        mocker.spy(model.optimizer, "zero_grad")
 
         _call_train(max_num_batches=3)
 
-        assert optimizer.zero_grad.call_count == 3
+        assert model.optimizer.zero_grad.call_count == 3
 
     def test_train_calls_model_forward_with_correct_inputs(
         self, mocker, model, _call_train
@@ -261,13 +252,13 @@ class TestTrain:
             x.shape[1] == CONTEXT_SIZE - 1
         )  # sequence length is shifted for next-token prediction
 
-    def test_train_current_lr_value_accuracy(self, scheduler, _call_train):
-        initial_lr = scheduler.get_last_lr()[0]
+    def test_train_current_lr_value_accuracy(self, model, _call_train):
+        initial_lr = model.scheduler.get_last_lr()[0]
 
         training_state = _call_train()
 
         # Verify current_lr matches what scheduler reports
-        assert training_state.current_lr == scheduler.get_last_lr()[0]
+        assert training_state.current_lr == model.scheduler.get_last_lr()[0]
         # Verify LR actually changed (for cosine annealing scheduler)
         assert training_state.current_lr != initial_lr
 

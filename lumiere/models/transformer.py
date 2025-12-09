@@ -47,11 +47,12 @@ class Transformer(nn.Module):
 
         self.context_size = context_size
         self.num_blocks = num_blocks
-
         self.vocab_size = vocab_size  # To be deleted.
         self.embedding = embedding_factory()
         self.blocks = nn.ModuleList([block_factory() for _ in range(self.num_blocks)])
         self.final_norm = normalization_factory()
+        self.optimizer = None
+        self.scheduler = None
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
