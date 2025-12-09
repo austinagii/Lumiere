@@ -107,15 +107,13 @@ def main(
         spec = TransformerSpec(checkpoint["transformer_spec"])
 
     model = TransformerBuilder.build(spec).to(device)
-
-    optimizer = torch.optim.AdamW(
+    model.optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=model_config.training["learning_rate"],
         weight_decay=model_config.training["weight_decay"],
     )
-
-    scheduler = schedulers.cosine_annealing_lr_scheduler(
-        optimizer,
+    model.scheduler = schedulers.cosine_annealing_lr_scheduler(
+        model.optimizer,
         model_config.training["warmup_steps"],
         model_config.training["max_epochs"],
         model_config.training["epoch_steps"],
@@ -123,8 +121,8 @@ def main(
 
     if checkpoint is not None:
         model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        model.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        model.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
     total_time_taken = checkpoint["time_taken"] if checkpoint else 0.0
     best_loss = checkpoint["best_loss"] if checkpoint else float("inf")
@@ -186,8 +184,6 @@ def main(
         train_state = train(
             model=model,
             data=train_batches,
-            optimizer=optimizer,
-            scheduler=scheduler,
             gradient_clip_norm=model_config.training["gradient_clip_norm"],
             global_step=global_step,
             device=device,
@@ -253,8 +249,8 @@ def main(
             run_id=run_id,
             model_config=model_config.config,
             model_state_dict=model.state_dict(),
-            optimizer_state_dict=optimizer.state_dict(),
-            scheduler_state_dict=scheduler.state_dict(),
+            optimizer_state_dict=model.optimizer.state_dict(),
+            scheduler_state_dict=model.scheduler.state_dict(),
             epoch=epoch,
             global_step=global_step,
             max_epochs=max_epochs,

@@ -1,6 +1,6 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from time import time
-from typing import Iterable
 
 import torch
 from deepscale.storage.clients.azure_blob_storage_client import (
@@ -27,8 +27,6 @@ class TrainingState:
 def train(
     model: Transformer,
     data: Iterable[tuple[torch.Tensor, torch.Tensor]],
-    optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler._LRScheduler,
     gradient_clip_norm: float,
     global_step: int,
     device: torch.device = torch.device("cpu"),
@@ -42,8 +40,6 @@ def train(
         data: Iterable over batches of training data, each batch should be a tuple of
             - input_tokens: shape (batch_size, context_size)
             - padding_mask: shape (batch_size, context_size)
-        optimizer: PyTorch optimizer for updating model parameters.
-        scheduler: Learning rate scheduler that steps after each batch.
         gradient_clip_norm: Maximum norm for gradient clipping.
         global_step: Global step count across all epochs.
         device: Device to run the training on. Defaults to CPU.
@@ -86,9 +82,11 @@ def train(
             grad_norm = torch.nn.utils.clip_grad_norm_(
                 model.parameters(), gradient_clip_norm
             )
-            optimizer.step()
-            scheduler.step()
-            optimizer.zero_grad()
+
+            assert model.optimizer and model.scheduler
+            model.optimizer.step()
+            model.scheduler.step()
+            model.optimizer.zero_grad()
 
             # Update the epoch training stats.
             total_loss += batch_loss.item()
@@ -98,7 +96,7 @@ def train(
             global_step += 1
 
             # Update the progress bar.
-            current_lr = scheduler.get_last_lr()[0]
+            current_lr = model.scheduler.get_last_lr()[0]
             pbar.set_postfix(
                 {
                     "loss": f"{batch_loss:.4f}",
