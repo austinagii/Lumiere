@@ -4,7 +4,6 @@ import os
 import signal
 import sys
 from collections import namedtuple
-from dataclasses import dataclass
 
 import deepscale as ds
 import torch
@@ -21,6 +20,7 @@ from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.models.builder import TransformerBuilder, TransformerSpec
 from lumiere.training import schedulers
 from lumiere.training.eval import evaluate
+from lumiere.training.state import TrainingState
 from lumiere.training.train import train
 from lumiere.utils import get_device
 
@@ -41,19 +41,6 @@ logging.getLogger("azure.core").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 RestorePoint = namedtuple("RestorePoint", "run_id checkpoint_tag")
-
-
-@dataclass
-class RunState:
-    total_time_taken: float = 0.0
-    best_loss: float = float("inf")
-    best_perplexity: float = float("inf")
-    global_step: int = 0
-    current_epoch: int = 1
-    patience: int = 0
-    patience_counter: int = 0
-    stopping_threshold: int = 0
-    max_epochs: int = 0
 
 
 def _exit_run(sig, frame):
@@ -100,7 +87,7 @@ def _init_wandb(run_id: str, run_config):
 def _init_training_run(device: torch.device):
     run_config = Config.from_file(CONFIG_PATH)
     run_id, run_manager = ds.init_run(dict(run_config))
-    run_state = RunState()
+    state = TrainingState()
 
     logger.info("Loading the dataset...")
     dataloader = DataLoader(**run_config.dataset)
@@ -128,21 +115,17 @@ def _init_training_run(device: torch.device):
         run_config.training["max_epochs"],
         run_config.training["epoch_steps"],
     )
-    logger.info("Model initialized successfully.")
-
-    run_state.patience = run_config.training["patience"]
-    run_state.stopping_threshold = run_config.training["stopping_threshold"]
-    run_state.max_epochs = run_config.training["max_epochs"]
+    logger.info("Model initialized successfully.\n")
 
     # TODO: Consider add config and state as properties of `Run`.
-    return run_manager, run_config, run_state, model, tokenizer, dataloader
+    return run_manager, run_config, state, model, tokenizer, dataloader
 
 
 def _load_training_run(run_id: str, checkpoint_tag: str, device: torch.device):
     run_config, checkpoint, run_manager = ds.resume_run(
         run_id, checkpoint_tag, device=device
     )
-    run_state = RunState()
+    state = TrainingState()
     model_config = Config(run_config)
 
     logger.info("Loading the dataset...")
@@ -178,22 +161,18 @@ def _load_training_run(run_id: str, checkpoint_tag: str, device: torch.device):
     model.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
     logger.info("Model loaded successfully.")
 
-    run_state.total_time_taken = checkpoint["time_taken"]
-    run_state.best_loss = checkpoint["best_loss"]
-    run_state.best_perplexity = torch.tensor(run_state.best_loss).exp().item()
-    run_state.global_step = checkpoint["global_step"]
-    run_state.current_epoch = checkpoint["epoch"]
-    run_state.patience = checkpoint["patience"]
-    run_state.patience_counter = checkpoint["patience_counter"]
-    run_state.stopping_threshold = checkpoint["stopping_threshold"]
-    run_state.max_epochs = checkpoint["max_epochs"]
+    state.total_time_taken = checkpoint["time_taken"]
+    state.prev_loss = checkpoint["prev_loss"]
+    state.best_loss = checkpoint["best_loss"]
+    state.best_perplexity = torch.tensor(state.best_loss).exp().item()
+    state.global_step = checkpoint["global_step"]
+    state.current_epoch = checkpoint["epoch"]
+    state.patience_counter = checkpoint["patience_counter"]
 
-    return run_manager, run_config, run_state, model, tokenizer, dataloader
+    return run_manager, run_config, state, model, tokenizer, dataloader
 
 
-def _train_model(
-    model, tokenizer, dataloader, run_config, run_state, wandb_run, device
-):
+def _train_model(model, tokenizer, dataloader, run_config, state, wandb_run, device):
     train_batches = to_training_batches(
         corpus=dataloader["train"],
         tokenizer=tokenizer,
@@ -203,28 +182,25 @@ def _train_model(
         sliding_window_size=run_config.training["sliding_window_size"],
     )
 
-    train_state = train(
+    metrics = train(
+        state=state,
         model=model,
         data=train_batches,
         gradient_clip_norm=run_config.training["gradient_clip_norm"],
-        global_step=run_state.global_step,
         device=device,
         wandb_run=wandb_run,
         wandb_log_interval=run_config.logging["interval"],
     )
 
     logger.info(
-        f"EPOCH {run_state.current_epoch:04d} - {'TRAINING':<10}: "
-        f"Loss: {train_state.avg_loss:.4f}, "
-        f"Perplexity: {train_state.avg_perplexity:.4f}, "
-        f"LR: {train_state.current_lr:.2e}, "
-        f"Time: {train_state.time_taken:.2f}s, "
+        f"EPOCH {state.current_epoch:04d} - {'TRAINING':<10}: "
+        f"Loss: {metrics.avg_loss:.4f}, "
+        f"Perplexity: {metrics.avg_perplexity:.4f}, "
+        f"Time: {state.total_time_taken:.2f}s, "
     )
 
-    return train_state
 
-
-def _eval_model(model, tokenizer, dataloader, run_config, run_state, wandb_run, device):
+def _eval_model(model, tokenizer, dataloader, run_config, state, wandb_run, device):
     validation_batches = to_training_batches(
         corpus=dataloader["validation"],
         tokenizer=tokenizer,
@@ -234,116 +210,82 @@ def _eval_model(model, tokenizer, dataloader, run_config, run_state, wandb_run, 
         sliding_window_size=run_config.training["sliding_window_size"],
     )
 
-    eval_state = evaluate(
+    metrics = evaluate(
         model=model,
         data=validation_batches,
         device=device,
         wandb_run=wandb_run,
     )
 
+    # TODO: Use better name than prev_loss.
+    state.prev_loss = metrics.avg_loss
+    if metrics.avg_loss < state.best_loss - run_config.training["stopping_threshold"]:
+        state.best_loss = metrics.avg_loss
+        state.best_perplexity = metrics.avg_perplexity
+
     logger.info(
-        f"EPOCH {run_state.current_epoch:04d} - {'VALIDATION':<10}: "
-        f"Loss: {eval_state.avg_loss:.4f}, "
-        f"Perplexity: {eval_state.avg_perplexity:.4f}, "
-        f"Time: {eval_state.time_taken:.2f}s, "
+        f"EPOCH {state.current_epoch:04d} - {'VALIDATION':<10}: "
+        f"Loss: {metrics.avg_loss:.4f}, "
+        f"Perplexity: {metrics.avg_perplexity:.4f}, "
+        f"Time: {state.total_time_taken:.2f}s, "
     )
 
     if wandb_run is not None:
         wandb_run.log(
             {
-                "validation/loss": eval_state.avg_loss,
-                "validation/perplexity": eval_state.avg_perplexity,
+                "validation/loss": metrics.avg_loss,
+                "validation/perplexity": metrics.avg_perplexity,
             }
         )
 
-    return eval_state
 
+def _execute_epoch(
+    model, tokenizer, dataloader, run_config, state, run_manager, wandb_run, device
+):
+    _train_model(model, tokenizer, dataloader, run_config, state, wandb_run, device)
+    _eval_model(model, tokenizer, dataloader, run_config, state, wandb_run, device)
 
-def _create_checkpoint(run_id, run_config, model, run_state, eval_state):
-    return Checkpoint(
-        run_id=run_id,
+    checkpoint = Checkpoint(
+        run_id=run_manager.run.id,
         model_config=dict(run_config),
         model_state_dict=model.state_dict(),
         optimizer_state_dict=model.optimizer.state_dict(),
         scheduler_state_dict=model.scheduler.state_dict(),
-        epoch=run_state.current_epoch,
-        global_step=run_state.global_step,
-        max_epochs=run_state.max_epochs,
-        prev_loss=eval_state.avg_loss,
-        best_loss=run_state.best_loss,
-        patience_counter=run_state.patience_counter,
-        time_taken=run_state.total_time_taken,
+        epoch=state.current_epoch,
+        global_step=state.global_step,
+        prev_loss=state.prev_loss,
+        best_loss=state.best_loss,
+        patience_counter=state.patience_counter,
+        time_taken=state.total_time_taken,
     )
 
-
-def _execute_epoch(
-    model, tokenizer, dataloader, run_config, run_state, run_manager, wandb_run, device
-):
-    train_state = _train_model(
-        model,
-        tokenizer,
-        dataloader,
-        run_config,
-        run_state,
-        wandb_run,
-        device,
-    )
-    run_state.global_step += train_state.global_step
-    run_state.total_time_taken += train_state.time_taken
-
-    eval_state = _eval_model(
-        model, tokenizer, dataloader, run_config, run_state, wandb_run, device
-    )
-    run_state.total_time_taken += eval_state.time_taken
-
-    checkpoint = _create_checkpoint(
-        run_manager.run.id, run_config, model, run_state, eval_state
-    )
-
-    # Update training state.
-    if eval_state.avg_loss < run_state.best_loss - run_state.stopping_threshold:
-        run_state.best_loss = eval_state.avg_loss
-        run_state.best_perplexity = eval_state.avg_perplexity
-        run_state.patience_counter = 0
-        logger.info(
-            f"New best validation loss: {run_state.best_loss:.4f}, "
-            f"perplexity: {run_state.best_perplexity:.4f}"
-        )
-        logger.info("Saving 'best' checkpoint...")
-        run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
-        logger.info("Checkpoint saved successfully")
-    else:
-        run_state.patience_counter += 1
-
-    run_state.current_epoch += 1
-    should_save_checkpoint = (
-        run_state.current_epoch % run_config.training["checkpoint_interval"] == 0
-    )
-    if should_save_checkpoint:
+    if state.current_epoch % run_config.training["checkpoint_interval"] == 0:
         logger.info("Saving epoch checkpoint...")
         run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint)
-        logger.info("Checkpoint saved successfully")
+        logger.info("Checkpoint saved successfully.")
 
-    return run_state, checkpoint
+    state.current_epoch += 1
+
+    return checkpoint
 
 
-# @signaled
-def _main(
+# @interruptible
+def _train(
     restore_point: RestorePoint | None,
     log_wandb: bool = True,
 ):
     logger.info("Selecting the training device...")
     device = get_device()
-    logger.info(f"Using '{device}' device for this training run.")
+    logger.info(f"Using '{device}' device for this training run.\n")
 
     if restore_point is None:
         logger.info("Starting a new training run.")
-        run_manager, run_config, run_state, model, tokenizer, dataloader = (
+        run_manager, run_config, state, model, tokenizer, dataloader = (
             _init_training_run(device)
         )
     else:
         logger.info(f"Resuming previous training run with ID: {restore_point.run_id}")
-        run_manager, run_config, run_state, model, tokenizer, dataloader = (
+        run_manager, run_config, state, model, tokenizer, dataloader = (
             _load_training_run(
                 restore_point.run_id, restore_point.checkpoint_tag, device
             )
@@ -362,24 +304,35 @@ def _main(
     logger.info("--------------------------------")
 
     while True:
-        run_state, checkpoint = _execute_epoch(model, tokenizer, dataloader, run_config, run_state, run_manager, wandb_run, device)  # fmt: skip
+        checkpoint = _execute_epoch(model, tokenizer, dataloader, run_config, state, run_manager, wandb_run, device)  # fmt: skip
 
-        if run_state.patience_counter >= run_state.patience:
+        if state.prev_loss == state.best_loss:
+            state.patience_counter = 0
             logger.info(
-                f"Training stopped after {run_state.patience} epochs without improvement."  # noqa: E501
+                f"New best validation loss: {state.best_loss:.4f}, "
+                f"perplexity: {state.best_perplexity:.4f}"
             )
-            break
+            logger.info("Saving 'best' checkpoint...")
+            run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
+            logger.info("Checkpoint saved successfully")
+        else:
+            state.patience_counter += 1
+            if state.patience_counter >= state.patience:
+                logger.info(
+                    f"Training stopped after {state.patience} epochs without improvement."  # noqa: E501
+                )
+                break
 
-        if run_state.current_epoch > run_state.max_epochs:
-            logger.info(f"Training completed after {run_state.current_epoch} epochs.")
+        if state.current_epoch > run_config.training["max_epochs"]:
+            logger.info(f"Training completed after {state.current_epoch} epochs.")
             break
 
         logger.info("--------------------------------")
 
     logger.info(
-        f"Total time taken: {run_state.total_time_taken:.2f}s, "
-        f"Best validation loss: {run_state.best_loss:.4f}, "
-        f"Best validation perplexity: {run_state.best_perplexity:.4f}"
+        f"Total time taken: {state.total_time_taken:.2f}s, "
+        f"Best validation loss: {state.best_loss:.4f}, "
+        f"Best validation perplexity: {state.best_perplexity:.4f}"
     )
 
     run_manager.save_checkpoint(CheckpointType.FINAL, checkpoint)
@@ -418,7 +371,7 @@ if __name__ == "__main__":
 
     _register_signal_handlers()
 
-    _main(
+    _train(
         restore_point=restore_point,
         log_wandb=args.log_wandb,
     )
