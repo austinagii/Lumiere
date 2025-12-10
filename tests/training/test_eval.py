@@ -1,4 +1,3 @@
-from time import time
 from unittest.mock import Mock
 
 import pytest
@@ -14,7 +13,7 @@ from lumiere.data.dataset import DataLoader
 from lumiere.data.preprocessing import to_training_batches
 from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
 from lumiere.models.transformer import Transformer
-from lumiere.training.eval import EvaluationState, evaluate
+from lumiere.training.eval import EvalMetrics, evaluate
 
 
 VOCAB_SIZE = 512
@@ -83,28 +82,26 @@ def wandb_run():
     return run
 
 
-class TestEvaluationState:
-    def test_evaluation_state_creation(self):
-        state = EvaluationState(
-            avg_loss=1.5, avg_perplexity=4.48, num_batches=10, time_taken=2.5
+class TestEvalMetrics:
+    def test_eval_metrics_creation(self):
+        metrics = EvalMetrics(
+            avg_loss=1.5, avg_perplexity=4.48, num_batches=10
         )
 
-        assert state.avg_loss == 1.5
-        assert state.avg_perplexity == 4.48
-        assert state.num_batches == 10
-        assert state.time_taken == 2.5
+        assert metrics.avg_loss == 1.5
+        assert metrics.avg_perplexity == 4.48
+        assert metrics.num_batches == 10
 
 
 class TestEvaluate:
     @pytest.mark.integration
-    def test_evaluate_returns_evaluation_state(self, model, eval_data):
+    def test_evaluate_returns_eval_metrics(self, model, eval_data):
         result = evaluate(model, eval_data)
 
-        assert isinstance(result, EvaluationState)
+        assert isinstance(result, EvalMetrics)
         assert result.avg_loss > 0
         assert result.avg_perplexity > 0
         assert result.num_batches > 0
-        assert result.time_taken > 0
 
     @pytest.mark.integration
     def test_evaluate_model_in_eval_mode(self, mocker, model, eval_data):
@@ -191,18 +188,6 @@ class TestEvaluate:
         # Should process exactly 3 batches as specified
         assert result.num_batches == 3
 
-    @pytest.mark.integration
-    def test_evaluate_time_measurement_accuracy(self, model, eval_data):
-        start_time = time()
-
-        result = evaluate(model, eval_data)
-
-        end_time = time()
-        actual_time_taken = end_time - start_time
-
-        # Allow for some tolerance in time measurement
-        assert abs(actual_time_taken - result.time_taken) < 0.1
-
     def test_evaluate_with_wandb_logging(self, model, eval_data, wandb_run):
         result = evaluate(model, eval_data, wandb_run=wandb_run)
 
@@ -220,7 +205,7 @@ class TestEvaluate:
         # Should not raise any errors when wandb_run is None
         result = evaluate(model, eval_data, wandb_run=None)
 
-        assert isinstance(result, EvaluationState)
+        assert isinstance(result, EvalMetrics)
 
     @pytest.mark.integration
     def test_evaluate_with_empty_data(self, model):
@@ -279,6 +264,6 @@ class TestEvaluate:
         result = evaluate(model, eval_data, device=device)
 
         # Should complete successfully regardless of device
-        assert isinstance(result, EvaluationState)
+        assert isinstance(result, EvalMetrics)
         assert result.avg_loss > 0
         assert result.avg_perplexity > 0
