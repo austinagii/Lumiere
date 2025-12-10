@@ -39,6 +39,9 @@ class Config:
     def __str__(self):
         return yaml.dump(self.config, default_flow_style=False)
 
+    def __iter__(self):
+        yield from self.config.items()
+
     @classmethod
     def from_file(cls, config_path: str) -> "Config":
         """Create a Config instance from a file."""
