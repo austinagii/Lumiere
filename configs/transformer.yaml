@@ -27,7 +27,6 @@ model:
     normalized_shape: 128
 
 tokenizer:
-  type: bpe
   vocab_size: 4096
   min_frequency: 2
 
