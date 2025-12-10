@@ -12,27 +12,26 @@ from wandb.sdk.wandb_run import Run
 
 from lumiere.data.tokenizer import SPECIAL_TOKENS
 from lumiere.models.transformer import Transformer
+from lumiere.training.state import TrainingState
 
 
 @dataclass
-class TrainingState:
+class EvalMetrics:
     avg_loss: float
     avg_perplexity: float
     num_batches: int
-    current_lr: float
-    global_step: int
-    time_taken: float
 
 
 def train(
+    state: TrainingState,
     model: Transformer,
     data: Iterable[tuple[torch.Tensor, torch.Tensor]],
     gradient_clip_norm: float,
-    global_step: int,
     device: torch.device = torch.device("cpu"),
+    # TODO: Replace two below with custom stat logger.
     wandb_run: Run | None = None,
     wandb_log_interval: int = 50,
-) -> TrainingState:
+) -> EvalMetrics:
     """Train the transformer model on the specified data for one epoch.
 
     Args:
@@ -47,7 +46,7 @@ def train(
         wandb_log_interval: Log training metrics to wandb every N steps (default: 50).
 
     Returns:
-        TrainingState: The training state after the epoch.
+        EvalMetrics: The training state after the epoch.
     """
     # Prepare the model for training.
     model.to(device)
@@ -60,7 +59,7 @@ def train(
     epoch_steps = 0
 
     start_time = time()
-    with tqdm(data, desc=f"Step {global_step}", leave=False) as pbar:
+    with tqdm(data, desc=f"Epoch {state.current_epoch:>04d}", leave=False) as pbar:
         for x, padding_mask in pbar:
             # Shift the input tokens to the left by one position to get the targets.
             y = x[:, 1:].to(device)
@@ -93,10 +92,10 @@ def train(
             total_perplexity += batch_perplexity.item()
             num_batches += 1
             epoch_steps += 1
-            global_step += 1
+            state.global_step += 1
+            current_lr = model.scheduler.get_last_lr()[0]
 
             # Update the progress bar.
-            current_lr = model.scheduler.get_last_lr()[0]
             pbar.set_postfix(
                 {
                     "loss": f"{batch_loss:.4f}",
@@ -108,7 +107,7 @@ def train(
             )
 
             # Log the training stats to wandb.
-            if wandb_run is not None and global_step % wandb_log_interval == 0:
+            if wandb_run is not None and state.global_step % wandb_log_interval == 0:
                 with disable_tokenizer_parallelism():
                     wandb_run.log(
                         {
@@ -120,13 +119,12 @@ def train(
                     )
 
     end_time = time()
-    time_taken = end_time - start_time
+    state.total_time_taken += end_time - start_time
 
-    return TrainingState(
+    metrics = EvalMetrics(
         avg_loss=total_loss / num_batches,
         avg_perplexity=total_perplexity / num_batches,
         num_batches=num_batches,
-        current_lr=current_lr,
-        global_step=global_step,
-        time_taken=time_taken,
     )
+
+    return metrics
