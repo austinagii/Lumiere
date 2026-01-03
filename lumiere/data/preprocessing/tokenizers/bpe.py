@@ -1,27 +1,12 @@
-from collections import OrderedDict
-from dataclasses import dataclass
-from typing import Generator, Iterable, Sequence
+from collections.abc import Generator, Iterable, Sequence
 
 import tokenizers
 from tokenizers import decoders, models, normalizers, pre_tokenizers, trainers
 
-
-@dataclass
-class SpecialToken:
-    id: int
-    token: str
+from lumiere.data.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
 
 
-SPECIAL_TOKENS = OrderedDict(
-    {
-        "start_of_text": SpecialToken(0, "<|sot|>"),
-        "end_of_text": SpecialToken(1, "<|eot|>"),
-        "padding": SpecialToken(2, "<|pad|>"),
-    }
-)
-
-
-class Tokenizer:
+class BPETokenizer(Tokenizer):
     def __init__(self, vocab_size: int = 30000, min_frequency: int = 2):
         self.tokenizer = tokenizers.Tokenizer(models.BPE())
         self.tokenizer.normalizer = normalizers.NFKC()
