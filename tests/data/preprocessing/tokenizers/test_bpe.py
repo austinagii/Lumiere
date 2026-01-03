@@ -3,12 +3,13 @@ from collections.abc import Generator
 import pytest
 
 from lumiere.data.dataset import DataLoader
+from lumiere.data.preprocessing.tokenizers import BPETokenizer
 from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
 
 
 @pytest.fixture
 def tokenizer():
-    tokenizer = Tokenizer(vocab_size=32, min_frequency=1)
+    tokenizer = BPETokenizer(vocab_size=32, min_frequency=1)
 
     # Train on a small corpus that contains the words we'll test
     corpus = [
@@ -21,7 +22,7 @@ def tokenizer():
     return tokenizer
 
 
-class TestTokenizer:
+class TestBpeTokenizer:
     def test_tokenize_returns_a_list_of_tokens(self, tokenizer):
         text = "the quick brown fox jumped the lazy dog"
 
