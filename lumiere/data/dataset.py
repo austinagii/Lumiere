@@ -73,10 +73,14 @@ def dataset(dataset_name: str):
     """
 
     def decorator(cls):
-        _dataset_registry[dataset_name] = cls
+        register_dataset(dataset_name, cls)
         return cls
 
     return decorator
+
+
+def register_dataset(name: str, cls: type[Dataset]) -> None:
+    _dataset_registry[name] = cls
 
 
 def get_dataset(dataset_name: str) -> type[Dataset] | None:
@@ -130,7 +134,7 @@ class DataLoader:
 
     def __init__(
         self,
-        datasets: Iterable[Mapping[str, Any]],
+        datasets: Iterable[Mapping[str, Any]] | None = None,
         merge_mode: MergeMode | str = "greedy",
     ) -> None:
         """Initialize a DataLoader with multiple datasets.
@@ -156,10 +160,21 @@ class DataLoader:
         self.merge_mode = (
             MergeMode(merge_mode) if isinstance(merge_mode, str) else merge_mode
         )
-        self._datasets = [self._init_dataset(dataset) for dataset in datasets]
+        self._datasets = []
+        if datasets is not None:
+            self._datasets.extend([self._init_dataset(dataset) for dataset in datasets])
+
+    # TODO: Consider making initialization with dataset instances the default.
+    @classmethod
+    def from_datasets(
+        cls, datasets: list[Dataset], merge_mode: MergeMode | str = "greedy"
+    ) -> "DataLoader":
+        instance = cls()
+        instance._datasets = datasets
+        return instance
 
     @staticmethod
-    def _init_dataset(dataset_config: dict[str, Any]) -> Dataset:
+    def _init_dataset(dataset_config: Mapping[str, Any]) -> Dataset:
         """Initialize a single dataset from its configuration.
 
         Retrieves the dataset class from the registry and instantiates it

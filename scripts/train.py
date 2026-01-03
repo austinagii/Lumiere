@@ -11,17 +11,15 @@ from deepscale import Checkpoint, CheckpointType
 from deepscale.storage.clients.azure_blob_storage_client import (
     disable_tokenizer_parallelism,
 )
+from torch.nn import functional as F
 
 import wandb
 from lumiere.config.config import Config
 from lumiere.data import DataLoader
-from lumiere.data.preprocessing import to_training_batches
-from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
+from lumiere.data.tokenizer import Tokenizer
 from lumiere.models.builder import TransformerBuilder, TransformerSpec
 from lumiere.training import schedulers
-from lumiere.training.eval import evaluate
 from lumiere.training.state import TrainingState
-from lumiere.training.train import train
 from lumiere.utils import get_device
 
 
@@ -41,6 +39,15 @@ logging.getLogger("azure.core").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 RestorePoint = namedtuple("RestorePoint", "run_id checkpoint_tag")
+
+
+def loss_fn(logits):
+    batch_loss = F.cross_entropy(
+        logits.view(-1, model.vocab_size),
+        y.reshape(-1),
+        ignore_index=SPECIAL_TOKENS["padding"].id,
+    )
+    batch_perplexity = torch.exp(batch_loss)
 
 
 def _exit_run(sig, frame):
@@ -172,59 +179,62 @@ def _load_training_run(run_id: str, checkpoint_tag: str, device: torch.device):
     return run_manager, run_config, state, model, tokenizer, dataloader
 
 
-def _train_model(model, tokenizer, dataloader, run_config, state, wandb_run, device):
-    train_batches = to_training_batches(
-        corpus=dataloader["train"],
-        tokenizer=tokenizer,
-        context_size=run_config.model["context_size"] + 1,
-        batch_size=run_config.training["batch_size"],
-        pad_id=SPECIAL_TOKENS["padding"].id,
-        sliding_window_size=run_config.training["sliding_window_size"],
+def _save_epoch_checkpoint(run_manager, trainer, model):
+    checkpoint = Checkpoint(
+        run_id=run_manager.run.id,
+        train_config=dict(trainer.config),
+        model_state_dict=model.state_dict(),
+        optimizer_state_dict=model.optimizer.state_dict(),
+        scheduler_state_dict=model.scheduler.state_dict(),
+        epoch=trainer.state.current_epoch,
+        global_step=trainer.state.global_step,
+        prev_loss=trainer.state.prev_loss,
+        best_loss=trainer.state.best_loss,
+        patience_counter=trainer.state.patience_counter,
+        time_taken=trainer.state.total_time_taken,
     )
 
-    metrics = train(
-        state=state,
-        model=model,
-        data=train_batches,
-        gradient_clip_norm=run_config.training["gradient_clip_norm"],
-        device=device,
-        wandb_run=wandb_run,
-        wandb_log_interval=run_config.logging["interval"],
+    logger.info("Saving epoch checkpoint...")
+    run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint)
+    logger.info("Checkpoint saved successfully.")
+
+
+def _log_new_loss(state):
+    logger.info(
+        f"New best validation loss: {state.best_loss:.4f}, "
+        f"perplexity: {state.best_perplexity:.4f}"
     )
 
+
+def _save_best_checkpoint():
+    logger.info("Saving 'best' checkpoint...")
+    run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
+    logger.info("Checkpoint saved successfully")
+
+
+def _log_train_metrics():
     logger.info(
         f"EPOCH {state.current_epoch:04d} - {'TRAINING':<10}: "
         f"Loss: {metrics.avg_loss:.4f}, "
         f"Perplexity: {metrics.avg_perplexity:.4f}, "
         f"Time: {state.total_time_taken:.2f}s, "
     )
+    # Log the training stats to wandb.
+    if wandb_run is not None and state.global_step % wandb_log_interval == 0:
+        with disable_tokenizer_parallelism():
+            wandb_run.log(
+                {
+                    "train/loss": batch_loss.item(),
+                    "train/perplexity": batch_perplexity.item(),
+                    "train/lr": current_lr,
+                    "train/grad_norm": grad_norm,
+                }
+            )
 
 
-def _eval_model(model, tokenizer, dataloader, run_config, state, wandb_run, device):
-    validation_batches = to_training_batches(
-        corpus=dataloader["validation"],
-        tokenizer=tokenizer,
-        context_size=run_config.model["context_size"] + 1,
-        batch_size=run_config.training["batch_size"],
-        pad_id=SPECIAL_TOKENS["padding"].id,
-        sliding_window_size=run_config.training["sliding_window_size"],
-    )
-
-    metrics = evaluate(
-        model=model,
-        data=validation_batches,
-        device=device,
-        wandb_run=wandb_run,
-    )
-
-    # TODO: Use better name than prev_loss.
-    state.prev_loss = metrics.avg_loss
-    if metrics.avg_loss < state.best_loss - run_config.training["stopping_threshold"]:
-        state.best_loss = metrics.avg_loss
-        state.best_perplexity = metrics.avg_perplexity
-
+def log_training_metrics():
     logger.info(
-        f"EPOCH {state.current_epoch:04d} - {'VALIDATION':<10}: "
+        f"EPOCH {state.current_epoch:04d} - {'TRAINING':<10}: "
         f"Loss: {metrics.avg_loss:.4f}, "
         f"Perplexity: {metrics.avg_perplexity:.4f}, "
         f"Time: {state.total_time_taken:.2f}s, "
@@ -239,36 +249,6 @@ def _eval_model(model, tokenizer, dataloader, run_config, state, wandb_run, devi
         )
 
 
-def _execute_epoch(
-    model, tokenizer, dataloader, run_config, state, run_manager, wandb_run, device
-):
-    _train_model(model, tokenizer, dataloader, run_config, state, wandb_run, device)
-    _eval_model(model, tokenizer, dataloader, run_config, state, wandb_run, device)
-
-    checkpoint = Checkpoint(
-        run_id=run_manager.run.id,
-        model_config=dict(run_config),
-        model_state_dict=model.state_dict(),
-        optimizer_state_dict=model.optimizer.state_dict(),
-        scheduler_state_dict=model.scheduler.state_dict(),
-        epoch=state.current_epoch,
-        global_step=state.global_step,
-        prev_loss=state.prev_loss,
-        best_loss=state.best_loss,
-        patience_counter=state.patience_counter,
-        time_taken=state.total_time_taken,
-    )
-
-    if state.current_epoch % run_config.training["checkpoint_interval"] == 0:
-        logger.info("Saving epoch checkpoint...")
-        run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint)
-        logger.info("Checkpoint saved successfully.")
-
-    state.current_epoch += 1
-
-    return checkpoint
-
-
 # @interruptible
 def _train(
     restore_point: RestorePoint | None,
@@ -277,6 +257,13 @@ def _train(
     logger.info("Selecting the training device...")
     device = get_device()
     logger.info(f"Using '{device}' device for this training run.\n")
+
+    trainer.register_post_epoch_hook(
+        functools.bind(_save_epoch_checkpoint, run_manager),
+        lambda epoch_no: epoch_no % epoch_interval,
+    )
+
+    trainer.register_improvement_hook(_log_new_loss)
 
     if restore_point is None:
         logger.info("Starting a new training run.")
@@ -302,32 +289,6 @@ def _train(
         f"Trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
     )
     logger.info("--------------------------------")
-
-    while True:
-        checkpoint = _execute_epoch(model, tokenizer, dataloader, run_config, state, run_manager, wandb_run, device)  # fmt: skip
-
-        if state.prev_loss == state.best_loss:
-            state.patience_counter = 0
-            logger.info(
-                f"New best validation loss: {state.best_loss:.4f}, "
-                f"perplexity: {state.best_perplexity:.4f}"
-            )
-            logger.info("Saving 'best' checkpoint...")
-            run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
-            logger.info("Checkpoint saved successfully")
-        else:
-            state.patience_counter += 1
-            if state.patience_counter >= state.patience:
-                logger.info(
-                    f"Training stopped after {state.patience} epochs without improvement."  # noqa: E501
-                )
-                break
-
-        if state.current_epoch > run_config.training["max_epochs"]:
-            logger.info(f"Training completed after {state.current_epoch} epochs.")
-            break
-
-        logger.info("--------------------------------")
 
     logger.info(
         f"Total time taken: {state.total_time_taken:.2f}s, "
