@@ -3,7 +3,7 @@ from collections.abc import Iterable
 import torch
 
 from lumiere.data import DataLoader
-from lumiere.data.tokenizer import Tokenizer
+from lumiere.data.preprocessing import Tokenizer
 from lumiere.utils.validation import (
     validate_integer,
 )

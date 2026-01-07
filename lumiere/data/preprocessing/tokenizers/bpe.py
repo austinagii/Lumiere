@@ -1,12 +1,12 @@
-from collections.abc import Generator, Iterable, Sequence
+from collections.abc import Generator, Iterable
 
 import tokenizers
 from tokenizers import decoders, models, normalizers, pre_tokenizers, trainers
 
-from lumiere.data.preprocessing.tokenizer import SPECIAL_TOKENS, Tokenizer
+from lumiere.data.preprocessing.tokenizer import SPECIAL_TOKENS, Serializable, Tokenizer
 
 
-class BPETokenizer(Tokenizer):
+class BPETokenizer(Tokenizer, Serializable):
     def __init__(self, vocab_size: int = 30000, min_frequency: int = 2):
         self.tokenizer = tokenizers.Tokenizer(models.BPE())
         self.tokenizer.normalizer = normalizers.NFKC()
@@ -22,56 +22,37 @@ class BPETokenizer(Tokenizer):
             [token.token for token in SPECIAL_TOKENS.values()]
         )
 
-    def tokenize(self, text: str, to_ids: bool = False) -> list[str] | list[int]:
+    def tokenize(self, text: str) -> list[int]:
         """Tokenizes the specified text.
 
         If `to_ids` is `True`, the tokens are converted to their corresponding IDs.
         """
-        return (
-            self.tokenizer.encode(text).ids
-            if to_ids
-            else self.tokenizer.encode(text).tokens
-        )
+        return self.tokenizer.encode(text).ids
 
-    def tokenize_all(
-        self, corpus: Iterable[str], lazy: bool = False, to_ids: bool = False
-    ) -> list[list[str]] | Generator[list[str], None, None]:
+    def tokenize_all(self, corpus: Iterable[str]) -> Generator[list[int], None, None]:
         """Tokenizes the specified text.
 
         When `lazy` is `True`, a generator of lists of tokens is returned.
         Otherwise, a list of lists of tokens is returned. If `to_ids` is `True`,
         the tokens are converted to their corresponding IDs.
         """
-        if lazy:
-            return (self.tokenize(text, to_ids) for text in corpus)
-        else:
-            return [self.tokenize(text, to_ids) for text in corpus]
+        return (self.tokenize(text) for text in corpus)
 
-    def encode(self, tokens: list[str]) -> list[int]:
+    def encode(self, tokens: Iterable[str]) -> list[int]:
         return [self.tokenizer.token_to_id(token) for token in tokens]
 
     def encode_all(
-        self, corpus: Sequence[list[str]], lazy: bool = False
-    ) -> list[list[int]] | Generator[list[int], None, None]:
-        if lazy:
-            return (
-                [self.tokenizer.token_to_id(token) for token in text] for text in corpus
-            )
-        else:
-            return [
-                [self.tokenizer.token_to_id(token) for token in text] for text in corpus
-            ]
+        self, corpus: Iterable[Iterable[str]]
+    ) -> Generator[list[int], None, None]:
+        return (
+            [self.tokenizer.token_to_id(token) for token in text] for text in corpus
+        )
 
-    def decode(self, token_ids: list[int]) -> str:
-        return self.tokenizer.decode(token_ids)
+    def decode(self, token_ids: Iterable[int]) -> str:
+        return self.tokenizer.decode(list(token_ids))
 
-    def decode_all(
-        self, corpus: Sequence[list[int]], lazy: bool = False
-    ) -> list[str] | Generator[str, None, None]:
-        if lazy:
-            return (self.decode(ids) for ids in corpus)
-        else:
-            return [self.decode(ids) for ids in corpus]
+    def decode_all(self, corpus: Iterable[Iterable[int]]) -> Generator[str, None, None]:
+        return (self.decode(ids) for ids in corpus)
 
     def train(self, corpus: Iterable[str]):
         self.tokenizer.train_from_iterator(corpus, self.trainer)
@@ -83,7 +64,7 @@ class BPETokenizer(Tokenizer):
 
     @classmethod
     def from_bytes(cls, bytes: bytes, *args, **kwargs):
-        tokenizer = Tokenizer(*args, **kwargs)
+        tokenizer = cls(*args, **kwargs)
         tokenizer.tokenizer = tokenizers.Tokenizer.from_str(bytes.decode("utf-8"))
         return tokenizer
 
