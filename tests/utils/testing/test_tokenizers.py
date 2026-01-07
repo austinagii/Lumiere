@@ -31,3 +31,20 @@ class TestAsciiTokenizer:
         ]
 
         assert list(tokenizer.tokenize_all(corpus)) == expected_output
+
+    def test_decode_converts_token_ascii_codes_to_characters(self, tokenizer):
+        token_ids = [72, 101, 108, 108, 111, 32, 116, 101, 115, 116, 33]
+        expected_output = "Hello test!"
+
+        assert tokenizer.decode(token_ids) == expected_output
+
+    def test_decode_converts_invalid_token_ids_to_replacement_character(
+        self, tokenizer
+    ):
+        token_ids = [
+            [78, 97, 116, 115, 117, 107, 105, 32, 83, 117, 98, 97, 114, 117],
+            [69, 109, 105, 108, 105, 97, 32, 84, 97, 110],
+        ]
+        expected_output = ["Natsuki Subaru", "Emilia Tan"]
+
+        assert list(tokenizer.decode_all(token_ids)) == expected_output
