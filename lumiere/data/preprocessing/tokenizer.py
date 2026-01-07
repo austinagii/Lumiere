@@ -69,7 +69,8 @@ class Tokenizer(Protocol):
         """Get the vocab size of the tokenizer."""
         ...
 
-    @classmethod
+
+class Serializable(Protocol):
     def from_bytes(cls, bytes: bytes, *args, **kwargs):
         """Create a tokenizer from its byte representation."""
         ...
