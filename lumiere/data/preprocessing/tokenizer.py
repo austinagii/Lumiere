@@ -23,7 +23,9 @@ class Tokenizer(Protocol):
     def tokenize(self, text: str, to_ids: bool = False) -> list[str] | list[int]:
         """Tokenizes the specified text.
 
-        If `to_ids` is `True`, the tokens are converted to their corresponding IDs.
+        By default, each token will be returned as it's string representation from the
+        original text. If `to_ids` is `True`, then the integer ID of each token is
+        returned instead.
         """
         ...
 
@@ -58,11 +60,12 @@ class Tokenizer(Protocol):
         """Convert a nested sequence of token ids to their string representations."""
         ...
 
-    def train(self, corpus: Iterable[str]): ...
+    def train(self, corpus: Iterable[str]):
         """Train the tokenizer on a sequence of strings."""
+        ...
 
     @property
-    def vocab_size(self) -> int: 
+    def vocab_size(self) -> int:
         """Get the vocab size of the tokenizer."""
         ...
 
