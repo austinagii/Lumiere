@@ -18,12 +18,12 @@ class AsciiTokenizer(Tokenizer):
         return (self.tokenize(text, to_ids=to_ids) for text in corpus)
 
     def encode(self, tokens: list[str]) -> list[int]:
-        pass
+        raise NotImplementedError
 
     def encode_all(
         self, corpus: Sequence[list[str]], lazy: bool = False
     ) -> list[list[int]] | Generator[list[int], None, None]:
-        pass
+        raise NotImplementedError
 
     def decode(self, token_ids: list[int]) -> str:
         pass
