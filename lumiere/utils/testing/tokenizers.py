@@ -4,6 +4,7 @@ from lumiere.data.preprocessing.tokenizer import Tokenizer
 
 
 MAX_ASCII_CODE = 127
+INVALID_CHARACTER = "�"
 
 
 class AsciiTokenizer(Tokenizer):
@@ -26,12 +27,17 @@ class AsciiTokenizer(Tokenizer):
         raise NotImplementedError
 
     def decode(self, token_ids: list[int]) -> str:
-        pass
+        return "".join(
+            [
+                chr(_id) if _id <= MAX_ASCII_CODE else INVALID_CHARACTER
+                for _id in token_ids
+            ]
+        )
 
     def decode_all(
         self, corpus: Sequence[list[int]], lazy: bool = False
     ) -> list[str] | Generator[str, None, None]:
-        pass
+        return (self.decode(ids) for ids in corpus)
 
     def train(self, corpus: Iterable[str]) -> None:
         pass
