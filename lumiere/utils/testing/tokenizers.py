@@ -38,11 +38,11 @@ class AsciiTokenizer(Tokenizer):
 
     @property
     def vocab_size(self) -> int:
-        pass
+        return MAX_ASCII_CODE
 
     @classmethod
     def from_bytes(cls, bytes: bytes, *args, **kwargs):
-        pass
+        raise NotImplementedError
 
     def __bytes__(self):
-        pass
+        raise NotImplementedError
