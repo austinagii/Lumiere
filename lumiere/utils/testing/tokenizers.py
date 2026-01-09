@@ -33,8 +33,5 @@ class AsciiTokenizer(Tokenizer):
     def decode_all(self, corpus: Iterable[Iterable[int]]) -> Generator[str, None, None]:
         return (self.decode(ids) for ids in corpus)
 
-    def train(self, corpus: Iterable[str]) -> None:
-        pass
-
     def vocab_size(self) -> int:
         return MAX_ASCII_CODE
