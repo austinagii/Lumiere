@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from collections.abc import Generator, Iterable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 
 @dataclass
@@ -74,3 +74,9 @@ class Serializable(Protocol):
     def __bytes__(self):
         """Convert this tokenizer to its byte representation."""
         ...
+
+
+class Trainable(Protocol):
+    def train(self, dataset: Iterable[Any]) -> None:
+        """Train the class on the specified dataset."""
+        pass
