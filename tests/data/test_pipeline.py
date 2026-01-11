@@ -4,8 +4,9 @@ import pytest
 import torch
 
 from lumiere.data import DataLoader, Pipeline
-from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
-from lumiere.utils.testing.datasets import LoremIpsumDataset
+from lumiere.data.preprocessing.tokenizer import SPECIAL_TOKENS
+from lumiere.utils.testing.datasets import FamousQuotesDataset
+from lumiere.utils.testing.tokenizers import AsciiTokenizer
 
 
 def assert_mask(tokens, mask, pad_id):
@@ -15,21 +16,15 @@ def assert_mask(tokens, mask, pad_id):
     assert torch.equal(mask, pad_locs)
 
 
-@pytest.fixture
-def fake_tokenizer():
-    return FakeTokenizer({"A": [1, 2, 3, 4], "B": [9, 9]})
-
-
 @pytest.fixture(scope="module")
 def dataloader():
-    return DataLoader.from_datasets([LoremIpsumDataset(source="ipsala", count=10)])
+    quotes_dataset = FamousQuotesDataset(tone="glass", topics=["success"])
+    return DataLoader.from_datasets([quotes_dataset])
 
 
 @pytest.fixture
-def tokenizer(dataloader):
-    tokenizer = Tokenizer()
-    tokenizer.train(dataloader["train"])
-    return tokenizer
+def tokenizer():
+    return AsciiTokenizer()
 
 
 @pytest.fixture
@@ -44,17 +39,41 @@ def pipeline_factory(dataloader, tokenizer):
 
 
 class TestPipeline:
-    def test_pipeline_can_be_initialized_with_datasets(self, pipeline_factory):
+    """Tests for the Pipeline class."""
+
+    def test_pipeline_produces_batches_from_datasources(self, pipeline_factory):
         pipeline = pipeline_factory(
             context_size=8,
             batch_size=2,
             sliding_window_size=4,
         )
 
+        expected_token_batches = torch.tensor(
+            [
+                [
+                    [66, 101, 32, 121, 111, 117, 114, 115],  # "Be yours"
+                    [111, 117, 114, 115, 101, 108, 102, 59],  # "ourself;"
+                ],
+                [
+                    [101, 108, 102, 59, 32, 101, 118, 101],  # "elf; eve"
+                    [32, 101, 118, 101, 114, 121, 111, 110],  # " everyon"
+                ],
+                [
+                    [114, 121, 111, 110, 101, 32, 101, 108],  # "ryone el"
+                    [101, 32, 101, 108, 115, 101, 32, 105],  # "e else i"
+                ],
+            ],
+            dtype=torch.long,
+        )
+        expected_mask_batches = torch.zeros((3, 2, 8), dtype=torch.bool)
+
         batches = pipeline.batches(num_batches=3)
-        for batch, batch_mask in batches:
-            assert batch.shape == (2, 8)
-            assert batch_mask.shape == (2, 8)
+        token_batches, mask_batches = [
+            torch.stack(b) for b in zip(*batches, strict=False)
+        ]
+
+        assert torch.allclose(token_batches, expected_token_batches)
+        assert torch.allclose(mask_batches, expected_mask_batches)
 
 
 class TestToTrainingBatches:
