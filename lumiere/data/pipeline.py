@@ -102,9 +102,7 @@ class Pipeline:
         context_write_ix = 0  # The index of the next free space in the context.
         num_batches_created = 0  # The number of batches created so far.
 
-        for tokens in self.tokenizer.tokenize_all(
-            self.dataloader[self.split], to_ids=True, lazy=True
-        ):
+        for tokens in self.tokenizer.tokenize_all(self.dataloader[self.split]):
             total_tokens_in_seq = len(tokens)
             tokens = torch.as_tensor(tokens, dtype=torch.long)
             seq_read_ix = 0  # The index of the next token to read from the sequence.
