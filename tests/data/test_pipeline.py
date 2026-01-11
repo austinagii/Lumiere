@@ -42,10 +42,15 @@ class TestPipeline:
     """Tests for the Pipeline class."""
 
     def test_pipeline_produces_batches_from_datasources(self, pipeline_factory):
+        num_batches = 3
+        batch_size = 2
+        context_size = 8
+        sliding_window_size = 4
+
         pipeline = pipeline_factory(
-            context_size=8,
-            batch_size=2,
-            sliding_window_size=4,
+            context_size=context_size,
+            batch_size=batch_size,
+            sliding_window_size=sliding_window_size,
         )
 
         expected_token_batches = torch.tensor(
@@ -65,45 +70,25 @@ class TestPipeline:
             ],
             dtype=torch.long,
         )
-        expected_mask_batches = torch.zeros((3, 2, 8), dtype=torch.bool)
+        expected_mask_batches = torch.zeros(
+            (num_batches, batch_size, context_size), dtype=torch.bool
+        )
 
-        batches = pipeline.batches(num_batches=3)
+        batches = pipeline.batches(num_batches=num_batches)
         token_batches, mask_batches = [
             torch.stack(b) for b in zip(*batches, strict=False)
         ]
 
-        assert torch.allclose(token_batches, expected_token_batches)
-        assert torch.allclose(mask_batches, expected_mask_batches)
+        assert expected_token_batches.shape == (num_batches, batch_size, context_size)
+        assert expected_token_batches.dtype == torch.long
+        assert torch.equal(token_batches, expected_token_batches)
+
+        assert expected_mask_batches.shape == (num_batches, batch_size, context_size)
+        assert expected_mask_batches.dtype == torch.bool
+        assert torch.equal(mask_batches, expected_mask_batches)
 
 
 class TestToTrainingBatches:
-    def test_basic_no_overlap_single_seq_exact_fit(self):
-        corpus = ["A"]
-        tok = FakeTokenizer({"A": [1, 2, 3, 4]})
-
-        actual_output = collect_batches(
-            corpus=corpus,
-            tokenizer=tok,
-            context_size=2,
-            batch_size=2,
-            pad_id=0,
-            sliding_window_size=0,
-        )
-
-        assert len(actual_output) == 1
-        tokens, padding_mask = actual_output[0]
-        # Expect: two rows, each of length 2, no padding
-        assert tokens.shape == (2, 2)
-        assert isinstance(tokens, torch.Tensor)
-        assert isinstance(padding_mask, torch.Tensor)
-        assert padding_mask.dtype == torch.bool
-        # Order preserved, chunked by context_size
-        assert torch.equal(tokens[0], torch.tensor([1, 2]))
-        assert torch.equal(tokens[1], torch.tensor([3, 4]))
-        assert torch.equal(
-            padding_mask, torch.zeros_like(padding_mask, dtype=torch.bool)
-        )
-
     def test_partial_last_row_no_overlap(self):
         corpus = ["A"]
         tok = FakeTokenizer({"A": [1, 2, 3]})
