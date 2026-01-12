@@ -160,7 +160,7 @@ class DataLoader:
         self.merge_mode = (
             MergeMode(merge_mode) if isinstance(merge_mode, str) else merge_mode
         )
-        self._datasets = []
+        self._datasets: list[Dataset] = []
         if datasets is not None:
             self._datasets.extend([self._init_dataset(dataset) for dataset in datasets])
 
@@ -169,6 +169,7 @@ class DataLoader:
     def from_datasets(
         cls, datasets: list[Dataset], merge_mode: MergeMode | str = "greedy"
     ) -> "DataLoader":
+        # TODO: Validate argument types.
         instance = cls()
         instance._datasets = datasets
         return instance

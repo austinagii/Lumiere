@@ -1,4 +1,38 @@
+from collections.abc import Iterable, Mapping
+
 from lumiere.data.dataset import dataset
+
+
+class StringDataset:
+    """A custom dataset for defining arbitrary splits with text samples.
+
+    Accepts a mapping of split names to iterables of string samples,
+    allowing for flexible dataset construction for testing purposes.
+    """
+
+    def __init__(self, data: Mapping[str, Iterable[str]]):
+        self.data = data
+
+    def __getitem__(self, split_name):
+        """Return an iterable over the text samples for the given split.
+
+        Args:
+            split_name: The name of the split to retrieve.
+
+        Returns:
+            An iterable yielding string samples for the specified split.
+
+        Raises:
+            KeyError: If the split name is not found in the dataset.
+        """
+
+        def _get_split():
+            yield from self.data[split_name]
+
+        if split_name not in self.data:
+            raise KeyError(f"Split '{split_name}' not found")
+
+        return _get_split()
 
 
 @dataset("lorem-ipsum")
