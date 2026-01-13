@@ -36,5 +36,5 @@ class Loss:
     def __eq__(self, other):
         pass
 
-    def __truediv__(self, other: "Loss" | int | float):
+    def __truediv__(self, other):
         pass

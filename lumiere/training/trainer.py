@@ -59,7 +59,7 @@ class Trainer:
     def __init__(
         self,
         model: Transformer,
-        data: Pipeline,
+        pipeline: Pipeline,
         loss_fn: Callable[[torch.Tensor, torch.Tensor], Loss],
         max_epochs: int = -1,
         stopping_threshold: float = 1e-3,
@@ -88,7 +88,7 @@ class Trainer:
         """
         assert model.optimizer and model.scheduler
         self.model = model
-        self.data = data
+        self.pipeline = pipeline
         self.loss_fn = loss_fn
         self.max_epochs = max_epochs
         self.stopping_threshold = stopping_threshold
@@ -146,10 +146,12 @@ class Trainer:
         num_batches = 0
         epoch_steps = 0
         start_time = time()
-        with tqdm(self.data, desc=self._progress_bar_prefix(), leave=False) as pbar:
+        with tqdm(
+            self.pipeline.batches(), desc=self._progress_bar_prefix(), leave=False
+        ) as pbar:
             for x, padding_mask in pbar:
                 # Shift the input tokens to the left by one position to get the targets.
-                y = x[:, 0:].to(self.device)
+                y = x[:, 1:].to(self.device)
                 # Shift x and its padding mask accordingly.
                 x = x[:, :-1].to(self.device)
                 padding_mask = padding_mask[:, :-1].to(self.device)
@@ -200,11 +202,13 @@ class Trainer:
         self.model.to(self.device)
         self.model.eval()
 
-        total_loss = Loss(0)
+        total_loss = 0.0
         num_batches = 0
         with (
             torch.no_grad(),
-            tqdm(self.data, desc=self._progress_bar_prefix(), leave=False) as pbar,
+            tqdm(
+                self.pipeline.batches(), desc=self._progress_bar_prefix(), leave=False
+            ) as pbar,
         ):
             for x, padding_mask in pbar:
                 # Shift the input tokens to the left by one position to get the targets.
@@ -255,13 +259,17 @@ class Trainer:
         return f"Epoch {self._state.current_epoch:>04d}"
 
     def _progress_bar_suffix(self, train_state, batch_stats):
-        return {
+        stats = {
             "loss": f"{batch_stats.loss:.4f}",
             "perplexity": f"{torch.exp(batch_stats.loss):.4f}",
-            "lr": f"{batch_stats.lr:.2e}",
-            "grad_norm": f"{batch_stats.grad_norm:.2f}",
-            "epoch_steps": batch_stats.total_steps,
         }
+        if batch_stats.lr is not None:
+            stats["lr"] = f"{batch_stats.lr:.2f}"
+        if batch_stats.grad_norm is not None:
+            stats["grad_norm"] = f"{batch_stats.grad_norm:.2f}"
+        if batch_stats.total_steps is not None:
+            stats["epoch_steps"] = batch_stats.total_steps
+        return stats
 
     @property
     def state(self) -> TrainingState:

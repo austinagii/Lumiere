@@ -7,39 +7,45 @@ from lumiere.components.attention import MultiHeadAttention
 from lumiere.components.block import TransformerBlock
 from lumiere.components.embedding import Embedding
 from lumiere.components.feedforward import LinearFeedForward
+from lumiere.data import Pipeline
 from lumiere.data.dataset import DataLoader
-from lumiere.data.preprocessing import to_training_batches
-from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
+from lumiere.data.datasets import WikiText2Dataset
+from lumiere.data.preprocessing.tokenizer import SPECIAL_TOKENS
+from lumiere.data.preprocessing.tokenizers import BPETokenizer
 from lumiere.models.transformer import Transformer
 from lumiere.training import Trainer
 from lumiere.training.schedulers import cosine_annealing_lr_scheduler
 
 
 VOCAB_SIZE = 512
-EMBEDDING_SIZE = 6
-CONTEXT_SIZE = 3
-BATCH_SIZE = 3
+EMBEDDING_SIZE = 16
+CONTEXT_SIZE = 8
+BATCH_SIZE = 4
 
 
-@pytest.fixture(scope="class")
-def pipeline():
-    batches = to_training_batches(
-        corpus=data if data else dataloader["train"],
-        tokenizer=tokenizer,
-        context_size=CONTEXT_SIZE,
-        batch_size=BATCH_SIZE,
-        sliding_window_size=2,
-        pad_id=SPECIAL_TOKENS["padding"].id,
-        num_batches=max_num_batches,
-    )
-    return DataLoader([{"name": "wikitext", "split": "1"}])
+@pytest.fixture(scope="module")
+def dataloader():
+    return DataLoader.from_datasets([WikiText2Dataset("1:0:0")])
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="module")
 def tokenizer(dataloader):
-    tokenizer = Tokenizer(vocab_size=VOCAB_SIZE, min_frequency=2)
+    tokenizer = BPETokenizer(vocab_size=VOCAB_SIZE, min_frequency=2)
     tokenizer.train(dataloader["train"])
     return tokenizer
+
+
+@pytest.fixture(scope="class")
+def pipeline(dataloader, tokenizer):
+    return Pipeline(
+        dataloader=dataloader,
+        split="train",
+        tokenizer=tokenizer,
+        batch_size=BATCH_SIZE,
+        context_size=CONTEXT_SIZE + 1,
+        pad_id=SPECIAL_TOKENS["padding"].id,
+        sliding_window_size=0,
+    )
 
 
 @pytest.fixture
@@ -76,7 +82,7 @@ def model():
 
 
 @pytest.fixture
-def cross_entropy_loss_fn():
+def loss_fn():
     def _cross_entropy(y, logits):
         return F.cross_entropy(
             logits.view(-1, logits.size(-1)),
@@ -84,21 +90,22 @@ def cross_entropy_loss_fn():
             ignore_index=SPECIAL_TOKENS["padding"].id,
         )
 
+    return _cross_entropy
 
-def trainer(model, data, loss_fn):
+
+@pytest.fixture
+def trainer(model, pipeline, loss_fn):
     return Trainer(
         model=model,
-        data=data,
-        loss_fn=cross_entropy_loss_fn,
+        pipeline=pipeline,
+        loss_fn=loss_fn,
         max_epochs=3,
         device="mps",
     )
 
 
 class TestTrainer:
-    def test__trains_model_according_to_training_configuration(
-        self, trainer, model, pipeline, cross_entropy_loss_fn
-    ):
+    def test__trains_model_according_to_training_configuration(self, trainer):
         trainer.train()
 
     # @pytest.mark.integration
