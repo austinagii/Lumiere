@@ -22,8 +22,8 @@ class Pipeline:
         dataloader: DataLoader,
         split: str,  # I confused this with "80/20/10" in dataloader.
         tokenizer: Tokenizer,
-        context_size: int,
         batch_size: int,
+        context_size: int,
         pad_id: int,
         sliding_window_size: int,
     ):
