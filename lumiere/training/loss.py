@@ -5,8 +5,11 @@ import torch
 
 @total_ordering
 class Loss:
-    def __init__(self, loss: float):
+    def __init__(self, loss: torch.Tensor):
         self.loss = loss
+
+    def backward(self):
+        self.loss.backward()
 
     @property
     def perplexity(self):

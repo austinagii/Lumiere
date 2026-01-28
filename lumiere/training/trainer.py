@@ -1,13 +1,15 @@
+import functools
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from time import time
 
 import torch
+from torch import nn
 from tqdm import tqdm
 
 from lumiere.data.pipeline import Pipeline
-from lumiere.models.transformer import Transformer
+from lumiere.data.preprocessing import Preprocessor
 
 from .loss import Loss
 
@@ -16,17 +18,11 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class BatchStatistics:
-    loss: Loss
-    lr: float | None = None
-    grad_norm: float | None = None
-    total_steps: int | None = None
-
-
-@dataclass
 class EvalMetrics:
     avg_loss: float
     num_batches: int
+    num_steps: int | None = None
+    time_taken: float | None = None
 
 
 @dataclass
@@ -46,34 +42,31 @@ class TrainingState:
 
 
 class Trainer:
-    """Trains transformer models.
+    """Trains models.
 
-    Args:
-        model: Transformer model to train.
-        data: Iterable over batches of training data, each batch should be a tuple of
-            - input_tokens: shape (batch_size, context_size)
-            - padding_mask: shape (batch_size, context_size)
-
+    Attributes:
+        state (TrainingState): The state of training
     """
 
     def __init__(
         self,
-        model: Transformer,
+        model: nn.Module,
         pipeline: Pipeline,
+        preprocessors: Iterable[Preprocessor],
         loss_fn: Callable[[torch.Tensor, torch.Tensor], Loss],
         max_epochs: int = -1,
         stopping_threshold: float = 1e-3,
         patience: int = 10,
         gradient_clip_norm: float = 1e-6,
-        progress_prefix: Callable | None = None,
-        progress_suffix: Callable | None = None,
         device: str | torch.device = "cpu",
+        state: TrainingState | None = None,
     ):
         """Initiallize the trainer.
 
         Arguments:
             model: The model to be trained.
-            data: The data to be trained on.
+            pipeline: The pipeline that produces the training data.
+            preprocessors: The preprocessors to be applied to the training data.
             loss_fn: The loss function to evaluate model performance.
             max_epochs: The maximum number of epochs for training.
             stopping_threshold: The minimum performance improvement required before
@@ -84,32 +77,30 @@ class Trainer:
             progress_prefix: The variable part of the progress bar.
             progress_suffix: The title of the progress bar.
             device: Device to run the training on. Defaults to CPU.
+            state: The initial state of the trainer.
 
         """
         assert model.optimizer and model.scheduler
-        self.model = model
+        self.model = model.to(device)
         self.pipeline = pipeline
+        self.preprocessors = preprocessors
         self.loss_fn = loss_fn
         self.max_epochs = max_epochs
         self.stopping_threshold = stopping_threshold
         self.patience = patience
         self.gradient_clip_norm = gradient_clip_norm
-        self.progress_prefix = progress_prefix
-        self.progress_suffix = progress_suffix
-        self.device = (
-            device if isinstance(device, torch.device) else torch.device(device)
-        )
+        if state is None:
+            self.state = TrainingState()
 
-        self._state = TrainingState()
-
-        self.model = model.to(device)  # Extract to function.
-
-    def train(self):
-        while self._state.current_epoch <= self.max_epochs:
+    def train(self) -> TrainingState:
+        """Train a model."""
+        while self.state.current_epoch <= self.max_epochs:
             self._execute_pre_epoch_hooks()
 
             self._execute_pre_fit_hooks()
             train_metrics = self._fit()
+            self.state.total_time_taken += train_metrics.time_taken
+            self.state.global_step += train_metrics.num_steps
             self._execute_post_fit_hooks(train_metrics)
 
             self._execute_pre_eval_hooks()
@@ -118,49 +109,67 @@ class Trainer:
 
             # TODO: Consider updating state before post eval hooks are executed.
             if eval_metrics.avg_loss < self.state.best_loss - self.stopping_threshold:
-                self._state.best_loss = eval_metrics.avg_loss
-                self._state.patience_counter = 0
+                self.state.best_loss = eval_metrics.avg_loss
+                self.state.patience_counter = 0
                 self._execute_improvement_hooks()
             else:
-                self._state.patience_counter += 1
-                if self._state.patience_counter >= self._state.patience:
+                self.state.patience_counter += 1
+                if self.state.patience_counter >= self.state.patience:
                     logger.info(
-                        f"Training stopped after {self._state.patience} epochs without improvement."  # noqa: E501
+                        f"Training stopped after {self.state.patience} epochs without improvement."  # noqa: E501
                     )
                     break
 
             self._execute_post_epoch_hooks()
-            self._state.current_epoch += 1
+            self.state.current_epoch += 1
 
-        logger.info(f"Training completed after {self._state.current_epoch} epochs.")
-        logger.info("--------------------------------")
+            logger.info(f"Training completed after {self.state.current_epoch} epochs.")
+            logger.info("--------------------------------")
+
+        return self.state
 
     def _fit(self) -> EvalMetrics:
-        """Fit the transformer model on the specified data for one epoch."""
-        # Prepare the model for training.
-        # self.model.to(self.device)
+        """Fit the model for next token prediction.
+
+        Processes the entire data provided across the specified number of batches.
+        The models parameters are updated using the gradient of the average batch
+        loss.
+
+        Args:
+            model: The model to be fit to the data.
+            data: The data the model is to be fitted to. An iterable of tuples containing
+                a tensor of tokens, and a corresponding padding mask.
+            loss_fn: The function to evaluate the model's performance.
+            state: The current training state for this model.
+
+        """
         self.model.train()
         self.model.zero_grad()
 
         total_loss = 0.0
         num_batches = 0
-        epoch_steps = 0
+        num_steps = 0
         start_time = time()
+
+        batches = (
+            functools.reduce(
+                lambda x, f: f(*x),
+                self.preprocessors,
+                batch,
+            )
+            for batch in self.pipeline.batches()
+        )
+
         with tqdm(
-            self.pipeline.batches(), desc=self._progress_bar_prefix(), leave=False
+            batches,
+            desc=f"Epoch {self.state.current_epoch:>04d}",
+            leave=False,
         ) as pbar:
-            for x, padding_mask in pbar:
-                # Shift the input tokens to the left by one position to get the targets.
-                y = x[:, 1:].to(self.device)
-                # Shift x and its padding mask accordingly.
-                x = x[:, :-1].to(self.device)
-                padding_mask = padding_mask[:, :-1].to(self.device)
+            for batch in pbar:
+                samples, targets = batch
+                logits, _ = self.model(*samples)
+                batch_loss = self.loss_fn(logits, targets)
 
-                # Process the batch and calculate the loss.
-                logits, _ = self.model(x, padding_mask)
-                batch_loss = self.loss_fn(y, logits)
-
-                # Update the model weights.
                 batch_loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(), self.gradient_clip_norm
@@ -170,61 +179,66 @@ class Trainer:
                 self.model.scheduler.step()
                 self.model.optimizer.zero_grad()
 
-                # Update the epoch training stats.
                 total_loss += batch_loss
                 num_batches += 1
-                epoch_steps += 1
-                self._state.global_step += 1
+                num_steps += 1
                 current_lr = self.model.scheduler.get_last_lr()[0]
 
-                batch_stats = BatchStatistics(
-                    loss=batch_loss,
-                    lr=current_lr,
-                    grad_norm=grad_norm,
-                    total_steps=epoch_steps,
+                pbar.set_postfix(
+                    {
+                        "batch_no": f"{num_batches:>05d}",
+                        "loss": f"{batch_loss:>07.4f}",
+                        "perplexity": f"{torch.exp(batch_loss):>09.4f}",
+                        "lr": f"{current_lr:.4f}",
+                        "grad_norm": f"{grad_norm:.4f}",
+                    }
                 )
 
-                # Update the progress bar.
-                pbar.set_postfix(self._progress_bar_suffix(self.state, batch_stats))
-
         end_time = time()
-        self._state.total_time_taken += end_time - start_time
 
-        metrics = EvalMetrics(
+        return EvalMetrics(
+            num_steps=num_steps,
+            time_taken=end_time - start_time,
             avg_loss=total_loss / num_batches,
             num_batches=num_batches,
         )
 
-        return metrics
-
     def _eval(self) -> EvalMetrics:
         """Evaluate the transformer model on the specified data."""
-        self.model.to(self.device)
         self.model.eval()
 
         total_loss = 0.0
         num_batches = 0
+
+        batches = (
+            functools.reduce(
+                lambda x, f: f(*x),
+                (preprocessor for preprocessor in self.preprocessors),
+                batch,
+            )
+            for batch in self.pipeline.batches()
+        )
+
         with (
             torch.no_grad(),
             tqdm(
-                self.pipeline.batches(), desc=self._progress_bar_prefix(), leave=False
+                batches,
+                desc=f"Epoch {self.state.current_epoch:>04d}",
+                leave=False,
             ) as pbar,
         ):
-            for x, padding_mask in pbar:
-                # Shift the input tokens to the left by one position to get the targets.
-                y = x[:, 1:].to(self.device)
-                # Shift x and its padding mask accordingly.
-                x = x[:, :-1].to(self.device)
-                padding_mask = padding_mask[:, :-1].to(self.device)
-
+            for samples, targets in pbar:
                 # Process the batch and calculate the loss.
-                logits, _ = self.model(x, padding_mask)
-                batch_loss = self.loss_fn(y, logits)
-                # Update the evaluation stats.
-                batch_stats = BatchStatistics(loss=batch_loss)
+                out, _ = self.model(*samples)
+                batch_loss = self.loss_fn(out, targets)
 
                 # Update the progress bar.
-                pbar.set_postfix(self._progress_bar_suffix(self._state, batch_stats))
+                pbar.set_postfix(
+                    {
+                        "loss": f"{batch_loss:.4f}",
+                        "perplexity": f"{torch.exp(batch_loss):.4f}",
+                    }
+                )
 
                 total_loss += batch_loss
                 num_batches += 1
@@ -254,23 +268,3 @@ class Trainer:
 
     def _execute_post_epoch_hooks(self):
         pass
-
-    def _progress_bar_prefix(self):
-        return f"Epoch {self._state.current_epoch:>04d}"
-
-    def _progress_bar_suffix(self, train_state, batch_stats):
-        stats = {
-            "loss": f"{batch_stats.loss:.4f}",
-            "perplexity": f"{torch.exp(batch_stats.loss):.4f}",
-        }
-        if batch_stats.lr is not None:
-            stats["lr"] = f"{batch_stats.lr:.2f}"
-        if batch_stats.grad_norm is not None:
-            stats["grad_norm"] = f"{batch_stats.grad_norm:.2f}"
-        if batch_stats.total_steps is not None:
-            stats["epoch_steps"] = batch_stats.total_steps
-        return stats
-
-    @property
-    def state(self) -> TrainingState:
-        return self._state

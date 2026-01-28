@@ -86,3 +86,6 @@ class Transformer(nn.Module):
         x = self.final_norm(x)
         x = F.linear(x, self.embedding._embedding.weight)
         return x, attention_weights
+
+    def fit(self, tokens, padding_mask) -> None:
+        pass
