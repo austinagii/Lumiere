@@ -66,7 +66,7 @@ def preprocessors(device):
 
 @pytest.fixture
 def model():
-    model = Transformer(
+    return Transformer(
         vocab_size=VOCAB_SIZE,
         context_size=CONTEXT_SIZE,
         num_blocks=1,
@@ -90,11 +90,18 @@ def model():
         ),
         normalization_factory=lambda: RMSNorm(EMBEDDING_SIZE),
     )
-    model.optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    model.scheduler = cosine_annealing_lr_scheduler(
-        model.optimizer, warmup_steps=10, max_epochs=100, epoch_steps=10
+
+
+@pytest.fixture
+def optimizer(model):
+    return torch.optim.Adam(model.parameters(), lr=0.001)
+
+
+@pytest.fixture
+def scheduler(optimizer):
+    return cosine_annealing_lr_scheduler(
+        optimizer, warmup_steps=10, max_epochs=100, epoch_steps=10
     )
-    return model
 
 
 @pytest.fixture
@@ -115,12 +122,14 @@ def device():
 
 
 @pytest.fixture
-def trainer(model, pipeline, preprocessors, loss_fn, device):
+def trainer(model, pipeline, preprocessors, loss_fn, optimizer, scheduler, device):
     return Trainer(
         model=model,
         pipeline=pipeline,
         preprocessors=preprocessors,
         loss_fn=loss_fn,
+        optimizer=optimizer,
+        scheduler=scheduler,
         max_epochs=3,
         stopping_threshold=1e-3,
         patience=3,
@@ -134,18 +143,18 @@ class TestFit:
 
     @pytest.mark.integration
     def test_fit_optimizes_model_parameters(self, trainer, device):
-        model = MagicMock(wraps=trainer.model)
-        model.optimizer = MagicMock(wraps=model.optimizer)
-        model.scheduler = MagicMock(wraps=model.scheduler)
-        trainer.model = model
+        optimizer = MagicMock(wraps=trainer.optimizer)
+        scheduler = MagicMock(wraps=trainer.scheduler)
+        trainer.optimizer = optimizer
+        trainer.scheduler = scheduler
         pre_train_model_params = [
-            param.data.clone().to(device) for param in model.parameters()
+            param.data.clone().to(device) for param in trainer.model.parameters()
         ]
 
         metrics = trainer.train()
 
         post_train_model_params = [
-            param.data.clone().to(device) for param in model.parameters()
+            param.data.clone().to(device) for param in trainer.model.parameters()
         ]
 
         # Check that at least one parameter has changed as a result of gradient descent.
@@ -156,8 +165,29 @@ class TestFit:
             )
         )
 
-        assert model.optimizer.step.call_count == metrics.global_step
-        assert model.scheduler.step.call_count == metrics.global_step
+        assert optimizer.step.call_count == metrics.global_step
+        assert scheduler.step.call_count == metrics.global_step
+
+    def test_train_executes_the_specified_number_of_epochs(self):
+        pass
+
+    def test_train_stops_after_specified_epochs_without_improvement(self):
+        pass
+
+    def test_train_causes_model_to_see_all_training_data(self):
+        pass
+
+    def test_train_calculates_loss_on_all_batches_and_optimizes_weights(self):
+        pass
+
+    def test_train_stops_after_specified_epoch(self):
+        pass
+
+    def test_train_emits_eval_performance_after_every_epoch(self):
+        pass
+
+    def test_train_optionally_clips_gradient(self):
+        pass
 
     # def test_train_learning_rate_is_updated(self, model, _call_train):
     #     initial_learning_rate = model.scheduler.get_last_lr()[0]
@@ -239,3 +269,6 @@ class TestFit:
     # def test_fit_raises_an_error_if_pipeline_batches_are_incorrectly_formatted(self):
     #     pass
     #
+
+    def test_train_hooks_execute_at_correct_steps(self):
+        pass
