@@ -51,8 +51,6 @@ class Transformer(nn.Module):
         self.embedding = embedding_factory()
         self.blocks = nn.ModuleList([block_factory() for _ in range(self.num_blocks)])
         self.final_norm = normalization_factory()
-        self.optimizer = None
-        self.scheduler = None
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None

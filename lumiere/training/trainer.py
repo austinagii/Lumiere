@@ -54,6 +54,8 @@ class Trainer:
         pipeline: Pipeline,
         preprocessors: Iterable[Preprocessor],
         loss_fn: Callable[[torch.Tensor, torch.Tensor], Loss],
+        optimizer: torch.optim.Optimizer,
+        scheduler: torch.optim.lr_scheduler.LRScheduler,
         max_epochs: int = -1,
         stopping_threshold: float = 1e-3,
         patience: int = 10,
@@ -68,6 +70,8 @@ class Trainer:
             pipeline: The pipeline that produces the training data.
             preprocessors: The preprocessors to be applied to the training data.
             loss_fn: The loss function to evaluate model performance.
+            optimizer: The optimizer for updating model parameters.
+            scheduler: The learning rate scheduler.
             max_epochs: The maximum number of epochs for training.
             stopping_threshold: The minimum performance improvement required before
                 to register improvement.
@@ -80,38 +84,44 @@ class Trainer:
             state: The initial state of the trainer.
 
         """
-        assert model.optimizer and model.scheduler
         self.model = model.to(device)
         self.pipeline = pipeline
         self.preprocessors = preprocessors
         self.loss_fn = loss_fn
+        self.optimizer = optimizer
+        self.scheduler = scheduler
         self.max_epochs = max_epochs
         self.stopping_threshold = stopping_threshold
         self.patience = patience
         self.gradient_clip_norm = gradient_clip_norm
         if state is None:
             self.state = TrainingState()
+        self._hooks: dict[str, list[Callable]] = {
+            "pre_epoch": [],
+            "post_epoch": [],
+            "post_fit": [],
+            "post_eval": [],
+            "eval_improvement": [],
+        }
 
     def train(self) -> TrainingState:
         """Train a model."""
         while self.state.current_epoch <= self.max_epochs:
-            self._execute_pre_epoch_hooks()
+            self._execute_hooks("pre_epoch")
 
-            self._execute_pre_fit_hooks()
             train_metrics = self._fit()
             self.state.total_time_taken += train_metrics.time_taken
             self.state.global_step += train_metrics.num_steps
-            self._execute_post_fit_hooks(train_metrics)
+            self._execute_hooks("post_fit", train_metrics)
 
-            self._execute_pre_eval_hooks()
             eval_metrics = self._eval()
-            self._execute_post_eval_hooks(eval_metrics)
+            self._execute_hooks("post_eval", eval_metrics)
 
             # TODO: Consider updating state before post eval hooks are executed.
             if eval_metrics.avg_loss < self.state.best_loss - self.stopping_threshold:
                 self.state.best_loss = eval_metrics.avg_loss
                 self.state.patience_counter = 0
-                self._execute_improvement_hooks()
+                self._execute_hooks("eval_improvement")
             else:
                 self.state.patience_counter += 1
                 if self.state.patience_counter >= self.state.patience:
@@ -120,7 +130,7 @@ class Trainer:
                     )
                     break
 
-            self._execute_post_epoch_hooks()
+            self._execute_hooks("post_epoch")
             self.state.current_epoch += 1
 
             logger.info(f"Training completed after {self.state.current_epoch} epochs.")
@@ -175,14 +185,14 @@ class Trainer:
                     self.model.parameters(), self.gradient_clip_norm
                 )
 
-                self.model.optimizer.step()
-                self.model.scheduler.step()
-                self.model.optimizer.zero_grad()
+                self.optimizer.step()
+                self.scheduler.step()
+                self.optimizer.zero_grad()
 
                 total_loss += batch_loss
                 num_batches += 1
                 num_steps += 1
-                current_lr = self.model.scheduler.get_last_lr()[0]
+                current_lr = self.scheduler.get_last_lr()[0]
 
                 pbar.set_postfix(
                     {
@@ -248,23 +258,29 @@ class Trainer:
             num_batches=num_batches,
         )
 
-    def _execute_pre_fit_hooks(self):
-        pass
+    def register_pre_epoch_hook(self, fn: Callable[["Trainer"], None]) -> None:
+        """Register a function to execute before processing the data for an epoch."""
+        self._hooks["pre_epoch"].append(fn)
 
-    def _execute_post_fit_hooks(self, fit_metrics):
-        pass
+    def register_post_epoch_hook(self, fn: Callable[["Trainer"], None]) -> None:
+        """Register a function to execute after processing the data for an epoch."""
+        self._hooks["post_epoch"].append(fn)
 
-    def _execute_pre_eval_hooks(self):
-        pass
+    def register_post_fit_hook(
+        self, fn: Callable[["Trainer", EvalMetrics], None]
+    ) -> None:
+        """Register a function to execute after fitting the model to the data."""
+        self._hooks["post_fit"].append(fn)
 
-    def _execute_post_eval_hooks(self, eval_metrics):
-        pass
+    def register_post_eval_hook(self, fn: Callable[["Trainer", EvalMetrics], None]):
+        """Register a function to execute after evaluating the model on the validation data."""
+        self._hooks["post_eval"].append(fn)
 
-    def _execute_improvement_hooks(self):
-        pass
+    def register_eval_improvement_hook(self, fn: Callable):
+        """Register a function to execute if validation performance improves after evaluation."""
+        self._hooks["eval_improvement"].append(fn)
 
-    def _execute_pre_epoch_hooks(self):
-        pass
-
-    def _execute_post_epoch_hooks(self):
-        pass
+    def _execute_hooks(self, event, /, *args):
+        hooks = self._hooks[event]
+        for hook in hooks:
+            hook(*args)
