@@ -1,9 +1,10 @@
+import functools
 from collections.abc import Iterable
 
 import torch
 
 from lumiere.data import DataLoader
-from lumiere.data.preprocessing import Tokenizer
+from lumiere.data.preprocessing import Preprocessor, Tokenizer
 from lumiere.utils.validation import (
     validate_integer,
 )
@@ -26,6 +27,7 @@ class Pipeline:
         context_size: int,
         pad_id: int,
         sliding_window_size: int,
+        preprocessors: Iterable[Preprocessor] | None = None,
     ):
         validate_integer(context_size, "context_size", min_value=1)
         validate_integer(batch_size, "batch_size", min_value=1)
@@ -39,50 +41,20 @@ class Pipeline:
         self.dataloader = dataloader
         self.split = split
         self.tokenizer = tokenizer
+        self.preprocessors = preprocessors if preprocessors is not None else []
         self.context_size = context_size
         self.batch_size = batch_size
         self.pad_id = pad_id
         self.sliding_window_size = sliding_window_size
 
-    def batches(
+    def _create_batches(
         self,
         num_batches: int | None = None,
     ) -> Iterable[tuple[torch.Tensor, torch.Tensor]]:
-        """Convert a text corpus into fixed-length token batches for training.
-
-        This function tokenizes each text sequence in the corpus and splits it into
-        training examples of length `context_size`. Examples are packed into batches
-        of size `batch_size`. Each example is padded with `padding_token_id` if it
-        does not fully fill the context window. A corresponding boolean mask is
-        returned, where `True` indicates a padding position and `False` indicates
-        a real token.
-
-        Overlap can optionally be introduced between consecutive contexts within the
-        same sequence by setting `sliding_window_size`. When enabled, the last
-        `sliding_window_size` tokens of one full context will be copied into the
-        beginning of the next context. Overlap is only applied if the previous
-        context was completely filled (i.e. contains no padding) and is never applied
-        across sequence boundaries.
-
-        Args:
-            corpus: Iterable of text strings to tokenize and batch.
-            tokenizer: Tokenizer with a `tokenize_all(corpus, lazy=True)` method that
-                yields token sequences for each text.
-            context_size: Number of tokens per training example (sequence length).
-            batch_size: Number of examples per batch.
-            padding_token_id: Token id to use for padding incomplete contexts.
-            sliding_window_size: Number of overlapping tokens to carry from the end
-                of one full context into the start of the next (default: 0).
-            num_batches: If provided, stop after yielding this many full batches.
-                Otherwise yield all batches until the corpus is exhausted.
+        """Internal method to create raw token batches before preprocessing.
 
         Returns:
-            Iterator of `(tokens, is_pad_mask)` where:
-                - `tokens` is a LongTensor of shape `(N, context_size)`.
-                - `is_pad_mask` is a BoolTensor of the same shape, with `True` marking
-                  padding positions and `False` marking valid tokens.
-              For all full batches, `N == batch_size`. The final batch may be smaller
-              if there are not enough examples to fill it.
+            Iterator of `(tokens, is_pad_mask)` tuples.
         """
         if num_batches is not None:
             validate_integer(num_batches, "num_batches", min_value=1)
@@ -183,3 +155,55 @@ class Pipeline:
             yield batch[:batch_write_ix], batch_padding_mask[:batch_write_ix]
 
         return
+
+    def batches(
+        self,
+        num_batches: int | None = None,
+    ) -> Iterable[tuple[torch.Tensor, torch.Tensor]]:
+        """Convert a text corpus into fixed-length token batches for training.
+
+        This function tokenizes each text sequence in the corpus and splits it into
+        training examples of length `context_size`. Examples are packed into batches
+        of size `batch_size`. Each example is padded with `padding_token_id` if it
+        does not fully fill the context window. A corresponding boolean mask is
+        returned, where `True` indicates a padding position and `False` indicates
+        a real token.
+
+        Overlap can optionally be introduced between consecutive contexts within the
+        same sequence by setting `sliding_window_size`. When enabled, the last
+        `sliding_window_size` tokens of one full context will be copied into the
+        beginning of the next context. Overlap is only applied if the previous
+        context was completely filled (i.e. contains no padding) and is never applied
+        across sequence boundaries.
+
+        After batching, all configured preprocessors are applied in sequence to
+        transform the raw batches into the final format needed for training.
+
+        Args:
+            corpus: Iterable of text strings to tokenize and batch.
+            tokenizer: Tokenizer with a `tokenize_all(corpus, lazy=True)` method that
+                yields token sequences for each text.
+            context_size: Number of tokens per training example (sequence length).
+            batch_size: Number of examples per batch.
+            padding_token_id: Token id to use for padding incomplete contexts.
+            sliding_window_size: Number of overlapping tokens to carry from the end
+                of one full context into the start of the next (default: 0).
+            num_batches: If provided, stop after yielding this many full batches.
+                Otherwise yield all batches until the corpus is exhausted.
+
+        Returns:
+            Iterator of preprocessed batches. The structure of each batch depends on
+            the preprocessors applied. Before preprocessing, batches are tuples of:
+                - `tokens` is a LongTensor of shape `(N, context_size)`.
+                - `is_pad_mask` is a BoolTensor of the same shape, with `True` marking
+                  padding positions and `False` marking valid tokens.
+              For all full batches, `N == batch_size`. The final batch may be smaller
+              if there are not enough examples to fill it.
+        """
+        for batch in self._create_batches(num_batches):
+            preprocessed_batch = functools.reduce(
+                lambda x, f: f(*x),
+                self.preprocessors,
+                batch,
+            )
+            yield preprocessed_batch

@@ -1,3 +1,4 @@
+from collections import Counter
 from unittest.mock import MagicMock
 
 import pytest
@@ -42,7 +43,8 @@ def tokenizer(dataloader):
 
 
 @pytest.fixture(scope="module")
-def pipeline(dataloader, tokenizer):
+def pipeline(dataloader, tokenizer, device):
+    preprocessors = [AutoregressiveLanguageModellingPreprocessor(device)]
     return Pipeline(
         dataloader=dataloader,
         split="train",
@@ -51,17 +53,8 @@ def pipeline(dataloader, tokenizer):
         context_size=CONTEXT_SIZE + 1,
         pad_id=SPECIAL_TOKENS["padding"].id,
         sliding_window_size=0,
+        preprocessors=preprocessors,
     )
-
-
-class IdentityPreprocessor:
-    def __call__(self, *args, **kwargs):
-        return args, kwargs
-
-
-@pytest.fixture(scope="module")
-def preprocessors(device):
-    return [AutoregressiveLanguageModellingPreprocessor(device)]
 
 
 @pytest.fixture
@@ -122,27 +115,32 @@ def device():
 
 
 @pytest.fixture
-def trainer(model, pipeline, preprocessors, loss_fn, optimizer, scheduler, device):
-    return Trainer(
-        model=model,
-        pipeline=pipeline,
-        preprocessors=preprocessors,
-        loss_fn=loss_fn,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        max_epochs=1,
-        stopping_threshold=1e-3,
-        patience=3,
-        gradient_clip_norm=1e-3,
-        device=device,
-    )
+def trainer_builder(
+    model, pipeline, loss_fn, optimizer, scheduler, device
+):
+    def _build_trainer(max_epochs=1):
+        return Trainer(
+            model=model,
+            pipeline=pipeline,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            max_epochs=max_epochs,
+            stopping_threshold=1e-3,
+            patience=3,
+            gradient_clip_norm=1e-3,
+            device=device,
+        )
+
+    return _build_trainer
 
 
-class TestFit:
-    """Tests for the 'fit' method."""
+class TestTrainer:
+    """Tests for the 'Trainer' class."""
 
     @pytest.mark.integration
-    def test_fit_optimizes_model_parameters(self, trainer, device):
+    def test_fit_optimizes_model_parameters(self, trainer_builder, device):
+        trainer = trainer_builder()
         optimizer = MagicMock(wraps=trainer.optimizer)
         scheduler = MagicMock(wraps=trainer.scheduler)
         trainer.optimizer = optimizer
@@ -169,9 +167,10 @@ class TestFit:
         assert scheduler.step.call_count == metrics.global_step
 
     def test_train_trains_model_on_all_training_data(
-        self, trainer, model, pipeline, device
+        self, trainer_builder, model, pipeline, device
     ):
         actual_batches = []
+        trainer = trainer_builder()
 
         def _capture_model_inputs(module, args) -> None:
             nonlocal actual_batches
@@ -181,7 +180,7 @@ class TestFit:
 
         trainer.train()
 
-        all(
+        assert all(
             torch.equal(expected_batch[0].to(device), actual_batch[0].to(device))
             and torch.equal(expected_batch[1].to(device), actual_batch[1].to(device))
             for expected_batch, actual_batch in zip(
@@ -189,8 +188,22 @@ class TestFit:
             )
         )
 
-    def test_train_executes_the_specified_number_of_epochs(self):
-        pass
+    def test_train_executes_the_specified_number_of_epochs(
+        self, trainer_builder, pipeline, device
+    ):
+        trainer = trainer_builder()
+
+        model = MagicMock(wraps=trainer.model)
+        trainer.model = model
+        trainer.train()
+
+        arg_count = Counter(call.args for call in model.call_args_list)
+
+        breakpoint()
+
+        # This condition holds true only for the current implementation of pipeline
+        # where batch data is deterministic.
+        assert all(arg_count[batch] == 3 for batch in pipeline.batches())
 
     def test_train_stops_after_specified_epochs_without_improvement(self):
         pass

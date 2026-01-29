@@ -1,6 +1,5 @@
-import functools
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass
 from time import time
 
@@ -9,7 +8,6 @@ from torch import nn
 from tqdm import tqdm
 
 from lumiere.data.pipeline import Pipeline
-from lumiere.data.preprocessing import Preprocessor
 
 from .loss import Loss
 
@@ -52,7 +50,6 @@ class Trainer:
         self,
         model: nn.Module,
         pipeline: Pipeline,
-        preprocessors: Iterable[Preprocessor],
         loss_fn: Callable[[torch.Tensor, torch.Tensor], Loss],
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler,
@@ -68,7 +65,6 @@ class Trainer:
         Arguments:
             model: The model to be trained.
             pipeline: The pipeline that produces the training data.
-            preprocessors: The preprocessors to be applied to the training data.
             loss_fn: The loss function to evaluate model performance.
             optimizer: The optimizer for updating model parameters.
             scheduler: The learning rate scheduler.
@@ -86,7 +82,6 @@ class Trainer:
         """
         self.model = model.to(device)
         self.pipeline = pipeline
-        self.preprocessors = preprocessors
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -161,17 +156,8 @@ class Trainer:
         num_steps = 0
         start_time = time()
 
-        batches = (
-            functools.reduce(
-                lambda x, f: f(*x),
-                self.preprocessors,
-                batch,
-            )
-            for batch in self.pipeline.batches()
-        )
-
         with tqdm(
-            batches,
+            self.pipeline.batches(),
             desc=f"Epoch {self.state.current_epoch:>04d}",
             leave=False,
         ) as pbar:
@@ -220,19 +206,10 @@ class Trainer:
         total_loss = 0.0
         num_batches = 0
 
-        batches = (
-            functools.reduce(
-                lambda x, f: f(*x),
-                (preprocessor for preprocessor in self.preprocessors),
-                batch,
-            )
-            for batch in self.pipeline.batches()
-        )
-
         with (
             torch.no_grad(),
             tqdm(
-                batches,
+                self.pipeline.batches(),
                 desc=f"Epoch {self.state.current_epoch:>04d}",
                 leave=False,
             ) as pbar,
