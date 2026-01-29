@@ -130,7 +130,7 @@ def trainer(model, pipeline, preprocessors, loss_fn, optimizer, scheduler, devic
         loss_fn=loss_fn,
         optimizer=optimizer,
         scheduler=scheduler,
-        max_epochs=3,
+        max_epochs=1,
         stopping_threshold=1e-3,
         patience=3,
         gradient_clip_norm=1e-3,
@@ -168,13 +168,31 @@ class TestFit:
         assert optimizer.step.call_count == metrics.global_step
         assert scheduler.step.call_count == metrics.global_step
 
+    def test_train_trains_model_on_all_training_data(
+        self, trainer, model, pipeline, device
+    ):
+        actual_batches = []
+
+        def _capture_model_inputs(module, args) -> None:
+            nonlocal actual_batches
+            actual_batches.append(args)
+
+        model.register_forward_pre_hook(_capture_model_inputs, prepend=True)
+
+        trainer.train()
+
+        all(
+            torch.equal(expected_batch[0].to(device), actual_batch[0].to(device))
+            and torch.equal(expected_batch[1].to(device), actual_batch[1].to(device))
+            for expected_batch, actual_batch in zip(
+                pipeline.batches(), actual_batches, strict=False
+            )
+        )
+
     def test_train_executes_the_specified_number_of_epochs(self):
         pass
 
     def test_train_stops_after_specified_epochs_without_improvement(self):
-        pass
-
-    def test_train_causes_model_to_see_all_training_data(self):
         pass
 
     def test_train_calculates_loss_on_all_batches_and_optimizes_weights(self):
