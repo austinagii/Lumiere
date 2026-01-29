@@ -1,4 +1,4 @@
-from collections import Counter
+import itertools
 from unittest.mock import MagicMock
 
 import pytest
@@ -115,9 +115,7 @@ def device():
 
 
 @pytest.fixture
-def trainer_builder(
-    model, pipeline, loss_fn, optimizer, scheduler, device
-):
+def trainer_builder(model, pipeline, loss_fn, optimizer, scheduler, device):
     def _build_trainer(max_epochs=1):
         return Trainer(
             model=model,
@@ -133,6 +131,13 @@ def trainer_builder(
         )
 
     return _build_trainer
+
+
+def capture_inputs(storage):
+    def _capture_inputs(module, inputs, outputs):
+        storage.append(inputs)
+
+    return _capture_inputs
 
 
 class TestTrainer:
@@ -180,9 +185,12 @@ class TestTrainer:
 
         trainer.train()
 
+        # TODO: Improve readability. 'actual_batches' does not contain full batches
+        # but instead contains a tuple of model inputs. For comparison, the model
+        # inputs should be extracted from the pipeline batches and then compared.
         assert all(
-            torch.equal(expected_batch[0].to(device), actual_batch[0].to(device))
-            and torch.equal(expected_batch[1].to(device), actual_batch[1].to(device))
+            torch.equal(expected_batch[0][0].to(device), actual_batch[0].to(device))
+            and torch.equal(expected_batch[0][1].to(device), actual_batch[1].to(device))
             for expected_batch, actual_batch in zip(
                 pipeline.batches(), actual_batches, strict=False
             )
@@ -191,19 +199,22 @@ class TestTrainer:
     def test_train_executes_the_specified_number_of_epochs(
         self, trainer_builder, pipeline, device
     ):
-        trainer = trainer_builder()
+        trainer = trainer_builder(max_epochs=3)
+        actual_inputs = []
+        trainer.model.register_forward_hook(capture_inputs(actual_inputs))
 
-        model = MagicMock(wraps=trainer.model)
-        trainer.model = model
         trainer.train()
 
-        arg_count = Counter(call.args for call in model.call_args_list)
-
-        breakpoint()
-
+        expected_inputs = (inputs for inputs, _ in pipeline.batches())
         # This condition holds true only for the current implementation of pipeline
         # where batch data is deterministic.
-        assert all(arg_count[batch] == 3 for batch in pipeline.batches())
+        assert all(
+            torch.equal(actual_input[0], expected_input[0].to(device))
+            and torch.equal(actual_input[1], expected_input[1].to(device))
+            for actual_input, expected_input in zip(
+                actual_inputs, itertools.cycle(expected_inputs)
+            )
+        )
 
     def test_train_stops_after_specified_epochs_without_improvement(self):
         pass
