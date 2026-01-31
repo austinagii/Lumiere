@@ -281,28 +281,28 @@ class TestTrainer:
     def test_train_optionally_clips_gradient(self):
         pass
 
-    def test_train_learning_rate_is_updated(self, model, _call_train):
+    def test_train_learning_rate_is_updated(self, model):
         pass
 
     def test_fit_outputs_fit_metrics(self):
         pass
 
-    def test_train_loss_is_calculated(self, _call_train):
+    def test_train_loss_is_calculated(self):
         pass
 
-    def test_train_gradients_are_clipped(self, mocker, _call_train):
+    def test_train_gradients_are_clipped(self, mocker):
         pass
 
-    def test_train_current_lr_value_accuracy(self, model, _call_train, training_state):
+    def test_train_current_lr_value_accuracy(self, model):
         pass
 
-    def test_train_time_taken_is_accurate(self, _call_train):
+    def test_train_time_taken_is_accurate(self):
         pass
 
     def test_progress_bar_displays_batch_stats(self):
         pass
 
-    def test_train_zeros_gradients_after_each_batch(self, mocker, model, _call_train):
+    def test_train_zeros_gradients_after_each_batch(self, mocker, model):
         pass
 
     def test_fit_raises_an_error_if_pipeline_batches_are_incorrectly_formatted(self):
