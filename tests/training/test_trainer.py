@@ -116,7 +116,7 @@ def device():
 
 @pytest.fixture
 def trainer_builder(model, pipeline, loss_fn, optimizer, scheduler, device):
-    def _build_trainer(max_epochs=1):
+    def _build_trainer(max_epochs=None, loss_fn=loss_fn, patience=None):
         return Trainer(
             model=model,
             pipeline=pipeline,
@@ -125,7 +125,7 @@ def trainer_builder(model, pipeline, loss_fn, optimizer, scheduler, device):
             scheduler=scheduler,
             max_epochs=max_epochs,
             stopping_threshold=1e-3,
-            patience=3,
+            patience=patience,
             gradient_clip_norm=1e-3,
             device=device,
         )
@@ -145,7 +145,7 @@ class TestTrainer:
 
     @pytest.mark.integration
     def test_fit_optimizes_model_parameters(self, trainer_builder, device):
-        trainer = trainer_builder()
+        trainer = trainer_builder(max_epochs=3)
         optimizer = MagicMock(wraps=trainer.optimizer)
         scheduler = MagicMock(wraps=trainer.scheduler)
         trainer.optimizer = optimizer
@@ -175,7 +175,7 @@ class TestTrainer:
         self, trainer_builder, model, pipeline, device
     ):
         actual_batches = []
-        trainer = trainer_builder()
+        trainer = trainer_builder(max_epochs=1)
 
         def _capture_model_inputs(module, args) -> None:
             nonlocal actual_batches
@@ -216,13 +216,63 @@ class TestTrainer:
             )
         )
 
-    def test_train_stops_after_specified_epochs_without_improvement(self):
-        pass
+    @pytest.mark.slow
+    @pytest.mark.parametrize(
+        "epochs_with_improvement,epochs_without_improvement", [(2, 3), (3, 5), (1, 2)]
+    )
+    def test_train_stops_after_specified_epochs_without_improvement(
+        self,
+        trainer_builder,
+        epochs_with_improvement,
+        epochs_without_improvement,
+        device,
+    ):
+        improving_losses = list(
+            reversed([i / 42 for i in range(1, epochs_with_improvement + 1)])
+        )
+        fixed_losses = list(
+            itertools.repeat(improving_losses[-1], epochs_without_improvement)
+        )
+        scores = improving_losses + fixed_losses
+
+        def _make_loss_fn(i):
+            def _loss_fn(y_pred, y):
+                return torch.tensor(
+                    scores[i],
+                    dtype=torch.float32,
+                    device=device,
+                    requires_grad=True,
+                )
+
+            return _loss_fn
+
+        trainer = trainer_builder(patience=epochs_without_improvement)
+
+        def _update_loss_fn(trainer):
+            trainer.loss_fn = _make_loss_fn(trainer.state.current_epoch - 1)
+
+        trainer.register_pre_epoch_hook(_update_loss_fn)
+
+        trainer.train()
+
+        assert (
+            trainer.state.current_epoch
+            == epochs_with_improvement + epochs_without_improvement
+        )
 
     def test_train_calculates_loss_on_all_batches_and_optimizes_weights(self):
         pass
 
-    def test_train_stops_after_specified_epoch(self):
+    @pytest.mark.slow
+    @pytest.mark.parametrize("max_epochs", [0, 3, 5])
+    def test_train_stops_after_specified_epoch(self, trainer_builder, max_epochs):
+        trainer = trainer_builder(max_epochs=max_epochs)
+
+        trainer.train()
+
+        assert trainer.state.current_epoch == max_epochs
+
+    def test_train_raises_error_if_epoch_invalid(self):
         pass
 
     def test_train_emits_eval_performance_after_every_epoch(self):
@@ -231,86 +281,41 @@ class TestTrainer:
     def test_train_optionally_clips_gradient(self):
         pass
 
-    # def test_train_learning_rate_is_updated(self, model, _call_train):
-    #     initial_learning_rate = model.scheduler.get_last_lr()[0]
-    #
-    #     _call_train()
-    #
-    #     assert model.scheduler.get_last_lr()[0] != initial_learning_rate
-    #
+    def test_train_learning_rate_is_updated(self, model, _call_train):
+        pass
 
-    # def test_fit_outputs_fit_metrics(self):
-    #     pass
+    def test_fit_outputs_fit_metrics(self):
+        pass
 
-    # def test_train_loss_is_calculated(self, _call_train):
-    #     metrics = _call_train()
-    #
-    #     assert metrics.avg_loss != 0.0
-    #     assert metrics.avg_perplexity != 0.0
+    def test_train_loss_is_calculated(self, _call_train):
+        pass
 
-    # @pytest.mark.integration
-    # def test_train_gradients_are_clipped(self, mocker, _call_train):
-    #     # TODO: Revisit this test. We should be able to verify that the gradients
-    #     # are clipped without having to spy on the clip_grad_norm_ function.
-    #     mocker.spy(torch.nn.utils, "clip_grad_norm_")
-    #
-    #     _call_train()
-    #
-    #     assert torch.nn.utils.clip_grad_norm_.call_count == 1
+    def test_train_gradients_are_clipped(self, mocker, _call_train):
+        pass
 
-    # def test_train_current_lr_value_accuracy(self, model, _call_train, training_state):
-    #     initial_lr = model.scheduler.get_last_lr()[0]
-    #
-    #     _call_train()
-    #
-    #     # Verify current_lr matches what scheduler reports
-    #     assert training_state.current_lr == model.scheduler.get_last_lr()[0]
-    #     # Verify LR actually changed (for cosine annealing scheduler)
-    #     assert training_state.current_lr != initial_lr
+    def test_train_current_lr_value_accuracy(self, model, _call_train, training_state):
+        pass
 
-    # def test_train_time_taken_is_accurate(self, _call_train):
-    #     start_time = time()
-    #
-    #     training_state = _call_train()
-    #
-    #     end_time = time()
-    #     time_taken = end_time - start_time
-    #
-    #     assert (
-    #         abs(time_taken - training_state.time_taken) < 0.01
-    #     )  # Allow 10ms tolerance
+    def test_train_time_taken_is_accurate(self, _call_train):
+        pass
 
-    # def test_progress_bar_displays_batch_stats(self):
-    #     pass
+    def test_progress_bar_displays_batch_stats(self):
+        pass
 
-    # def test_train_calls_optimizer_zero_grad_after_each_batch(
-    #     self, mocker, model, _call_train
-    # ):
-    #     mocker.spy(model.optimizer, "zero_grad")
-    #
-    #     _call_train(max_num_batches=3)
-    #
-    #     assert model.optimizer.zero_grad.call_count == 3
-    #
-    # def test_train_calls_model_forward_with_correct_inputs(
-    #     self, mocker, model, _call_train
-    # ):
-    #     mocker.spy(model, "forward")
-    #
-    #     _call_train()
-    #
-    #     assert model.forward.call_count == 1
-    #     # Verify the model was called with x and padding_mask
-    #     call_args = model.forward.call_args
-    #     x, padding_mask = call_args[0]
-    #     assert (
-    #         x.shape[1] == CONTEXT_SIZE - 1
-    #     )  # sequence length is shifted for next-token prediction
-    #     assert padding_mask.shape == x.shape  # padding mask should match input shape
-    #
-    # def test_fit_raises_an_error_if_pipeline_batches_are_incorrectly_formatted(self):
-    #     pass
-    #
+    def test_train_zeros_gradients_after_each_batch(self, mocker, model, _call_train):
+        pass
+
+    def test_fit_raises_an_error_if_pipeline_batches_are_incorrectly_formatted(self):
+        pass
 
     def test_train_hooks_execute_at_correct_steps(self):
+        pass
+
+    def test_raises_an_error_if_invalid_parameters(self):
+        pass
+
+    def test_raises_error_if_required_args_not_provided(self):
+        pass
+
+    def test_epoch_in_state_is_accurate(self):
         pass

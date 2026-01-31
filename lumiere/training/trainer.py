@@ -27,16 +27,13 @@ class EvalMetrics:
 class TrainingState:
     """Persistent store of information between epochs."""
 
+    current_epoch: int = 0
+    global_step: int = 0
+    current_lr: int | None = None
     total_time_taken: float = 0.0
     prev_loss: float = float("inf")
     best_loss: float = float("inf")
-    best_perplexity: float = float("inf")
-    global_step: int = 0
-    current_epoch: int = 1
-    patience: int = 0
     patience_counter: int = 0
-    stopping_threshold: int = 0
-    current_lr: int | None = None
 
 
 class Trainer:
@@ -53,9 +50,9 @@ class Trainer:
         loss_fn: Callable[[torch.Tensor, torch.Tensor], Loss],
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler.LRScheduler,
-        max_epochs: int = -1,
+        max_epochs: int | None = None,
         stopping_threshold: float = 1e-3,
-        patience: int = 10,
+        patience: int | None = None,
         gradient_clip_norm: float = 1e-6,
         device: str | torch.device = "cpu",
         state: TrainingState | None = None,
@@ -101,7 +98,8 @@ class Trainer:
 
     def train(self) -> TrainingState:
         """Train a model."""
-        while self.state.current_epoch <= self.max_epochs:
+        while self.max_epochs is None or self.state.current_epoch < self.max_epochs:
+            self.state.current_epoch += 1
             self._execute_hooks("pre_epoch")
 
             train_metrics = self._fit()
@@ -110,26 +108,31 @@ class Trainer:
             self._execute_hooks("post_fit", train_metrics)
 
             eval_metrics = self._eval()
+            self.state.prev_loss = eval_metrics.avg_loss
             self._execute_hooks("post_eval", eval_metrics)
 
             # TODO: Consider updating state before post eval hooks are executed.
-            if eval_metrics.avg_loss < self.state.best_loss - self.stopping_threshold:
-                self.state.best_loss = eval_metrics.avg_loss
+            if self.state.prev_loss < self.state.best_loss - self.stopping_threshold:
+                self.state.best_loss = self.state.prev_loss
                 self.state.patience_counter = 0
                 self._execute_hooks("eval_improvement")
             else:
                 self.state.patience_counter += 1
-                if self.state.patience_counter >= self.state.patience:
-                    logger.info(
-                        f"Training stopped after {self.state.patience} epochs without improvement."  # noqa: E501
-                    )
-                    break
 
             self._execute_hooks("post_epoch")
-            self.state.current_epoch += 1
-
-            logger.info(f"Training completed after {self.state.current_epoch} epochs.")
             logger.info("--------------------------------")
+
+            if (
+                self.patience is not None
+                and self.state.patience_counter >= self.patience
+            ):
+                logger.info(
+                    f"Training stopped after {self.patience} epochs without "
+                    + "improvement."
+                )
+                break
+
+        logger.info(f"Training completed after {self.state.current_epoch} epochs.")
 
         return self.state
 
@@ -260,4 +263,4 @@ class Trainer:
     def _execute_hooks(self, event, /, *args):
         hooks = self._hooks[event]
         for hook in hooks:
-            hook(*args)
+            hook(self, *args)
