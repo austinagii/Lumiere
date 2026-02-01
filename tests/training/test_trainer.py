@@ -355,19 +355,10 @@ class TestTrainer:
     def test_train_raises_error_if_epoch_invalid(self):
         pass
 
-    def test_train_emits_eval_performance_after_every_epoch(self):
-        pass
-
     def test_train_optionally_clips_gradient(self):
         pass
 
     def test_train_learning_rate_is_updated(self, model):
-        pass
-
-    def test_fit_outputs_fit_metrics(self):
-        pass
-
-    def test_train_loss_is_calculated(self):
         pass
 
     def test_train_gradients_are_clipped(self, mocker):
