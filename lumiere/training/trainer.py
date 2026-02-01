@@ -7,6 +7,7 @@ import torch
 from torch import nn
 from tqdm import tqdm
 
+from lumiere.data import DataLoader
 from lumiere.data.pipeline import Pipeline
 
 from .loss import Loss
@@ -46,10 +47,11 @@ class Trainer:
     def __init__(
         self,
         model: nn.Module,
+        dataloader: DataLoader,
         pipeline: Pipeline,
         loss_fn: Callable[[torch.Tensor, torch.Tensor], Loss],
         optimizer: torch.optim.Optimizer,
-        scheduler: torch.optim.lr_scheduler.LRScheduler,
+        scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
         max_epochs: int | None = None,
         stopping_threshold: float = 1e-3,
         patience: int | None = None,
@@ -78,6 +80,7 @@ class Trainer:
 
         """
         self.model = model.to(device)
+        self.dataloader = dataloader
         self.pipeline = pipeline
         self.loss_fn = loss_fn
         self.optimizer = optimizer
@@ -160,14 +163,23 @@ class Trainer:
         start_time = time()
 
         with tqdm(
-            self.pipeline.batches(),
+            self.pipeline.batches(self.dataloader["train"]),
             desc=f"Epoch {self.state.current_epoch:>04d}",
             leave=False,
         ) as pbar:
             for batch in pbar:
                 samples, targets = batch
-                logits, _ = self.model(*samples)
-                batch_loss = self.loss_fn(logits, targets)
+                # What if samples is just a single tensor rather than a tuple of things?
+                if isinstance(samples, tuple):
+                    outputs = self.model(*samples)
+                else:
+                    # Running into issues in flexibility, pipeline is intended to be flexible
+                    # for various models and outputs, but it's hardcoded to only work with models
+                    # that produce multiple outputs here. What's the expectation? Account for this
+                    # in the loss function?
+                    outputs = self.model(samples)
+
+                batch_loss = self.loss_fn(outputs, targets)
 
                 batch_loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
@@ -175,13 +187,15 @@ class Trainer:
                 )
 
                 self.optimizer.step()
-                self.scheduler.step()
+                if self.scheduler:
+                    self.scheduler.step()
                 self.optimizer.zero_grad()
 
                 total_loss += batch_loss
                 num_batches += 1
                 num_steps += 1
-                current_lr = self.scheduler.get_last_lr()[0]
+                # TODO: If no scheduler then we need to pull LR from somewhere else.
+                current_lr = self.scheduler.get_last_lr()[0] if self.scheduler else 0
 
                 pbar.set_postfix(
                     {
@@ -212,15 +226,23 @@ class Trainer:
         with (
             torch.no_grad(),
             tqdm(
-                self.pipeline.batches(),
+                self.pipeline.batches(self.dataloader["validation"]),
                 desc=f"Epoch {self.state.current_epoch:>04d}",
                 leave=False,
             ) as pbar,
         ):
             for samples, targets in pbar:
                 # Process the batch and calculate the loss.
-                out, _ = self.model(*samples)
-                batch_loss = self.loss_fn(out, targets)
+                if isinstance(samples, tuple):
+                    outputs = self.model(*samples)
+                else:
+                    # Running into issues in flexibility, pipeline is intended to be flexible
+                    # for various models and outputs, but it's hardcoded to only work with models
+                    # that produce multiple outputs here. What's the expectation? Account for this
+                    # in the loss function?
+                    outputs = self.model(samples)
+
+                batch_loss = self.loss_fn(outputs, targets)
 
                 # Update the progress bar.
                 pbar.set_postfix(

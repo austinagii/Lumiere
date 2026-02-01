@@ -1,16 +1,20 @@
 import functools
 from collections.abc import Iterable
+from typing import Protocol
 
 import torch
 
-from lumiere.data import DataLoader
 from lumiere.data.preprocessing import Preprocessor, Tokenizer
 from lumiere.utils.validation import (
     validate_integer,
 )
 
 
-class Pipeline:
+class Pipeline(Protocol):
+    def batches(self, data): ...
+
+
+class TextPipeline:
     """Performs common preprocessing steps across text data.
 
     It should be possible to directly pass the outputs of this pipeline directly to a
@@ -20,8 +24,6 @@ class Pipeline:
 
     def __init__(
         self,
-        dataloader: DataLoader,
-        split: str,  # I confused this with "80/20/10" in dataloader.
         tokenizer: Tokenizer,
         batch_size: int,
         context_size: int,
@@ -38,8 +40,6 @@ class Pipeline:
                 "sliding_window_size must be < context_size to guarantee progress."
             )
 
-        self.dataloader = dataloader
-        self.split = split
         self.tokenizer = tokenizer
         self.preprocessors = preprocessors if preprocessors is not None else []
         self.context_size = context_size
@@ -49,6 +49,7 @@ class Pipeline:
 
     def _create_batches(
         self,
+        data: Iterable,
         num_batches: int | None = None,
     ) -> Iterable[tuple[torch.Tensor, torch.Tensor]]:
         """Internal method to create raw token batches before preprocessing.
@@ -74,7 +75,7 @@ class Pipeline:
         context_write_ix = 0  # The index of the next free space in the context.
         num_batches_created = 0  # The number of batches created so far.
 
-        for tokens in self.tokenizer.tokenize_all(self.dataloader[self.split]):
+        for tokens in self.tokenizer.tokenize_all(data):
             total_tokens_in_seq = len(tokens)
             tokens = torch.as_tensor(tokens, dtype=torch.long)
             seq_read_ix = 0  # The index of the next token to read from the sequence.
@@ -158,6 +159,7 @@ class Pipeline:
 
     def batches(
         self,
+        data: Iterable,
         num_batches: int | None = None,
     ) -> Iterable[tuple[torch.Tensor, torch.Tensor]]:
         """Convert a text corpus into fixed-length token batches for training.
@@ -200,7 +202,7 @@ class Pipeline:
               For all full batches, `N == batch_size`. The final batch may be smaller
               if there are not enough examples to fill it.
         """
-        for batch in self._create_batches(num_batches):
+        for batch in self._create_batches(data, num_batches):
             preprocessed_batch = functools.reduce(
                 lambda x, f: f(*x),
                 self.preprocessors,

@@ -5,14 +5,15 @@ import pytest
 import torch
 import torch.nn.functional as F  # noqa: N812
 from torch.nn import RMSNorm
+from torch.optim import SGD
 
 from lumiere.components.attention import MultiHeadAttention
 from lumiere.components.block import TransformerBlock
 from lumiere.components.embedding import Embedding
 from lumiere.components.feedforward import LinearFeedForward
-from lumiere.data import Pipeline
-from lumiere.data.dataset import DataLoader
+from lumiere.data import DataLoader
 from lumiere.data.datasets import WikiText2Dataset
+from lumiere.data.pipeline import TextPipeline
 from lumiere.data.preprocessing.preprocessors import (
     AutoregressiveLanguageModellingPreprocessor,
 )
@@ -22,6 +23,9 @@ from lumiere.models.transformer import Transformer
 from lumiere.training import Trainer
 from lumiere.training.schedulers import cosine_annealing_lr_scheduler
 from lumiere.utils.device import get_device
+from lumiere.utils.testing.datasets import IdentityDataset
+from lumiere.utils.testing.models import IdentityModel
+from lumiere.utils.testing.pipelines import IdentityPipeline
 
 
 VOCAB_SIZE = 512
@@ -32,7 +36,7 @@ BATCH_SIZE = 4
 
 @pytest.fixture(scope="module")
 def dataloader():
-    return DataLoader.from_datasets([WikiText2Dataset("1:0:0")])
+    return DataLoader.from_datasets([WikiText2Dataset("1:1:0")])
 
 
 @pytest.fixture(scope="module")
@@ -45,9 +49,7 @@ def tokenizer(dataloader):
 @pytest.fixture(scope="module")
 def pipeline(dataloader, tokenizer, device):
     preprocessors = [AutoregressiveLanguageModellingPreprocessor(device)]
-    return Pipeline(
-        dataloader=dataloader,
-        split="train",
+    return TextPipeline(
         tokenizer=tokenizer,
         batch_size=BATCH_SIZE,
         context_size=CONTEXT_SIZE + 1,
@@ -99,7 +101,8 @@ def scheduler(optimizer):
 
 @pytest.fixture
 def loss_fn():
-    def _cross_entropy(logits, y):
+    def _cross_entropy(outputs, y):
+        logits, _ = outputs
         return F.cross_entropy(
             logits.view(-1, logits.size(-1)),
             y.view(-1),
@@ -115,10 +118,11 @@ def device():
 
 
 @pytest.fixture
-def trainer_builder(model, pipeline, loss_fn, optimizer, scheduler, device):
+def trainer_builder(model, dataloader, pipeline, loss_fn, optimizer, scheduler, device):
     def _build_trainer(max_epochs=None, loss_fn=loss_fn, patience=None):
         return Trainer(
             model=model,
+            dataloader=dataloader,
             pipeline=pipeline,
             loss_fn=loss_fn,
             optimizer=optimizer,
@@ -172,7 +176,7 @@ class TestTrainer:
         assert scheduler.step.call_count == metrics.global_step
 
     def test_train_trains_model_on_all_training_data(
-        self, trainer_builder, model, pipeline, device
+        self, trainer_builder, model, dataloader, pipeline, device
     ):
         actual_batches = []
         trainer = trainer_builder(max_epochs=1)
@@ -192,12 +196,12 @@ class TestTrainer:
             torch.equal(expected_batch[0][0].to(device), actual_batch[0].to(device))
             and torch.equal(expected_batch[0][1].to(device), actual_batch[1].to(device))
             for expected_batch, actual_batch in zip(
-                pipeline.batches(), actual_batches, strict=False
+                pipeline.batches(dataloader["train"]), actual_batches, strict=False
             )
         )
 
     def test_train_executes_the_specified_number_of_epochs(
-        self, trainer_builder, pipeline, device
+        self, trainer_builder, dataloader, pipeline, device
     ):
         trainer = trainer_builder(max_epochs=3)
         actual_inputs = []
@@ -205,7 +209,11 @@ class TestTrainer:
 
         trainer.train()
 
-        expected_inputs = (inputs for inputs, _ in pipeline.batches())
+        expected_inputs = itertools.chain(
+            (inputs for inputs, _ in pipeline.batches(dataloader["train"])),
+            (inputs for inputs, _ in pipeline.batches(dataloader["validation"])),
+        )
+
         # This condition holds true only for the current implementation of pipeline
         # where batch data is deterministic.
         assert all(
@@ -271,6 +279,78 @@ class TestTrainer:
         trainer.train()
 
         assert trainer.state.current_epoch == max_epochs
+
+    def test_validation_scores_are_calculated_correctly(self):
+        dataset = IdentityDataset(
+            {
+                "train": [
+                    (
+                        torch.tensor(
+                            [
+                                [0.4025, 0.7228, 0.4655, 0.6313, 0.4666],
+                                [0.2656, 0.3988, 0.1337, 0.0449, 0.9695],
+                                [0.8781, 0.1952, 0.7985, 0.1888, 0.5421],
+                            ],
+                            requires_grad=True,
+                            dtype=torch.float32,
+                        ),
+                        None,
+                    )
+                ],
+                "validation": [
+                    (
+                        torch.tensor(
+                            [
+                                [0.5100, 0.5910, 0.2581, 0.9480, 0.2824],
+                                [0.2154, 0.8358, 0.9051, 0.2634, 0.0235],
+                                [0.8681, 0.3576, 0.2209, 0.6767, 0.2125],
+                            ],
+                            requires_grad=True,
+                            dtype=torch.float32,
+                        ),
+                        None,
+                    )
+                ],
+            }
+        )
+        dataloader = DataLoader.from_datasets([dataset])
+        expected_train_loss = torch.tensor([7.1039], dtype=torch.float32)
+        expected_validation_loss = torch.tensor([7.1686], dtype=torch.float32)
+
+        pipeline = IdentityPipeline()
+        model = IdentityModel()
+        optimizer = SGD(model.parameters())
+
+        def sum_loss(outputs, y):
+            return outputs.sum()
+
+        trainer = Trainer(
+            model=model,
+            dataloader=dataloader,
+            pipeline=pipeline,
+            loss_fn=sum_loss,
+            optimizer=optimizer,
+            scheduler=None,
+            max_epochs=3,
+            device=get_device(),
+        )
+
+        def assert_close_tensors(x, y):
+            assert torch.allclose(x, y, atol=1e-3)
+
+        trainer.register_post_fit_hook(
+            lambda trainer, train_metrics: assert_close_tensors(
+                train_metrics.avg_loss, expected_train_loss
+            )
+        )
+
+        trainer.register_post_eval_hook(
+            lambda trainer, eval_metrics: assert_close_tensors(
+                eval_metrics.avg_loss, expected_validation_loss
+            )
+        )
+
+        trainer.train()
 
     def test_train_raises_error_if_epoch_invalid(self):
         pass
