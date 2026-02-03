@@ -114,7 +114,6 @@ class Trainer:
             self.state.prev_loss = eval_metrics.avg_loss
             self._execute_hooks("post_eval", eval_metrics)
 
-            # TODO: Consider updating state before post eval hooks are executed.
             if self.state.prev_loss < self.state.best_loss - self.stopping_threshold:
                 self.state.best_loss = self.state.prev_loss
                 self.state.patience_counter = 0
@@ -122,8 +121,8 @@ class Trainer:
             else:
                 self.state.patience_counter += 1
 
-            self._execute_hooks("post_epoch")
             logger.info("--------------------------------")
+            self._execute_hooks("post_epoch")
 
             if (
                 self.patience is not None
