@@ -352,7 +352,7 @@ class TestTrainer:
 
         trainer.train()
 
-    def test_train_raises_error_if_epoch_invalid(self):
+    def test_train_produces_correct_eval_metrics(self):
         pass
 
     def test_train_optionally_clips_gradient(self):
@@ -361,32 +361,11 @@ class TestTrainer:
     def test_train_learning_rate_is_updated(self, model):
         pass
 
-    def test_train_gradients_are_clipped(self, mocker):
-        pass
-
-    def test_train_current_lr_value_accuracy(self, model):
-        pass
-
-    def test_train_time_taken_is_accurate(self):
-        pass
-
-    def test_progress_bar_displays_batch_stats(self):
-        pass
-
-    def test_train_zeros_gradients_after_each_batch(self, mocker, model):
-        pass
-
     def test_fit_raises_an_error_if_pipeline_batches_are_incorrectly_formatted(self):
-        pass
-
-    def test_train_hooks_execute_at_correct_steps(self):
         pass
 
     def test_raises_an_error_if_invalid_parameters(self):
         pass
 
     def test_raises_error_if_required_args_not_provided(self):
-        pass
-
-    def test_epoch_in_state_is_accurate(self):
         pass
