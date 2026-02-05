@@ -2,7 +2,7 @@ import pytest
 import torch
 from torch import nn
 
-from lumiere.components.embedding import (
+from lumiere.nn.components.embedding import (
     Embedding,
     sinusoidal_positional_encoding,
 )

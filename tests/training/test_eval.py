@@ -5,10 +5,10 @@ import torch
 from torch.nn import RMSNorm
 
 from lumiere import utils
-from lumiere.components.attention import MultiHeadAttention
-from lumiere.components.block import TransformerBlock
-from lumiere.components.embedding import Embedding
-from lumiere.components.feedforward import LinearFeedForward
+from lumiere.nn.components.attention import MultiHeadAttention
+from lumiere.nn.components.block import TransformerBlock
+from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
+from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.data.dataset import DataLoader
 from lumiere.data.preprocessing import to_training_batches
 from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer

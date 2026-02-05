@@ -2,11 +2,11 @@ import pytest
 import torch
 from torch.nn import RMSNorm
 
-from lumiere.components.attention import MultiHeadAttention
-from lumiere.components.embedding import Embedding
-from lumiere.components.feedforward import LinearFeedForward
+from lumiere.nn.components.attention import MultiHeadAttention
+from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
+from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.models.transformer import Transformer
-from lumiere.components.block import TransformerBlock
+from lumiere.nn.components.block import TransformerBlock
 
 
 class TestModel:

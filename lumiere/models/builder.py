@@ -9,10 +9,10 @@ import yaml
 from torch import nn
 from torch.nn import LayerNorm, RMSNorm
 
-from lumiere.components.attention import MultiHeadAttention
-from lumiere.components.block import TransformerBlock
-from lumiere.components.embedding import Embedding
-from lumiere.components.feedforward import (
+from lumiere.nn.components.attention import MultiHeadAttention
+from lumiere.nn.components.blocks import StandardTransformerBlock
+from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding
+from lumiere.nn.components.feedforward import (
     LinearFeedForward,
     SwigluFeedForward,
 )
@@ -248,8 +248,8 @@ module_by_type = {
     "normalization_factory.rms": RMSNorm,
     "normalization_factory.layer": LayerNorm,
     "attention_factory.multihead": MultiHeadAttention,
-    "embedding_factory.sinusoidal": Embedding,
-    "block_factory.standard": TransformerBlock,
+    "embedding_factory.sinusoidal": SinusoidalPositionalEmbedding,
+    "block_factory.standard": StandardTransformerBlock,
 }
 
 

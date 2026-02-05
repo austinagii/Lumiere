@@ -7,10 +7,10 @@ import torch.nn.functional as F  # noqa: N812
 from torch.nn import RMSNorm
 from torch.optim import SGD
 
-from lumiere.components.attention import MultiHeadAttention
-from lumiere.components.block import TransformerBlock
-from lumiere.components.embedding import Embedding
-from lumiere.components.feedforward import LinearFeedForward
+from lumiere.nn.components.attention import MultiHeadAttention
+from lumiere.nn.components.block import TransformerBlock
+from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
+from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.data import DataLoader
 from lumiere.data.datasets import WikiText2Dataset
 from lumiere.data.pipeline import TextPipeline

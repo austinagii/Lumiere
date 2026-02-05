@@ -33,7 +33,7 @@ class MultiHeadAttention(nn.Module):
 
     Example:
         >>> import torch
-        >>> from lumiere.components.attention import MultiHeadAttention
+        >>> from lumiere.nn.components.attention import MultiHeadAttention
         >>> x = torch.randn(1, 3, 128)
         >>> attention = MultiHeadAttention(12, 128, 64, 64)
         >>> output, attention_weights = attention(x)

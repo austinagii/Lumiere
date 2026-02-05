@@ -16,7 +16,7 @@ class StandardTransformerBlock(nn.Module):
 
     Example:
         >>> import torch
-        >>> from lumiere.components import TransformerBlock
+        >>> from lumiere.nn.components import StandardTransformerBlock as TransformerBlock
         >>> x = torch.randn(1, 10, 128)
         >>> block = TransformerBlock(128, 12, 64, 64, 256)
         >>> output, attention_weights = block(x)
