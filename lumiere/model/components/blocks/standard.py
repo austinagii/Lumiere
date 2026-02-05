@@ -6,7 +6,7 @@ from torch import nn
 from lumiere.utils import validation
 
 
-class TransformerBlock(nn.Module):
+class StandardTransformerBlock(nn.Module):
     """A decoder transformer block.
 
     This module is modeled after the decoder block from the "Attention Is All

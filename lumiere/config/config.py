@@ -6,7 +6,7 @@ import yaml
 
 
 @dataclass
-class Config:
+class TrainingConfiguration:
     """Configuration class that loads and provides access to YAML configs."""
 
     config: dict[str, Any]
@@ -22,7 +22,7 @@ class Config:
         return self.config["tokenizer"]
 
     @property
-    def dataset(self) -> dict[str, Any]:
+    def data(self) -> dict[str, Any]:
         """Get dataset configuration."""
         return self.config["data"]
 

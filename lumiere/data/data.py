@@ -25,7 +25,7 @@ Example:
 
 import contextlib
 import importlib
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
@@ -134,7 +134,7 @@ class DataLoader:
 
     def __init__(
         self,
-        datasets: Iterable[Mapping[str, Any]] | None = None,
+        datasets: list[Dataset],
         merge_mode: MergeMode | str = "greedy",
     ) -> None:
         """Initialize a DataLoader with multiple datasets.
@@ -160,19 +160,16 @@ class DataLoader:
         self.merge_mode = (
             MergeMode(merge_mode) if isinstance(merge_mode, str) else merge_mode
         )
-        self._datasets: list[Dataset] = []
-        if datasets is not None:
-            self._datasets.extend([self._init_dataset(dataset) for dataset in datasets])
 
-    # TODO: Consider making initialization with dataset instances the default.
+        self.datasets = datasets
+
     @classmethod
-    def from_datasets(
-        cls, datasets: list[Dataset], merge_mode: MergeMode | str = "greedy"
+    def from_config(
+        cls, dataset_configs: list[Mapping[str, Any]], merge_mode
     ) -> "DataLoader":
-        # TODO: Validate argument types.
-        instance = cls()
-        instance._datasets = datasets
-        return instance
+        datasets = [cls._init_dataset(config) for config in dataset_configs]
+
+        return cls(datasets, merge_mode=merge_mode)
 
     @staticmethod
     def _init_dataset(dataset_config: Mapping[str, Any]) -> Dataset:
@@ -231,7 +228,7 @@ class DataLoader:
         """
         split_iterators = []
 
-        for dataset in self._datasets:
+        for dataset in self.datasets:
             try:
                 split_iterators.append(dataset[split_name])
             except KeyError:
@@ -239,11 +236,6 @@ class DataLoader:
 
         return merge_iterators(split_iterators, mode=self.merge_mode)
 
-    @property
-    def datasets(self) -> list[Dataset]:
-        """List of initialized Dataset instances managed by this dataloader.
 
-        Returns:
-            List of Dataset objects in the order they were configured.
-        """
-        return self._datasets
+class Pipeline(Protocol):
+    def batches(self, data): ...

@@ -1,4 +1,4 @@
-from .config import Config
+from .config import TrainingConfiguration
 
 
-__all__ = [Config]
+__all__ = ["TrainingConfiguration"]

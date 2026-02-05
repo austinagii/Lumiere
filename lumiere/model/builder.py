@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from torch import nn
 from torch.nn import LayerNorm, RMSNorm
 
 from lumiere.components.attention import MultiHeadAttention
@@ -19,16 +20,15 @@ from lumiere.components.feedforward import (
 from .transformer import Transformer
 
 
-class TransformerSpec:
-    """A specification for dynamically constructing a transformer model.
+class ModelSpec:
+    """A specification for dynamically constructing a model.
 
     This class represents a hierarchical configuration that maps directly to the
-    initialization parameters of a transformer and its nested components. The
-    specification structure mirrors the model's component hierarchy, with each
-    nested dictionary defining both the desired sub-module type and its initialization
-    parameters.
+    initialization parameters of a model and its nested components. The specification
+    structure should mirror the model's component hierarchy, with each nested dictionary
+    defining both the desired sub-module type and its initialization parameters.
 
-    For example, if a transformer requires 'context_size', 'embedding_size', and
+    For example, if a transformer model requires 'context_size', 'embedding_size', and
     'block' (where 'block' is a callable producing transformer block instances),
     and a 'standard' block type requires 'hidden_size' and 'dropout', the
     specification would then include both sets of parameters in a nested structure:
@@ -60,7 +60,7 @@ class TransformerSpec:
     """
 
     def __init__(self, args: dict[str, Any]):
-        """Initialize a Transformer specification.
+        """Initialize a model specification.
 
         Args:
             args: The arguments for the model and its components.
@@ -73,13 +73,13 @@ class TransformerSpec:
 
     @classmethod
     def from_yaml(cls, path: str | Path):
-        """Create a transformer spec instance from a YAML file.
+        """Create a model spec instance from a YAML file.
 
         Args:
             path: The path to the desired YAML file.
 
         Returns:
-            A TransformerSpec matching the contents of the YAML file.
+            A spec matching the contents of the YAML file.
 
         Raises:
             ValueError: If the path is not a valid path.
@@ -89,8 +89,8 @@ class TransformerSpec:
         if isinstance(path, str):
             try:
                 path = Path(path)
-            except Exception:
-                raise ValueError(f"'{path}' is not a valid path")
+            except Exception as e:
+                raise ValueError(f"'{path}' is not a valid path") from e
 
         if not isinstance(path, Path):
             raise ValueError("'path' must be a string or Path object.")
@@ -184,7 +184,7 @@ class TransformerSpec:
             TypeError: If argname is not a non-empty string.
 
         Example:
-        >>> spec = TransformerSpec(
+        >>> spec = ModelSpec(
         ...     {
         ...         'embedding_size': 1024,
         ...         'block': {
@@ -257,8 +257,8 @@ class TransformerBuilder:
     """A builder for constructing transformer models from a specification."""
 
     @staticmethod
-    def build(spec: TransformerSpec) -> Transformer:
-        """Create a transformer model according to the provided specification.
+    def build(spec: ModelSpec) -> nn.Module:
+        """Create a model according to the provided specification.
 
         Args:
             spec: The specification of the desired transformer.
