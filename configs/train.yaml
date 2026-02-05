@@ -26,27 +26,39 @@ model:
     type: rms
     normalized_shape: 128
 
-tokenizer:
-  vocab_size: 4096
-  min_frequency: 2
-
 data:
   datasets:
     - name: wikitext
+  pipeline:
+    type: text
+    batch_size: 32
+    context_size: 64
+    pad_id: -1
+    sliding_window_size: 8
+    preprocessors:
+      - autoregressive
 
-training:
-  batch_size: 32
-  sliding_window_size: 8
-  learning_rate: 0.0003
+tokenizer:
+  type: bpe
+  vocab_size: 4096
+  min_frequency: 2
+
+optimizer:
+  type: adamw
+  lr: 0.0003
   weight_decay: 0.01
-  gradient_clip_norm: 1.0
-  dropout: 0.1
+
+scheduler:
+  type: cosine-annealing
+  warmup_steps: 500
   max_epochs: 250
   epoch_steps: 2000
-  warmup_steps: 500
-  patience: 5
+
+training:
+  max_epochs: 250
   stopping_threshold: 0.0001
-  checkpoint_interval: 3
+  patience: 5
+  gradient_clip_norm: 1.0
 
 logging:
   interval: 50

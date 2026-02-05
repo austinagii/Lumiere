@@ -3,7 +3,6 @@ import logging
 import os
 import signal
 import sys
-from collections import namedtuple
 
 import deepscale as ds
 import torch
@@ -11,19 +10,15 @@ from deepscale import Checkpoint, CheckpointType
 from deepscale.storage.clients.azure_blob_storage_client import (
     disable_tokenizer_parallelism,
 )
-from torch.nn import functional as F
 
 import wandb
-from lumiere.config.config import Config
+from lumiere.config import TrainingConfiguration
 from lumiere.data import DataLoader
-from lumiere.data.tokenizer import Tokenizer
-from lumiere.models.builder import TransformerBuilder, TransformerSpec
-from lumiere.training import schedulers
-from lumiere.training.state import TrainingState
+from lumiere.data.pipelines import TextPipeline
+from lumiere.data.tokenizer import Tokenizer, TokenizerLoader
+from lumiere.model import ModelBuilder, ModelSpec
+from lumiere.training import OptimizerLoader, SchedulerLoader, Trainer
 from lumiere.utils import get_device
-
-
-CONFIG_PATH = "configs/transformer.yaml"
 
 
 logging.basicConfig(
@@ -37,17 +32,6 @@ logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
 logging.getLogger("azure.core").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
-
-RestorePoint = namedtuple("RestorePoint", "run_id checkpoint_tag")
-
-
-def loss_fn(logits):
-    batch_loss = F.cross_entropy(
-        logits.view(-1, model.vocab_size),
-        y.reshape(-1),
-        ignore_index=SPECIAL_TOKENS["padding"].id,
-    )
-    batch_perplexity = torch.exp(batch_loss)
 
 
 def _exit_run(sig, frame):
@@ -65,7 +49,7 @@ def _register_signal_handlers():
     signal.signal(signal.SIGTERM, _exit_run)
 
 
-def _init_wandb(run_id: str, run_config):
+def _init_wandb(run_id: str, train_config):
     wandb_entity = os.getenv("WANDB_ENTITY")
     wandb_project = os.getenv("WANDB_PROJECT")
     wandb_api_key = os.getenv("WANDB_API_KEY")
@@ -84,24 +68,24 @@ def _init_wandb(run_id: str, run_config):
             entity=wandb_entity,
             project=wandb_project,
             name=f"lumiere-run-{run_id}",
-            config=dict(run_config),
+            config=dict(train_config),
             resume=True,
         )
 
     return wandb_run
 
 
-def _init_training_run(device: torch.device):
-    run_config = Config.from_file(CONFIG_PATH)
-    run_id, run_manager = ds.init_run(dict(run_config))
-    state = TrainingState()
+def _init_training_run(config_path: str, device: torch.device):
+    train_config = TrainingConfiguration.from_file(config_path)
+    run_id, run_manager = ds.init_run(dict(train_config))
 
     logger.info("Loading the dataset...")
-    dataloader = DataLoader(**run_config.dataset)
+    dataloader = DataLoader.from_config(**train_config.data)
+    pipeline = TextPipeline()
     logger.info("Dataset loaded successfully\n")
 
     logger.info(f"Training new tokenizer for run '{run_id}'...")
-    tokenizer = Tokenizer(**run_config.tokenizer)
+    tokenizer = TokenizerLoader.load(**train_config.tokenizer)
     tokenizer.train(dataloader["train"])
     logger.info("Tokenizer trained successfully.\n")
     logger.info("Saving tokenizer...")
@@ -109,74 +93,73 @@ def _init_training_run(device: torch.device):
     logger.info("Tokenizer saved successfully.\n")
 
     logger.info("Initializing model...")
-    spec = TransformerSpec(run_config.model)
-    model = TransformerBuilder.build(spec).to(device)
-    model.optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=run_config.training["learning_rate"],
-        weight_decay=run_config.training["weight_decay"],
-    )
-    model.scheduler = schedulers.cosine_annealing_lr_scheduler(
-        model.optimizer,
-        run_config.training["warmup_steps"],
-        run_config.training["max_epochs"],
-        run_config.training["epoch_steps"],
-    )
+    spec = ModelSpec(train_config.model)
+    model = ModelBuilder.build(spec).to(device)
     logger.info("Model initialized successfully.\n")
 
+    optimizer = OptimizerLoader.load(train_config.optimizer, model.parameters())
+    scheduler = SchedulerLoader.load(train_config.scheduler, model.optimizer)
+
+    trainer = Trainer(
+        model=model,
+        dataloader=dataloader,
+        pipeline=pipeline,
+        loss_fn=loss_fn,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        device=device,
+        *train_args,
+    )
+
     # TODO: Consider add config and state as properties of `Run`.
-    return run_manager, run_config, state, model, tokenizer, dataloader
+    return run_manager, trainer
 
 
 def _load_training_run(run_id: str, checkpoint_tag: str, device: torch.device):
-    run_config, checkpoint, run_manager = ds.resume_run(
+    train_config, checkpoint, run_manager = ds.resume_run(
         run_id, checkpoint_tag, device=device
     )
-    state = TrainingState()
-    model_config = Config(run_config)
+    train_config = checkpoint.train_configuration
 
     logger.info("Loading the dataset...")
-    dataloader = DataLoader(**model_config.dataset)
+    dataloader = DataLoader.from_config(**train_config.data)
+    pipeline = TextPipeline()
     logger.info("Dataset loaded successfully\n")
 
     logger.info(
-        f"Loading tokenizer for run '{run_id}' with config:\n{model_config.tokenizer}"
+        f"Loading tokenizer for run '{run_id}' with config:\n{train_config.tokenizer}"
     )
     tokenizer_bytes = run_manager.load_artifact("tokenizer")
     if tokenizer_bytes is None:
         raise ValueError("Could not find tokenizer artifact.")
 
-    tokenizer = Tokenizer.from_bytes(tokenizer_bytes, **model_config.tokenizer)
+    tokenizer = Tokenizer.from_bytes(tokenizer_bytes, **train_config.tokenizer)
     logger.info("Tokenizer loaded successfully\n")
 
     logger.info("Loading model...")
-    spec = TransformerSpec(checkpoint["transformer_spec"])
-    model = TransformerBuilder.build(spec).to(device)
+    spec = ModelSpec(checkpoint["model_spec"])
+    model = ModelBuilder.build(spec).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
-    model.optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=model_config.training["learning_rate"],
-        weight_decay=model_config.training["weight_decay"],
-    )
-    model.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-    model.scheduler = schedulers.cosine_annealing_lr_scheduler(
-        model.optimizer,
-        model_config.training["warmup_steps"],
-        model_config.training["max_epochs"],
-        model_config.training["epoch_steps"],
-    )
-    model.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
     logger.info("Model loaded successfully.")
 
-    state.total_time_taken = checkpoint["time_taken"]
-    state.prev_loss = checkpoint["prev_loss"]
-    state.best_loss = checkpoint["best_loss"]
-    state.best_perplexity = torch.tensor(state.best_loss).exp().item()
-    state.global_step = checkpoint["global_step"]
-    state.current_epoch = checkpoint["epoch"]
-    state.patience_counter = checkpoint["patience_counter"]
+    optimizer = OptimizerLoader.load(train_config.optimizer, model.parameters())
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
-    return run_manager, run_config, state, model, tokenizer, dataloader
+    scheduler = SchedulerLoader.load(train_config.scheduler, model.optimizer)
+    scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
+    trainer = Trainer(
+        model=model,
+        dataloader=dataloader,
+        pipeline=pipeline,
+        loss_fn=loss_fn,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        device=device,
+        *train_args,
+    )
+
+    return run_manager, train_config, state, model, tokenizer, dataloader
 
 
 def _save_epoch_checkpoint(run_manager, trainer, model):
@@ -199,13 +182,6 @@ def _save_epoch_checkpoint(run_manager, trainer, model):
     logger.info("Checkpoint saved successfully.")
 
 
-def _log_new_loss(state):
-    logger.info(
-        f"New best validation loss: {state.best_loss:.4f}, "
-        f"perplexity: {state.best_perplexity:.4f}"
-    )
-
-
 def _save_best_checkpoint():
     logger.info("Saving 'best' checkpoint...")
     run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
@@ -213,12 +189,6 @@ def _save_best_checkpoint():
 
 
 def _log_train_metrics():
-    logger.info(
-        f"EPOCH {state.current_epoch:04d} - {'TRAINING':<10}: "
-        f"Loss: {metrics.avg_loss:.4f}, "
-        f"Perplexity: {metrics.avg_perplexity:.4f}, "
-        f"Time: {state.total_time_taken:.2f}s, "
-    )
     # Log the training stats to wandb.
     if wandb_run is not None and state.global_step % wandb_log_interval == 0:
         with disable_tokenizer_parallelism():
@@ -232,14 +202,7 @@ def _log_train_metrics():
             )
 
 
-def log_training_metrics():
-    logger.info(
-        f"EPOCH {state.current_epoch:04d} - {'TRAINING':<10}: "
-        f"Loss: {metrics.avg_loss:.4f}, "
-        f"Perplexity: {metrics.avg_perplexity:.4f}, "
-        f"Time: {state.total_time_taken:.2f}s, "
-    )
-
+def _log_eval_metrics():
     if wandb_run is not None:
         wandb_run.log(
             {
@@ -249,59 +212,46 @@ def log_training_metrics():
         )
 
 
-# @interruptible
 def _train(
-    restore_point: RestorePoint | None,
+    run_id: str = None,
+    checkpoint_tag: str = None,
     log_wandb: bool = True,
 ):
     logger.info("Selecting the training device...")
     device = get_device()
     logger.info(f"Using '{device}' device for this training run.\n")
 
-    trainer.register_post_epoch_hook(
-        functools.bind(_save_epoch_checkpoint, run_manager),
-        lambda epoch_no: epoch_no % epoch_interval,
-    )
-
-    trainer.register_improvement_hook(_log_new_loss)
-
-    if restore_point is None:
+    if run_id is None:
         logger.info("Starting a new training run.")
-        run_manager, run_config, state, model, tokenizer, dataloader = (
-            _init_training_run(device)
-        )
+        run_manager, trainer = _init_training_run(device)
     else:
-        logger.info(f"Resuming previous training run with ID: {restore_point.run_id}")
-        run_manager, run_config, state, model, tokenizer, dataloader = (
-            _load_training_run(
-                restore_point.run_id, restore_point.checkpoint_tag, device
-            )
-        )
+        logger.info(f"Resuming previous training run with ID: {run_id}")
+        run_manager, trainer = _load_training_run(run_id, checkpoint_tag, device)
 
-    wandb_run = None
-    if log_wandb:
-        wandb_run = _init_wandb(run_manager.run.id, run_config)
-        wandb_run.watch(model, log="all")
+    # wandb_run = None
+    # if log_wandb:
+    #     wandb_run = _init_wandb(run_manager.run.id, train_config)
+    #     wandb_run.watch(model, log="all")
 
-    logger.info(
-        f"Starting training run '{run_manager.run.id}' with config:\n{run_config}"
-        f"Total params: {sum(p.numel() for p in model.parameters()):,}, "
-        f"Trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
-    )
-    logger.info("--------------------------------")
+    # trainer.register_post_epoch_hook(_save_checkpoint)
+    #
+    # logger.info(
+    #     f"Starting training run '{run_manager.run.id}' with config:\n{train_config}"
+    #     f"Total params: {sum(p.numel() for p in model.parameters()):,}, "
+    #     f"Trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
+    # )
 
-    logger.info(
-        f"Total time taken: {state.total_time_taken:.2f}s, "
-        f"Best validation loss: {state.best_loss:.4f}, "
-        f"Best validation perplexity: {state.best_perplexity:.4f}"
-    )
+    trainer.train()
 
-    run_manager.save_checkpoint(CheckpointType.FINAL, checkpoint)
+    # run_manager.save_checkpoint(CheckpointType.FINAL, checkpoint)
 
 
 if __name__ == "__main__":
+    _register_signal_handlers()
+
     parser = argparse.ArgumentParser(description="Train a model")
 
+    parser.add_argument("config_path")
     parser.add_argument(
         "--checkpoint-tag",
         dest="checkpoint_tag",
@@ -324,15 +274,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    restore_point: RestorePoint | None = None
-    if args.run_id is not None:
-        restore_point = RestorePoint(
-            args.run_id, args.checkpoint_tag if args.checkpoint_tag else "latest"
-        )
-
-    _register_signal_handlers()
-
     _train(
-        restore_point=restore_point,
+        run_id=args.run_id,
+        checkpoint_tag=args.checkpoint_tag,
         log_wandb=args.log_wandb,
     )

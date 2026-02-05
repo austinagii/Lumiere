@@ -1,6 +1,5 @@
 import functools
 from collections.abc import Iterable
-from typing import Protocol
 
 import torch
 
@@ -8,10 +7,6 @@ from lumiere.data.preprocessing import Preprocessor, Tokenizer
 from lumiere.utils.validation import (
     validate_integer,
 )
-
-
-class Pipeline(Protocol):
-    def batches(self, data): ...
 
 
 class TextPipeline:

@@ -4,7 +4,7 @@ from torch import nn
 from lumiere.utils import validation
 
 
-class Embedding(nn.Module):
+class SinusoidalPositionalEmbedding(nn.Module):
     """Converts token IDs to positional-encoded token embeddings.
 
     Takes a tensor of token IDs and returns the corresponding token embeddings
