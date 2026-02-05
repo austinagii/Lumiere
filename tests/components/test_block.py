@@ -2,9 +2,9 @@ import pytest
 import torch
 from torch.nn import LayerNorm, RMSNorm
 
-from lumiere.components import TransformerBlock
-from lumiere.components.attention import MultiHeadAttention
-from lumiere.components.feedforward import (
+from lumiere.nn.components import StandardTransformerBlock as TransformerBlock
+from lumiere.nn.components.attention import MultiHeadAttention
+from lumiere.nn.components.feedforward import (
     LinearFeedForward,
     SwigluFeedForward,
 )

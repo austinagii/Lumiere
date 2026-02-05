@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from lumiere.components.feedforward.linear import LinearFeedForward
+from lumiere.nn.components.feedforward.linear import LinearFeedForward
 
 
 def _capture_inputs(storage, key):

@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from lumiere.components.feedforward.swiglu import SwigluFeedForward
+from lumiere.nn.components.feedforward.swiglu import SwigluFeedForward
 
 
 def _capture_inputs(storage, key):

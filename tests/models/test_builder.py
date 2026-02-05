@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from torch.nn import RMSNorm
 
-from lumiere.components.feedforward import (
+from lumiere.nn.components.feedforward import (
     LinearFeedForward,
 )
 from lumiere.models.builder import (

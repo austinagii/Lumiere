@@ -31,7 +31,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
 
     Example:
         >>> import torch
-        >>> from lumiere.components.embedding import Embedding
+        >>> from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
         >>> x = torch.tensor([[1, 2, 3], [4, 5, 6]])
         >>> embedding = Embedding(10, 10)
         >>> output = embedding(x)

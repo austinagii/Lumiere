@@ -1,6 +1,6 @@
 import torch
 
-from lumiere.components.attention import (
+from lumiere.nn.components.attention import (
     MultiHeadAttention,
     concat_heads,
     split_heads,

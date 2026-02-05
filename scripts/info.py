@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import deepscale as ds
+import lumiere.deepscale as ds
 
 from lumiere.config.config import Config
 from lumiere.data.dataloader import get_data_loader
