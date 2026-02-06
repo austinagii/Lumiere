@@ -3,7 +3,7 @@ from collections.abc import Generator, Iterable
 import tokenizers
 from tokenizers import decoders, models, normalizers, pre_tokenizers, trainers
 
-from lumiere.data.preprocessing.tokenizer import SPECIAL_TOKENS, Serializable, Tokenizer
+from lumiere.tokenizers.base import SPECIAL_TOKENS, Serializable, Tokenizer
 
 
 class BPETokenizer(Tokenizer, Serializable):

@@ -1,6 +1,11 @@
+"""Testing utilities for tokenizers.
+
+This module re-exports tokenizers from lumiere.tokenizers for convenience in tests.
+"""
+
 from collections.abc import Generator, Iterable
 
-from lumiere.data.preprocessing.tokenizer import Tokenizer
+from lumiere.tokenizers.base import Tokenizer
 
 
 MAX_ASCII_CODE = 127

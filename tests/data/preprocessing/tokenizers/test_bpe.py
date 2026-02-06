@@ -3,8 +3,7 @@ from collections.abc import Generator
 import pytest
 
 from lumiere.data.dataset import DataLoader
-from lumiere.data.preprocessing.tokenizers import BPETokenizer
-from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
+from lumiere.tokenizers import BPETokenizer, SPECIAL_TOKENS, Tokenizer
 
 
 @pytest.fixture

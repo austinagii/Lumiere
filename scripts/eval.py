@@ -10,7 +10,7 @@ from tqdm import tqdm
 from lumiere.config.config import Config
 from lumiere.data.dataloader import get_data_loader
 from lumiere.data.preprocessing import to_training_batches
-from lumiere.data.tokenizer import SPECIAL_TOKENS
+from lumiere.tokenizers import SPECIAL_TOKENS
 from lumiere.models.transformer import Transformer
 from lumiere.persistence.checkpoint_manager import CheckpointManager
 from lumiere.persistence.storage_client import (

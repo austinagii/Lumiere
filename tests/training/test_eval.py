@@ -11,7 +11,7 @@ from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Emb
 from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.data.dataset import DataLoader
 from lumiere.data.preprocessing import to_training_batches
-from lumiere.data.tokenizer import SPECIAL_TOKENS, Tokenizer
+from lumiere.tokenizers import SPECIAL_TOKENS, Tokenizer
 from lumiere.models.transformer import Transformer
 from lumiere.training.eval import EvalMetrics, evaluate
 

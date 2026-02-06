@@ -3,7 +3,8 @@ from collections.abc import Iterable
 
 import torch
 
-from lumiere.data.preprocessing import Preprocessor, Tokenizer
+from lumiere.data.preprocessor import Preprocessor
+from lumiere.tokenizers import Tokenizer
 from lumiere.utils.validation import (
     validate_integer,
 )

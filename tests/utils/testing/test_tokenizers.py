@@ -1,6 +1,6 @@
 import pytest
 
-from lumiere.utils.testing.tokenizers import AsciiTokenizer
+from lumiere.tokenizers import AsciiTokenizer
 
 
 @pytest.fixture(scope="module")
