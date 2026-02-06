@@ -4,9 +4,8 @@ import pytest
 import torch
 
 from lumiere.data import DataLoader, Pipeline
-from lumiere.data.preprocessing.tokenizer import SPECIAL_TOKENS
+from lumiere.tokenizers import SPECIAL_TOKENS, AsciiTokenizer
 from lumiere.utils.testing.datasets import FamousQuotesDataset, StringDataset
-from lumiere.utils.testing.tokenizers import AsciiTokenizer
 
 
 def assert_mask(tokens, mask, pad_id):

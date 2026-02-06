@@ -14,11 +14,10 @@ from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.data import DataLoader
 from lumiere.data.datasets import WikiText2Dataset
 from lumiere.data.pipeline import TextPipeline
-from lumiere.data.preprocessing.preprocessors import (
+from lumiere.data.preprocessors import (
     AutoregressiveLanguageModellingPreprocessor,
 )
-from lumiere.data.preprocessing.tokenizer import SPECIAL_TOKENS
-from lumiere.data.preprocessing.tokenizers import BPETokenizer
+from lumiere.tokenizers import SPECIAL_TOKENS, BPETokenizer
 from lumiere.models.transformer import Transformer
 from lumiere.training import Trainer
 from lumiere.training.schedulers import cosine_annealing_lr_scheduler
