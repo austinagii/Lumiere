@@ -6,27 +6,33 @@ model:
   context_size: 64
   embedding_size: 128
   num_blocks: 4
-  embedding_factory:
-    type: sinusoidal
+  embedding:
+    type: embedding
+    name: sinusoidal
     padding_id: 0
-  block_factory:
-    type: standard
-    attention_factory:
-      type: multihead
+  block:
+    type: block
+    name: standard
+    attention:
+      type: attention
+      name: multihead
       num_heads: 4
       d_key: 32
       d_value: 32
-    feedforward_factory:
-      type: linear
+    feedforward:
+      type: feedforward
+      name: linear
       d_ff: 256
-    normalization_factory:
-      type: rms
+    normalization:
+      type: normalization
+      name: rms
       normalized_shape: 128
     dropout: 0.1
     pre_norm: True
     post_norm: False
-  normalization_factory:
-    type: rms
+  normalization:
+    type: normalization
+    name: rms
     normalized_shape: 128
 
 data:
@@ -34,27 +40,28 @@ data:
     - name: wikitext
 
 pipeline:
-  type: text
+  name: text
   tokenizer: "@tokenizer"
   batch_size: 32
   context_size: 64
-  pad_id: -1
+  pad_id: 2
   sliding_window_size: 8
   preprocessors:
-    - autoregressive
+    - name: autoregressive
+      device: mps
 
 tokenizer:
-  type: bpe
+  name: bpe
   vocab_size: 4096
   min_frequency: 2
 
 optimizer:
-  type: adamw
+  name: adamw
   lr: 0.0003
   weight_decay: 0.01
 
 scheduler:
-  type: cosine-annealing
+  name: cosine-annealing
   warmup_steps: 500
   max_epochs: 250
   epoch_steps: 2000

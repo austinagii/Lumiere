@@ -1,9 +1,11 @@
 import torch
 from torch import nn
 
+from lumiere.nn.component import component
 from lumiere.utils import validation
 
 
+@component("attention", "multihead")
 class MultiHeadAttention(nn.Module):
     """Performs the multi-head self attention operation on a batch of token embeddings.
 

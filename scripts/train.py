@@ -1,28 +1,22 @@
+"""Training script for Lumière models."""
+
 import argparse
 import logging
-import os
-import signal
 import sys
+from pathlib import Path
 
-import deepscale as ds
 import torch
-from deepscale import Checkpoint, CheckpointType
-from deepscale.storage.clients.azure_blob_storage_client import (
-    disable_tokenizer_parallelism,
-)
+import yaml
 
-import wandb
-from lumiere import tokenizers
-from lumiere.config import TrainingConfiguration
-from lumiere.data import datasets, pipelines
-from lumiere.data.pipelines import TextPipeline
-from lumiere.model import ModelBuilder, ModelSpec
-from lumiere.training import (
-    Trainer,
-    lr_schedulers as schedulers,
-    optimizers,
-)
-from lumiere.utils import get_device
+from lumiere import DependencyContainer
+from lumiere.data.datasets import load as load_dataloader
+from lumiere.data.pipelines import load as load_pipeline
+from lumiere.models import load as load_model
+from lumiere.tokenizers import load as load_tokenizer
+from lumiere.training import Trainer
+from lumiere.training.loss import cross_entropy_loss
+from lumiere.training.lr_schedulers import load as load_scheduler
+from lumiere.training.optimizers import load as load_optimizer
 
 
 logging.basicConfig(
@@ -34,301 +28,182 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _exit_run(sig, frame):
-    """Handle training interruption gracefully."""
-    print()
-    logger.info("Training halted by user")
-    sys.exit(0)
+def load_config(config_path: str) -> dict:
+    """Load training configuration from YAML file.
+
+    Args:
+        config_path: Path to the YAML configuration file.
+
+    Returns:
+        Dictionary containing the training configuration.
+    """
+    config_file = Path(config_path)
+    if not config_file.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    with open(config_file) as f:
+        config = yaml.safe_load(f)
+
+    logger.info(f"Loaded configuration from {config_path}")
+    return config
 
 
-def _register_signal_handlers():
-    """Register signal handlers for gracefully stopping training."""
-    # Handle Ctrl+C gracefully.
-    signal.signal(signal.SIGINT, _exit_run)
-    # Handle `kill` command gracefully.
-    signal.signal(signal.SIGTERM, _exit_run)
+def get_device() -> torch.device:
+    """Get the best available device for training.
 
-
-def _init_wandb(run_id: str, train_config):
-    wandb_entity = os.getenv("WANDB_ENTITY")
-    wandb_project = os.getenv("WANDB_PROJECT")
-    wandb_api_key = os.getenv("WANDB_API_KEY")
-    if wandb_entity is None or wandb_project is None or wandb_api_key is None:
-        raise ValueError(
-            "WANDB_ENTITY, WANDB_PROJECT, and WANDB_API_KEY environment variables "
-            "must be set to enable logging to wandb"
-        )
-
-    with disable_tokenizer_parallelism():
-        if not wandb.login(key=wandb_api_key, verify=True, relogin=True):
-            raise ValueError("Failed to login to wandb")
-
-        wandb_run = wandb.init(
-            id=run_id,
-            entity=wandb_entity,
-            project=wandb_project,
-            name=f"lumiere-run-{run_id}",
-            config=dict(train_config),
-            resume=True,
-        )
-
-    return wandb_run
-
-
-def _perfect_init_training_run(config_path: str, device: torch.device):
-    run_id, run_manager, config = lumiere.initialize_run(
-        config_dir_path=TRAIN_CONFIG_DIR
-    )
-
-    # TODO: Add debug statements logging configs used to load each component.
-    logger.debug("Loading the dataset...")
-    data = datasets.load(config["data"])
-    logger.debug("Dataset loaded successfully.\n")
-
-    logger.debug("Loading the tokenizer...")
-    tokenizer = tokenizers.load(**config["tokenizer"])
-    logger.debug("Tokenizer loaded successfully.\n")
-
-    logger.debug("Training tokenizer...")
-    tokenizer.train(data["train"])
-    logger.debug("Tokenizer trained successfully.\n")
-
-    logger.info("Saving tokenizer...")
-    run_manager.save_artifact("tokenizer", bytes(tokenizer))
-    logger.info("Tokenizer saved successfully.\n")
-
-    logger.debug("Loading the pipeline...")
-    pipeline = pipelines.load(config["pipeline"])
-    logger.debug("Pipeline loaded successfully.\n")
-
-    logger.info("Building the model...")
-    spec = ModelSpec(config["model"])
-    model = ModelBuilder.build(spec).to(device)
-    logger.info("Model initialized successfully.\n")
-
-    logger.debug("Loading the tokenizer...")
-    optimizer = optimizers.load(config.optimizer, model.parameters())
-    logger.debug("Tokenizer loaded successfully.\n")
-
-    logger.debug("Loading the tokenizer...")
-    scheduler = schedulers.load(config.scheduler, model.optimizer)
-    logger.debug("Tokenizer loaded successfully.\n")
-
-    trainer = Trainer(
-        model=model,
-        data=data,
-        pipeline=pipeline,
-        loss_fn=loss_fn,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        device=device,
-        **config["training"],
-    )
-
-    return run_manager, trainer
-
-
-def _init_training_run(config_path: str, device: torch.device):
-    train_config = TrainingConfiguration.from_file(config_path)
-    run_id, run_manager = ds.init_run(dict(train_config))
-
-    logger.info("Loading the dataset...")
-    dataloader = DataLoader.from_config(**train_config.data)
-    pipeline = TextPipeline()
-    logger.info("Dataset loaded successfully\n")
-
-    logger.info(f"Training new tokenizer for run '{run_id}'...")
-    tokenizer = TokenizerLoader.load(**train_config.tokenizer)
-    tokenizer.train(dataloader["train"])
-    logger.info("Tokenizer trained successfully.\n")
-    logger.info("Saving tokenizer...")
-    run_manager.save_artifact("tokenizer", bytes(tokenizer))
-    logger.info("Tokenizer saved successfully.\n")
-
-    logger.info("Initializing model...")
-    spec = ModelSpec(train_config.model)
-    model = ModelBuilder.build(spec).to(device)
-    logger.info("Model initialized successfully.\n")
-
-    optimizer = OptimizerLoader.load(train_config.optimizer, model.parameters())
-    scheduler = SchedulerLoader.load(train_config.scheduler, model.optimizer)
-
-    trainer = Trainer(
-        model=model,
-        dataloader=dataloader,
-        pipeline=pipeline,
-        loss_fn=loss_fn,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        device=device,
-        *train_args,
-    )
-
-    # TODO: Consider add config and state as properties of `Run`.
-    return run_manager, trainer
-
-
-def _load_training_run(run_id: str, checkpoint_tag: str, device: torch.device):
-    train_config, checkpoint, run_manager = ds.resume_run(
-        run_id, checkpoint_tag, device=device
-    )
-    train_config = checkpoint.train_configuration
-
-    logger.info("Loading the dataset...")
-    dataloader = DataLoader.from_config(**train_config.data)
-    pipeline = TextPipeline()
-    logger.info("Dataset loaded successfully\n")
-
-    logger.info(
-        f"Loading tokenizer for run '{run_id}' with config:\n{train_config.tokenizer}"
-    )
-    tokenizer_bytes = run_manager.load_artifact("tokenizer")
-    if tokenizer_bytes is None:
-        raise ValueError("Could not find tokenizer artifact.")
-
-    tokenizer = Tokenizer.from_bytes(tokenizer_bytes, **train_config.tokenizer)
-    logger.info("Tokenizer loaded successfully\n")
-
-    logger.info("Loading model...")
-    spec = ModelSpec(checkpoint["model_spec"])
-    model = ModelBuilder.build(spec).to(device)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    logger.info("Model loaded successfully.")
-
-    optimizer = OptimizerLoader.load(train_config.optimizer, model.parameters())
-    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-
-    scheduler = SchedulerLoader.load(train_config.scheduler, model.optimizer)
-    scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-
-    trainer = Trainer(
-        model=model,
-        dataloader=dataloader,
-        pipeline=pipeline,
-        loss_fn=loss_fn,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        device=device,
-        *train_args,
-    )
-
-    return run_manager, train_config, state, model, tokenizer, dataloader
-
-
-def _save_epoch_checkpoint(run_manager, trainer, model):
-    checkpoint = Checkpoint(
-        run_id=run_manager.run.id,
-        train_config=dict(trainer.config),
-        model_state_dict=model.state_dict(),
-        optimizer_state_dict=model.optimizer.state_dict(),
-        scheduler_state_dict=model.scheduler.state_dict(),
-        epoch=trainer.state.current_epoch,
-        global_step=trainer.state.global_step,
-        prev_loss=trainer.state.prev_loss,
-        best_loss=trainer.state.best_loss,
-        patience_counter=trainer.state.patience_counter,
-        time_taken=trainer.state.total_time_taken,
-    )
-
-    logger.info("Saving epoch checkpoint...")
-    run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint)
-    logger.info("Checkpoint saved successfully.")
-
-
-def _save_best_checkpoint():
-    logger.info("Saving 'best' checkpoint...")
-    run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
-    logger.info("Checkpoint saved successfully")
-
-
-def _log_train_metrics():
-    # Log the training stats to wandb.
-    if wandb_run is not None and state.global_step % wandb_log_interval == 0:
-        with disable_tokenizer_parallelism():
-            wandb_run.log(
-                {
-                    "train/loss": batch_loss.item(),
-                    "train/perplexity": batch_perplexity.item(),
-                    "train/lr": current_lr,
-                    "train/grad_norm": grad_norm,
-                }
-            )
-
-
-def _log_eval_metrics():
-    if wandb_run is not None:
-        wandb_run.log(
-            {
-                "validation/loss": metrics.avg_loss,
-                "validation/perplexity": metrics.avg_perplexity,
-            }
-        )
-
-
-def _train(
-    run_id: str = None,
-    checkpoint_tag: str = None,
-    log_wandb: bool = True,
-):
-    logger.info("Selecting the training device...")
-    device = get_device()
-    logger.info(f"Using '{device}' device for this training run.\n")
-
-    if run_id is None:
-        logger.info("Starting a new training run.")
-        run_manager, trainer = _init_training_run(device)
+    Returns:
+        The torch device to use for training.
+    """
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        logger.info(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+        logger.info("Using MPS (Metal) device")
     else:
-        logger.info(f"Resuming previous training run with ID: {run_id}")
-        run_manager, trainer = _load_training_run(run_id, checkpoint_tag, device)
+        device = torch.device("cpu")
+        logger.info("Using CPU device")
 
-    # wandb_run = None
-    # if log_wandb:
-    #     wandb_run = _init_wandb(run_manager.run.id, train_config)
-    #     wandb_run.watch(model, log="all")
-
-    # trainer.register_post_epoch_hook(_save_checkpoint)
-    #
-    # logger.info(
-    #     f"Starting training run '{run_manager.run.id}' with config:\n{train_config}"
-    #     f"Total params: {sum(p.numel() for p in model.parameters()):,}, "
-    #     f"Trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
-    # )
-
-    trainer.train()
-
-    # run_manager.save_checkpoint(CheckpointType.FINAL, checkpoint)
+    return device
 
 
-if __name__ == "__main__":
-    _register_signal_handlers()
+def init_training_components(config: dict, device: torch.device):
+    """Initialize all training components from configuration.
 
-    parser = argparse.ArgumentParser(description="Train a model")
+    Args:
+        config: Training configuration dictionary.
+        device: Device to use for training.
 
-    parser.add_argument("config_path")
-    parser.add_argument(
-        "--checkpoint-tag",
-        dest="checkpoint_tag",
-        default=None,
-        help="The checkpoint to resume training from",
+    Returns:
+        Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer)
+    """
+    # Initialize dependency container
+    container = DependencyContainer()
+
+    # Load and train tokenizer
+    logger.info("Loading tokenizer...")
+    tokenizer_config = config.get("tokenizer", {})
+    tokenizer = load_tokenizer(tokenizer_config)
+    logger.info("Tokenizer loaded successfully")
+
+    # Register tokenizer in container for pipeline dependency injection
+    container.register("tokenizer", tokenizer)
+
+    # Load dataloader
+    logger.info("Loading dataset...")
+    data_config = config.get("data", {})
+    dataloader = load_dataloader(data_config, container)
+    logger.info(f"Dataloader initialized with {len(dataloader.datasets)} dataset(s)")
+
+    # Train tokenizer on training data
+    logger.info("Training tokenizer on training data...")
+    tokenizer.train(dataloader["train"])
+    logger.info(f"Tokenizer trained successfully (vocab size: {tokenizer.vocab_size})")
+
+    # Load pipeline with injected tokenizer
+    logger.info("Loading pipeline...")
+    pipeline_config = config.get("pipeline", {})
+    pipeline = load_pipeline(pipeline_config, container)
+    logger.info("Pipeline loaded successfully")
+
+    # Build model
+    logger.info("Building model...")
+    model_config = config.get("model", {})
+    model = load_model(model_config, container).to(device)
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logger.info(
+        f"Model built successfully - "
+        f"Total params: {total_params:,}, Trainable: {trainable_params:,}"
     )
-    parser.add_argument(
-        "--run-id",
-        dest="run_id",
-        default=None,
-        help="The run ID to use (required when loading from checkpoint)",
+
+    # Load optimizer
+    logger.info("Loading optimizer...")
+    optimizer_config = config.get("optimizer", {})
+    optimizer = load_optimizer(optimizer_config, model.parameters(), container)
+    logger.info(f"Optimizer loaded: {type(optimizer).__name__}")
+
+    # Load scheduler
+    scheduler = None
+    if "scheduler" in config:
+        logger.info("Loading learning rate scheduler...")
+        scheduler_config = config["scheduler"]
+        scheduler = load_scheduler(scheduler_config, optimizer, container)
+        logger.info(f"Scheduler loaded: {type(scheduler).__name__}")
+
+    return model, dataloader, pipeline, optimizer, scheduler, tokenizer
+
+
+def train(config_path: str):
+    """Run training from a configuration file.
+
+    Args:
+        config_path: Path to the training configuration YAML file.
+    """
+    # Load configuration
+    config = load_config(config_path)
+
+    # Get device
+    device = get_device()
+
+    # Initialize all components
+    model, dataloader, pipeline, optimizer, scheduler, tokenizer = (
+        init_training_components(config, device)
     )
+
+    # Get training parameters
+    training_config = config.get("training", {})
+
+    # Initialize trainer
+    logger.info("Initializing trainer...")
+    trainer = Trainer(
+        model=model,
+        dataloader=dataloader,
+        pipeline=pipeline,
+        loss_fn=cross_entropy_loss,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        device=device,
+        **training_config,
+    )
+    logger.info("Trainer initialized successfully")
+
+    # Start training
+    logger.info("=" * 60)
+    logger.info("Starting training...")
+    logger.info("=" * 60)
+
+    try:
+        trainer.train()
+        logger.info("Training completed successfully!")
+    except KeyboardInterrupt:
+        logger.info("\nTraining interrupted by user")
+    except Exception as e:
+        logger.error(f"Training failed with error: {e}", exc_info=True)
+        raise
+
+
+def main():
+    """Main entry point for the training script."""
+    parser = argparse.ArgumentParser(
+        description="Train a Lumière transformer model",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
     parser.add_argument(
-        "--disable-wandb-logging",
-        action="store_false",
-        dest="log_wandb",
-        default=True,
-        help="Do not log to wandb",
+        "config_path",
+        type=str,
+        help="Path to the training configuration YAML file",
     )
 
     args = parser.parse_args()
 
-    _train(
-        run_id=args.run_id,
-        checkpoint_tag=args.checkpoint_tag,
-        log_wandb=args.log_wandb,
-    )
+    try:
+        train(args.config_path)
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

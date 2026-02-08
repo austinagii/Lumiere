@@ -3,9 +3,11 @@ from collections.abc import Callable
 import torch
 from torch import nn
 
+from lumiere.nn.component import component
 from lumiere.utils import validation
 
 
+@component("block", "standard")
 class StandardTransformerBlock(nn.Module):
     """A decoder transformer block.
 
@@ -29,9 +31,9 @@ class StandardTransformerBlock(nn.Module):
 
     def __init__(
         self,
-        attention_factory: Callable,
-        feedforward_factory: Callable,
-        normalization_factory: Callable,
+        attention: Callable,
+        feedforward: Callable,
+        normalization: Callable,
         dropout: float = 0.1,
         pre_norm: bool = True,
         post_norm: bool = False,
@@ -39,12 +41,9 @@ class StandardTransformerBlock(nn.Module):
         """Initialize a decoder transformer block.
 
         Args:
-            embedding_size: The dimensionality of the token embeddings.
-            num_heads: The number of attention heads.
-            d_key: The dimensionality of the key vectors.
-            d_value: The dimensionality of the value vectors.
-            feedforward_factory: A callable that produces feedforwward modules.
-            normalization_factory: A callable that produces normalization layers.
+            attention: A callable factory that produces attention modules.
+            feedforward: A callable factory that produces feedforward modules.
+            normalization: A callable factory that produces normalization layers.
             dropout: The dropout probability.
             pre_norm: Whether to apply normalization before attention and
                 feed-forward layers. Defaults to True.
@@ -69,17 +68,17 @@ class StandardTransformerBlock(nn.Module):
         self._post_norm = post_norm
 
         if self._pre_norm:
-            self.normalization_1 = normalization_factory()
+            self.normalization_1 = normalization()
 
-        self.attention = attention_factory()
+        self.attention = attention()
         if self._pre_norm or self._post_norm:
-            self.normalization_2 = normalization_factory()
+            self.normalization_2 = normalization()
 
-        self.feedforward = feedforward_factory()
+        self.feedforward = feedforward()
         self.dropout = nn.Dropout(self._dropout)
 
         if self._post_norm:
-            self.normalization_3 = normalization_factory()
+            self.normalization_3 = normalization()
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None

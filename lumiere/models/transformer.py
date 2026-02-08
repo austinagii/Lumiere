@@ -4,7 +4,10 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from lumiere.model import model
 
+
+@model("transformer")
 class Transformer(nn.Module):
     """A transformer model.
 
@@ -19,38 +22,29 @@ class Transformer(nn.Module):
         vocab_size: int,
         context_size: int,
         num_blocks: int,
-        embedding_factory: Callable,
-        block_factory: Callable,
-        normalization_factory: Callable,
+        embedding: Callable,
+        block: Callable,
+        normalization: Callable,
     ):
         """Initialize a transformer model.
 
         Args:
             vocab_size: The number of unique tokens in the vocabulary.
-            embedding_size: The dimensionality of the token embeddings.
             context_size: The maximum number of tokens in a sequence.
-            num_layers: The number of transformer blocks in the network.
-            num_heads: The number of attention heads.
-            d_key: The dimensionality of the key vectors.
-            d_value: The dimensionality of the value vectors.
-            feedforward_factory: A callable that produces feedforwward modules.
-            normalization_factory: A callable that produces normalization layers.
-            dropout: The dropout probability. Defaults to 0.1.
-            padding_id: The ID of the padding token.
-            pre_norm: Whether to apply normalization before attention and
-                feed-forward layers. Defaults to True.
-            post_norm: Whether to apply normalization after attention and
-                feed-forward layers. Defaults to False.
+            num_blocks: The number of transformer blocks in the network.
+            embedding: A callable factory that produces embedding modules.
+            block: A callable factory that produces transformer block modules.
+            normalization: A callable factory that produces normalization layers.
 
         """
         super().__init__()
 
         self.context_size = context_size
         self.num_blocks = num_blocks
-        self.vocab_size = vocab_size  # To be deleted.
-        self.embedding = embedding_factory()
-        self.blocks = nn.ModuleList([block_factory() for _ in range(self.num_blocks)])
-        self.final_norm = normalization_factory()
+        self.vocab_size = vocab_size
+        self.embedding = embedding()
+        self.blocks = nn.ModuleList([block() for _ in range(self.num_blocks)])
+        self.final_norm = normalization()
 
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None

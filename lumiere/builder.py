@@ -9,15 +9,8 @@ import yaml
 from torch import nn
 from torch.nn import LayerNorm, RMSNorm
 
-from lumiere.nn.components.attention import MultiHeadAttention
-from lumiere.nn.components.blocks import StandardTransformerBlock
-from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding
-from lumiere.nn.components.feedforward import (
-    LinearFeedForward,
-    SwigluFeedForward,
-)
-
-from .transformer import Transformer
+from lumiere.models.transformer import Transformer
+from lumiere.nn.component import create_factory
 
 
 class ModelSpec:
@@ -242,22 +235,11 @@ class ModelSpec:
         del obj[key_components[len(key_components) - 1]]
 
 
-module_by_type = {
-    "feedforward_factory.linear": LinearFeedForward,
-    "feedforward_factory.swiglu": SwigluFeedForward,
-    "normalization_factory.rms": RMSNorm,
-    "normalization_factory.layer": LayerNorm,
-    "attention_factory.multihead": MultiHeadAttention,
-    "embedding_factory.sinusoidal": SinusoidalPositionalEmbedding,
-    "block_factory.standard": StandardTransformerBlock,
-}
-
-
 class TransformerBuilder:
     """A builder for constructing transformer models from a specification."""
 
     @staticmethod
-    def build(spec: ModelSpec) -> nn.Module:
+    def build(spec: ModelSpec, container=None) -> nn.Module:
         """Create a model according to the provided specification.
 
         Args:
@@ -273,7 +255,7 @@ class TransformerBuilder:
         """
         transformer_args = deepcopy(spec.args)
 
-        def _resolve_nested_factories(label, spec, parent_params):
+        def _resolve_nested_factories(label, spec, parent_params, container=container):
             """Perform a single-pass depth-first traversal of the spec tree.
 
             Replaces child specs with factory functions that produce modules
@@ -290,35 +272,44 @@ class TransformerBuilder:
                         key,
                         value,
                         available_params,  # Pass down accumulated params
+                        container=container,  # Pass down container
                     )
                     spec[key] = resolved
                     # Update available_params so siblings can access resolved factories
                     available_params[key] = resolved
 
-            # If this spec defines a module type, create a factory for it
-            if (module_type := spec.get("type")) is not None:
-                module_key = f"{label}.{module_type}"
-                module = module_by_type.get(module_key)
-                if module is None:
-                    raise ValueError(f"Unrecognized module type: {module_key}")
+            # If this spec defines a module type and name, create a factory for it
+            if "type" in spec and "name" in spec:
+                # Get the component class to check which params it accepts
+                from lumiere.nn.component import get_component
+                component_type = spec.get("type")
+                component_name = spec.get("name")
+                component_cls = get_component(component_type, component_name)
 
-                # Resolve module parameters using available_params
-                module_params = inspect.signature(module).parameters.items()
-                resolved_args = {}
+                if component_cls:
+                    # Get the component's __init__ signature
+                    sig = inspect.signature(component_cls.__init__)
+                    # Build factory config with only accepted params
+                    factory_config = {"type": component_type, "name": component_name}
 
-                for param_name, param in module_params:
-                    if param_name in available_params:
-                        resolved_args[param_name] = available_params[param_name]
-                    elif param.default is inspect.Parameter.empty:
-                        # Required parameter not found anywhere
-                        raise ValueError(
-                            f"Required parameter '{param_name}' not found for "
-                            f"{module_key}"
-                        )
+                    for param_name in sig.parameters:
+                        if param_name == "self":
+                            continue
+                        # Check spec first, then available_params
+                        if param_name in spec:
+                            factory_config[param_name] = spec[param_name]
+                        elif param_name in available_params:
+                            factory_config[param_name] = available_params[param_name]
 
-                del spec["type"]  # Delete to avoid passing as factory arg
+                    factory = create_factory(factory_config, container=container)
+                else:
+                    raise ValueError(f"Component '{component_type}.{component_name}' not found")
 
-                return lambda: module(**resolved_args)
+                # Clean up type and name from spec
+                del spec["type"]
+                del spec["name"]
+
+                return factory
             else:
                 return spec
 
