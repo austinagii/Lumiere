@@ -1,3 +1,7 @@
+from lumiere.data.preprocessor import preprocessor
+
+
+@preprocessor("autoregressive")
 class AutoregressiveLanguageModellingPreprocessor:
     def __init__(self, device):
         self.device = device

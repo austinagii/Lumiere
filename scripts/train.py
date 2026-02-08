@@ -12,12 +12,16 @@ from deepscale.storage.clients.azure_blob_storage_client import (
 )
 
 import wandb
+from lumiere import tokenizers
 from lumiere.config import TrainingConfiguration
-from lumiere.data import DataLoader
+from lumiere.data import datasets, pipelines
 from lumiere.data.pipelines import TextPipeline
-from lumiere.tokenizers import Tokenizer, TokenizerLoader
 from lumiere.model import ModelBuilder, ModelSpec
-from lumiere.training import OptimizerLoader, SchedulerLoader, Trainer
+from lumiere.training import (
+    Trainer,
+    lr_schedulers as schedulers,
+    optimizers,
+)
 from lumiere.utils import get_device
 
 
@@ -26,10 +30,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.FileHandler("training.log"), logging.StreamHandler()],
 )
-
-# Disable Azure blob storage logging
-logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
-logging.getLogger("azure.core").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,59 @@ def _init_wandb(run_id: str, train_config):
         )
 
     return wandb_run
+
+
+def _perfect_init_training_run(config_path: str, device: torch.device):
+    run_id, run_manager, config = lumiere.initialize_run(
+        config_dir_path=TRAIN_CONFIG_DIR
+    )
+
+    # TODO: Add debug statements logging configs used to load each component.
+    logger.debug("Loading the dataset...")
+    data = datasets.load(config["data"])
+    logger.debug("Dataset loaded successfully.\n")
+
+    logger.debug("Loading the tokenizer...")
+    tokenizer = tokenizers.load(**config["tokenizer"])
+    logger.debug("Tokenizer loaded successfully.\n")
+
+    logger.debug("Training tokenizer...")
+    tokenizer.train(data["train"])
+    logger.debug("Tokenizer trained successfully.\n")
+
+    logger.info("Saving tokenizer...")
+    run_manager.save_artifact("tokenizer", bytes(tokenizer))
+    logger.info("Tokenizer saved successfully.\n")
+
+    logger.debug("Loading the pipeline...")
+    pipeline = pipelines.load(config["pipeline"])
+    logger.debug("Pipeline loaded successfully.\n")
+
+    logger.info("Building the model...")
+    spec = ModelSpec(config["model"])
+    model = ModelBuilder.build(spec).to(device)
+    logger.info("Model initialized successfully.\n")
+
+    logger.debug("Loading the tokenizer...")
+    optimizer = optimizers.load(config.optimizer, model.parameters())
+    logger.debug("Tokenizer loaded successfully.\n")
+
+    logger.debug("Loading the tokenizer...")
+    scheduler = schedulers.load(config.scheduler, model.optimizer)
+    logger.debug("Tokenizer loaded successfully.\n")
+
+    trainer = Trainer(
+        model=model,
+        data=data,
+        pipeline=pipeline,
+        loss_fn=loss_fn,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        device=device,
+        **config["training"],
+    )
+
+    return run_manager, trainer
 
 
 def _init_training_run(config_path: str, device: torch.device):

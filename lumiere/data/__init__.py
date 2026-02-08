@@ -25,6 +25,19 @@ Example:
 
 from .dataloader import DataLoader
 from .dataset import dataset, get_dataset, register_dataset
+from .pipeline import get_pipeline, pipeline, register_pipeline
+from .preprocessor import get_preprocessor, preprocessor, register_preprocessor
 
 
-__all__ = ["dataset", "register_dataset", "get_dataset", "DataLoader"]
+__all__ = [
+    "dataset",
+    "register_dataset",
+    "get_dataset",
+    "pipeline",
+    "register_pipeline",
+    "get_pipeline",
+    "preprocessor",
+    "register_preprocessor",
+    "get_preprocessor",
+    "DataLoader",
+]

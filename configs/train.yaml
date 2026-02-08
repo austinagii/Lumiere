@@ -1,3 +1,6 @@
+# The argument tree, a hirearchy of initialization arguments for each component with the
+# top level name.
+
 model:
   vocab_size: 4096
   context_size: 64
@@ -29,14 +32,16 @@ model:
 data:
   datasets:
     - name: wikitext
-  pipeline:
-    type: text
-    batch_size: 32
-    context_size: 64
-    pad_id: -1
-    sliding_window_size: 8
-    preprocessors:
-      - autoregressive
+
+pipeline:
+  type: text
+  tokenizer: "@tokenizer"
+  batch_size: 32
+  context_size: 64
+  pad_id: -1
+  sliding_window_size: 8
+  preprocessors:
+    - autoregressive
 
 tokenizer:
   type: bpe

@@ -1,87 +1,92 @@
-"""Tokenizer loading utilities for initializing tokenizers from configuration."""
+"""Optimizer loading utilities for initializing optimizers from configuration."""
 
 from collections.abc import Mapping
 from typing import Any
 
+import torch
+
 from lumiere.di import DependencyContainer
-from lumiere.tokenizer import Tokenizer, get_tokenizer
+from lumiere.training.optimizer_loader import get_optimizer
 
 
 def load(
-    config: Mapping[str, Any], container: DependencyContainer | None = None
-) -> Tokenizer:
-    """Load and return a Tokenizer instance from a configuration dictionary.
+    config: Mapping[str, Any],
+    params,
+    container: DependencyContainer | None = None,
+) -> torch.optim.Optimizer:
+    """Load and return an Optimizer instance from a configuration dictionary.
 
     The configuration must contain a 'name' or 'type' field with the registered
-    tokenizer identifier, plus any additional keyword arguments required for
-    that tokenizer's initialization.
+    optimizer identifier, plus any additional keyword arguments required for
+    that optimizer's initialization.
 
     Dependencies can be injected via a DependencyContainer. Values in the config
-    that start with "@" (e.g., "@vocab_size") will be resolved from the container.
+    that start with "@" (e.g., "@learning_rate") will be resolved from the container.
     This allows for a hybrid approach where some values come from config and
     others are injected as live objects.
 
     Args:
         config: Configuration dictionary containing:
-            - 'name' or 'type': Registered identifier of the tokenizer.
-            - Additional key-value pairs for tokenizer-specific parameters.
+            - 'name' or 'type': Registered identifier of the optimizer.
+            - Additional key-value pairs for optimizer-specific parameters.
             - Values starting with "@" will be resolved from the container.
+        params: Model parameters to optimize (typically model.parameters()).
         container: Optional DependencyContainer for resolving dependencies.
-            If provided, config values like "@vocab_size" will be resolved to
+            If provided, config values like "@lr" will be resolved to
             the registered dependency.
 
     Returns:
-        Initialized Tokenizer instance.
+        Initialized Optimizer instance.
 
     Raises:
-        ValueError: If config is missing 'name'/'type', if the specified tokenizer
+        ValueError: If config is missing 'name'/'type', if the specified optimizer
             is not registered, or if a dependency cannot be resolved.
-        RuntimeError: If an error occurs during tokenizer initialization.
+        RuntimeError: If an error occurs during optimizer initialization.
 
     Example:
         >>> # With direct values
         >>> config = {
-        ...     "name": "bpe",
-        ...     "vocab_size": 30000,
-        ...     "min_frequency": 2
+        ...     "name": "adamw",
+        ...     "lr": 0.001,
+        ...     "weight_decay": 0.01
         ... }
-        >>> tokenizer = load(config)
+        >>> optimizer = load(config, model.parameters())
         >>>
         >>> # With dependency injection
         >>> container = DependencyContainer()
-        >>> container.register("vocab_size", 30000)
-        >>> container.register("min_frequency", 2)
+        >>> container.register("lr", 0.001)
+        >>> container.register("weight_decay", 0.01)
         >>> config = {
-        ...     "name": "bpe",
-        ...     "vocab_size": "@vocab_size",  # Will be injected
-        ...     "min_frequency": "@min_frequency"  # Will be injected
+        ...     "name": "adamw",
+        ...     "lr": "@lr",  # Will be injected
+        ...     "weight_decay": "@weight_decay"  # Will be injected
         ... }
-        >>> tokenizer = load(config, container)
+        >>> optimizer = load(config, model.parameters(), container)
     """
     # Support both 'name' and 'type' for flexibility
-    tokenizer_name = config.get("name") or config.get("type")
-    if tokenizer_name is None:
+    optimizer_name = config.get("name") or config.get("type")
+    if optimizer_name is None:
         raise ValueError(
-            "Tokenizer config must contain either 'name' or 'type' field."
+            "Optimizer config must contain either 'name' or 'type' field."
         )
 
-    tokenizer_cls = get_tokenizer(tokenizer_name)
-    if tokenizer_cls is None:
+    optimizer_cls = get_optimizer(optimizer_name)
+    if optimizer_cls is None:
         raise ValueError(
-            f"The specified tokenizer '{tokenizer_name}' could not be found in the registry."  # noqa: E501
+            f"The specified optimizer '{optimizer_name}' could not be found in the registry."  # noqa: E501
         )
 
     try:
         # Resolve dependencies in config
-        tokenizer_params = {
-            arg: _resolve_value(argv, container, tokenizer_name, arg)
+        optimizer_params = {
+            arg: _resolve_value(argv, container, optimizer_name, arg)
             for arg, argv in config.items()
             if arg not in ("name", "type")
         }
-        return tokenizer_cls(**tokenizer_params)
+        return optimizer_cls(params, **optimizer_params)
     except Exception as e:
         raise RuntimeError(
-            f"An error occurred while initializing tokenizer '{tokenizer_name}'"
+            f"An error occurred while initializing optimizer '{optimizer_name}'"
         ) from e
 
 
@@ -94,7 +99,7 @@ def _resolve_value(
         value: The value to resolve. If it's a string starting with "@",
             it will be resolved from the container.
         container: Optional DependencyContainer for resolving dependencies.
-        context: Context string for error messages (e.g., tokenizer name).
+        context: Context string for error messages (e.g., optimizer name).
         key: The config key being resolved.
 
     Returns:

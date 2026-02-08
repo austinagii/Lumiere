@@ -16,12 +16,12 @@ Example:
 
 import logging
 import os
+import pickle
 from contextlib import contextmanager
 from typing import Any
-import pickle
 
 import yaml
-from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.blob import BlobServiceClient
 
 from lumiere.deepscale.storage.errors import (
@@ -33,8 +33,12 @@ from lumiere.deepscale.storage.errors import (
 from lumiere.deepscale.storage.storage_client import StorageClient
 
 
+# Disable Azure blob storage logging
+logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
+logging.getLogger("azure.core").setLevel(logging.WARNING)
+
 # TODO: Rename these constants. These arent really 'path' templates but instead blob name
-# templates. It's just that the storage browser in azure visualizes them like paths in a 
+# templates. It's just that the storage browser in azure visualizes them like paths in a
 # filesyste.
 RUN_BASE_PATH_TEMPLATE = "runs/{run_id}"
 RUN_CONFIG_PATH_TEMPLATE = "runs/{run_id}/config.yaml"
@@ -141,13 +145,13 @@ class AzureBlobStorageClient(StorageClient):
 
     def save_artifact(
         self, run_id: str, key: str, artifact: Any, overwrite: bool = False
-    ) -> None: 
+    ) -> None:
         """Save an artifact for the given run to Azure Blob Storage.
 
-        `artifact` can be any arbitrary Python object. It will be serialized using 
+        `artifact` can be any arbitrary Python object. It will be serialized using
         the pickle module and stored in azure blob.
 
-        Implements :meth:`StorageClient.save_artifact`. 
+        Implements :meth:`StorageClient.save_artifact`.
         """
         try:
             self._upload_blob(
@@ -155,11 +159,10 @@ class AzureBlobStorageClient(StorageClient):
                 self.container_name,
                 RUN_ARTIFACT_PATH_TEMPLATE.format(run_id=run_id, key=key),
                 pickle.dumps(artifact),
-                overwrite=overwrite
+                overwrite=overwrite,
             )
         except ResourceExistsError as e:
             raise KeyError("An artifact with the specified key already exists.", e)
-
 
     def load_artifact(self, run_id: str, key: str) -> Any:
         """Load an artifact for the given run from Azure Blob Storage.
@@ -172,23 +175,23 @@ class AzureBlobStorageClient(StorageClient):
             artifact_data = self._download_blob(
                 self.blob_service_client,
                 self.container_name,
-                RUN_ARTIFACT_PATH_TEMPLATE.format(run_id=run_id, key=key)
+                RUN_ARTIFACT_PATH_TEMPLATE.format(run_id=run_id, key=key),
             )
             artifact = pickle.loads(artifact_data)
-        except ArtifactNotFoundError as e:
+        except ArtifactNotFoundError:
             pass
             # Do nothing if the artifact isnt found.
             # TODO: Consider just logging an info message.
 
         return artifact
-        
+
     @staticmethod
     def _upload_blob(
         blob_service_client: BlobServiceClient,
         container_name: str,
         blob_name: str,
         blob: str | bytes,
-        overwrite = True
+        overwrite=True,
     ) -> None:
         with disable_tokenizer_parallelism() and blob_service_client.get_blob_client(
             container=container_name, blob=blob_name

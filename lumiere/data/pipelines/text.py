@@ -3,6 +3,7 @@ from collections.abc import Iterable
 
 import torch
 
+from lumiere.data.pipeline import pipeline
 from lumiere.data.preprocessor import Preprocessor
 from lumiere.tokenizers import Tokenizer
 from lumiere.utils.validation import (
@@ -10,6 +11,7 @@ from lumiere.utils.validation import (
 )
 
 
+@pipeline("text")
 class TextPipeline:
     """Performs common preprocessing steps across text data.
 

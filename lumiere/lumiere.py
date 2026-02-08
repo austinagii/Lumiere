@@ -56,11 +56,13 @@ run_manager.save_checkpoint(
 """
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import torch
 
-from .config import Config
+from lumiere.training import Config
+
 from .run import Checkpoint, RunManager
 
 
@@ -74,8 +76,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def init_run(run_config: dict[Any, Any]) -> tuple[str, RunManager]:
+def init_run(
+    config: Config | None = None,
+    config_file_paths: list[str | Path] | None = None,
+    config_dir_path: str | Path | None = None,
+) -> tuple[str, RunManager]:
     """Initializes a new training run with the specified configuration.
+
+    This method provides a convenient way to initialize a new training run from a custom
+    set of parameters or config file without manually creating a config, creating a
+    run manager and initializing a run. It is equivalent to the following:
+    ```
+    run_manager = RunManager()
+    train_config = TrainingConfiguration.from_files("model.yaml", "tokenizer.yaml")
+    run_id = run_manager.initialize_run(train_config)
+    ```
+
+    One of `config`, `config_file_paths` or `config_dir` must be provided to initialize
+    the training run. If either `config_file_paths` or `config_dir` is provided, then
+    a configuration object created from the amalgamation of all config files present
+    will be created and used to initialize the run.
 
     Arguments:
         run_config: The configuration to be used for the training run.
@@ -84,6 +104,10 @@ def init_run(run_config: dict[Any, Any]) -> tuple[str, RunManager]:
         The unique ID of the newly created run.
         The `RunManager` instance that manages the newly created run.
     """
+    # Update method to accept directory of YAML files, compile them into a single file
+    # and use that as the configuration for the training run. When saving this giant
+    # config, use some pretty printing with ascii headers of the original file names
+    # to display the config.
     if not Config.is_initialized():
         Config.from_yaml(DS_CONFIG_PATH)
 

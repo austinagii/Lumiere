@@ -1,6 +1,9 @@
+import contextlib
+import importlib
 from collections import OrderedDict
 from collections.abc import Generator, Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -80,3 +83,54 @@ class Trainable(Protocol):
     def train(self, dataset: Iterable[Any]) -> None:
         """Train the class on the specified dataset."""
         pass
+
+
+# A registry of tokenizers indexed by custom names.
+_tokenizer_registry: dict[str, type[Tokenizer]] = {}
+
+
+def tokenizer(tokenizer_name: str):
+    """Decorator to register a tokenizer class in the global registry.
+
+    Registered tokenizers can be retrieved by name using get_tokenizer().
+
+    Args:
+        tokenizer_name: Unique identifier for the tokenizer in the registry.
+
+    """
+
+    def decorator(cls):
+        register_tokenizer(tokenizer_name, cls)
+        return cls
+
+    return decorator
+
+
+def register_tokenizer(name: str, cls: type[Tokenizer]) -> None:
+    _tokenizer_registry[name] = cls
+
+
+def get_tokenizer(tokenizer_name: str) -> type[Tokenizer] | None:
+    """Retrieve a tokenizer class from the registry by name.
+
+    Args:
+        tokenizer_name: Registered identifier of the tokenizer to retrieve.
+
+    Returns:
+        Tokenizer class if found in the registry, None otherwise.
+    """
+    if not _tokenizer_registry:  # Refresh the imports.
+        tokenizers_dir = Path(__file__).parent / "tokenizers"
+        if not tokenizers_dir.exists():
+            return None
+
+        module_files = tokenizers_dir.glob("*.py")
+        module_files = [f for f in module_files if not f.stem.startswith("_")]
+
+        # Import each module to trigger @tokenizer decorator registration
+        for module_file in module_files:
+            module_name = f"lumiere.tokenizers.{module_file.stem}"
+            with contextlib.suppress(ImportError):
+                importlib.import_module(module_name)
+
+    return _tokenizer_registry.get(tokenizer_name)
