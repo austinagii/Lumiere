@@ -19,64 +19,66 @@ Example:
     ... )
 """
 
-import contextlib
-import importlib
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
 import torch
 
+from lumiere.loading import Registry
 
 # A registry of optimizers indexed by custom names.
-_optimizer_registry: dict[str, type[torch.optim.Optimizer]] = {}
+_registry = Registry[type[torch.optim.Optimizer]](
+    name="optimizer",
+    base_module="lumiere.training.optimizers",
+    discovery_paths=["."],
+)
+
+# Expose existing API for backward compatibility
+optimizer = _registry.decorator
+register_optimizer = _registry.register
+get_optimizer = _registry.get
+
+# Create loader
+from lumiere.loading import ConfigLoader
+
+_loader = ConfigLoader[torch.optim.Optimizer](_registry, required_params=["params"])
 
 
-def optimizer(optimizer_name: str):
-    """Decorator to register an optimizer class in the global registry.
+def load(
+    config: Mapping[str, Any],
+    params,
+    container: Any = None,
+) -> torch.optim.Optimizer:
+    """Load and return an Optimizer instance from a configuration dictionary.
 
-    Registered optimizers can be retrieved by name using get_optimizer().
+    The configuration must contain a 'name' or 'type' field with the registered
+    optimizer identifier, plus any additional keyword arguments required for
+    that optimizer's initialization.
+
+    Dependencies can be injected via a DependencyContainer. Values in the config
+    that start with "@" (e.g., "@learning_rate") will be resolved from the container.
 
     Args:
-        optimizer_name: Unique identifier for the optimizer in the registry.
-
-    """
-
-    def decorator(cls):
-        register_optimizer(optimizer_name, cls)
-        return cls
-
-    return decorator
-
-
-def register_optimizer(name: str, cls: type[torch.optim.Optimizer]) -> None:
-    _optimizer_registry[name] = cls
-
-
-def get_optimizer(optimizer_name: str) -> type[torch.optim.Optimizer] | None:
-    """Retrieve an optimizer class from the registry by name.
-
-    Args:
-        optimizer_name: Registered identifier of the optimizer to retrieve.
+        config: Configuration dictionary containing:
+            - 'name' or 'type': Registered identifier of the optimizer.
+            - Additional key-value pairs for optimizer-specific parameters.
+            - Values starting with "@" will be resolved from the container.
+        params: Model parameters to optimize (typically model.parameters()).
+        container: Optional DependencyContainer for resolving dependencies.
 
     Returns:
-        Optimizer class if found in the registry, None otherwise.
+        Initialized Optimizer instance.
+
+    Example:
+        >>> config = {"name": "adamw", "lr": 0.001, "weight_decay": 0.01}
+        >>> optimizer = load(config, model.parameters())
     """
-    if not _optimizer_registry:  # Refresh the imports.
-        optimizers_dir = Path(__file__).parent / "optimizers"
-        if not optimizers_dir.exists():
-            return None
+    # Support both 'name' and 'type' for flexibility
+    config_dict = dict(config)
+    if "name" not in config_dict and "type" in config_dict:
+        config_dict["name"] = config_dict.pop("type")
 
-        module_files = optimizers_dir.glob("*.py")
-        module_files = [f for f in module_files if not f.stem.startswith("_")]
-
-        # Import each module to trigger @optimizer decorator registration
-        for module_file in module_files:
-            module_name = f"lumiere.training.optimizers.{module_file.stem}"
-            with contextlib.suppress(ImportError):
-                importlib.import_module(module_name)
-
-    return _optimizer_registry.get(optimizer_name)
+    return _loader.load(config_dict, params, container=container)
 
 
 class OptimizerLoader:

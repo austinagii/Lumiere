@@ -1,9 +1,7 @@
-import contextlib
-import importlib
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Protocol, TypeVar
 
+from lumiere.loading import Registry
 
 T = TypeVar("T")
 
@@ -32,48 +30,64 @@ class Dataset(Protocol):
 
 
 # A registry of datasets indexed by custom names.
-_dataset_registry: dict[str, type[Dataset]] = {}
+_registry = Registry[type[Dataset]](
+    name="dataset",
+    base_module="lumiere.data.datasets",
+    discovery_paths=["."],
+)
 
+# Expose existing API for backward compatibility
+dataset = _registry.decorator
+register_dataset = _registry.register
+get_dataset = _registry.get
 
-def dataset(dataset_name: str):
-    """Decorator to register a dataset class in the global registry.
+# Create loader (imported here to avoid circular imports)
+def load(config: dict, container: Any = None):
+    """Load and return a DataLoader instance from a configuration dictionary.
 
-    Registered datasets can be retrieved by name using get_dataset().
+    The configuration must contain a 'datasets' field with a list of dataset
+    configurations. Each dataset configuration must contain a 'name' field with
+    the registered dataset identifier, plus any additional keyword arguments
+    required for that dataset's initialization.
 
-    Args:
-        dataset_name: Unique identifier for the dataset in the registry.
-
-    """
-
-    def decorator(cls):
-        register_dataset(dataset_name, cls)
-        return cls
-
-    return decorator
-
-
-def register_dataset(name: str, cls: type[Dataset]) -> None:
-    _dataset_registry[name] = cls
-
-
-def get_dataset(dataset_name: str) -> type[Dataset] | None:
-    """Retrieve a dataset class from the registry by name.
+    Dependencies can be injected via a DependencyContainer. Values in the config
+    that start with "@" (e.g., "@preprocessor") will be resolved from the container.
 
     Args:
-        dataset_name: Registered identifier of the dataset to retrieve.
+        config: Configuration dictionary containing:
+            - 'datasets': List of dataset configurations.
+            - Other DataLoader parameters (e.g., 'merge_mode').
+        container: Optional DependencyContainer for resolving dependencies.
 
     Returns:
-        Dataset class if found in the registry, None otherwise.
+        Initialized DataLoader instance.
+
+    Example:
+        >>> config = {
+        ...     "datasets": [
+        ...         {"name": "wikitext", "split": "50:50:50"}
+        ...     ],
+        ...     "merge_mode": "round_robin"
+        ... }
+        >>> dataloader = load(config)
     """
-    if not _dataset_registry:  # Refresh the imports.
-        datasets_dir = Path(__file__).parent / "datasets"
-        module_files = datasets_dir.glob("*.py")
-        module_files = [f for f in module_files if not f.stem.startswith("_")]
+    from lumiere.data.dataloader import DataLoader
+    from lumiere.loading import ConfigLoader, resolve_value
 
-        # Import each module to trigger @dataset decorator registration
-        for module_file in module_files:
-            module_name = f"lumiere.data.datasets.{module_file.stem}"
-            with contextlib.suppress(ImportError):
-                importlib.import_module(module_name)
+    # Create loader for individual datasets
+    _dataset_loader = ConfigLoader[Dataset](_registry)
 
-    return _dataset_registry.get(dataset_name)
+    if (dataset_configs := config.get("datasets")) is None:
+        raise ValueError("Configuration must contain a 'datasets' field.")
+
+    # Initialize datasets from their configurations
+    datasets = [_dataset_loader.load(dict(dc), container=container) for dc in dataset_configs]
+
+    # Extract DataLoader parameters (everything except 'datasets')
+    dataloader_params = {
+        key: resolve_value(value, container)
+        for key, value in config.items()
+        if key != "datasets"
+    }
+
+    return DataLoader(datasets, **dataloader_params)

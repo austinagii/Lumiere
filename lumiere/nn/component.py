@@ -1,16 +1,18 @@
 """Component registry system for neural network modules."""
 
-import contextlib
-import importlib
-from pathlib import Path
 from typing import Any
 
 from torch import nn
 from torch.nn import LayerNorm, RMSNorm
 
+from lumiere.loading import HierarchicalRegistry
 
 # Registry for all neural network components
-_component_registry: dict[str, type[nn.Module]] = {}
+_registry = HierarchicalRegistry[type[nn.Module]](
+    name="component",
+    base_module="lumiere.nn",
+    discovery_paths=["attention", "feedforward", "embedding", "blocks"],
+)
 
 
 def component(component_type: str, component_name: str):
@@ -25,13 +27,7 @@ def component(component_type: str, component_name: str):
         >>> class MultiHeadAttention(nn.Module):
         ...     pass
     """
-
-    def decorator(cls):
-        key = f"{component_type}.{component_name}"
-        register_component(key, cls)
-        return cls
-
-    return decorator
+    return _registry.decorator(component_type, component_name)
 
 
 def register_component(key: str, cls: type[nn.Module]) -> None:
@@ -41,7 +37,10 @@ def register_component(key: str, cls: type[nn.Module]) -> None:
         key: The full key in format 'type.name' (e.g., 'attention.multihead').
         cls: The component class to register.
     """
-    _component_registry[key] = cls
+    if "." not in key:
+        raise ValueError(f"Component key must be in format 'type.name', got: {key}")
+    component_type, component_name = key.split(".", 1)
+    _registry.register(component_type, component_name, cls)
 
 
 def get_component(component_type: str, component_name: str) -> type[nn.Module] | None:
@@ -54,33 +53,7 @@ def get_component(component_type: str, component_name: str) -> type[nn.Module] |
     Returns:
         Component class if found, None otherwise.
     """
-    if not _component_registry:
-        _populate_registry()
-
-    key = f"{component_type}.{component_name}"
-    return _component_registry.get(key)
-
-
-def _populate_registry():
-    """Populate the registry by importing all component modules."""
-    nn_dir = Path(__file__).parent
-
-    # Component subdirectories to scan
-    component_dirs = ["attention", "feedforward", "embedding", "blocks"]
-
-    for component_dir in component_dirs:
-        dir_path = nn_dir / component_dir
-        if not dir_path.exists():
-            continue
-
-        # Import all Python files in the directory
-        module_files = dir_path.glob("*.py")
-        module_files = [f for f in module_files if not f.stem.startswith("_")]
-
-        for module_file in module_files:
-            module_name = f"lumiere.nn.{component_dir}.{module_file.stem}"
-            with contextlib.suppress(ImportError):
-                importlib.import_module(module_name)
+    return _registry.get_by_parts(component_type, component_name)
 
 
 def create_factory(config: dict[str, Any], container: Any = None):
@@ -143,25 +116,9 @@ def create_factory(config: dict[str, Any], container: Any = None):
 
 def _resolve_value(value: Any, container: Any, context: str, key: str) -> Any:
     """Resolve a config value, handling dependency injection references."""
-    if isinstance(value, str) and value.startswith("@"):
-        if container is None:
-            raise ValueError(
-                f"Dependency reference '{value}' found for '{key}' in '{context}', "
-                f"but no DependencyContainer was provided."
-            )
+    from lumiere.loading import resolve_value
 
-        dep_name = value[1:]
-        resolved = container.get(dep_name)
-
-        if resolved is None:
-            raise ValueError(
-                f"Dependency '{dep_name}' for '{key}' in '{context}' "
-                f"not found in container."
-            )
-
-        return resolved
-
-    return value
+    return resolve_value(value, container)
 
 
 # Register PyTorch normalization layers at module import time

@@ -1,4 +1,4 @@
-from .loader import load
+from lumiere.data.dataset import load
 from .wikitext import WikiText2Dataset
 
 

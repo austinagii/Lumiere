@@ -1,7 +1,6 @@
-import contextlib
-import importlib
-from pathlib import Path
 from typing import Protocol
+
+from lumiere.loading import Registry
 
 
 class Pipeline(Protocol):
@@ -9,48 +8,66 @@ class Pipeline(Protocol):
 
 
 # A registry of pipelines indexed by custom names.
-_pipeline_registry: dict[str, type[Pipeline]] = {}
+_registry = Registry[type[Pipeline]](
+    name="pipeline",
+    base_module="lumiere.data.pipelines",
+    discovery_paths=["."],
+)
+
+# Expose existing API for backward compatibility
+pipeline = _registry.decorator
+register_pipeline = _registry.register
+get_pipeline = _registry.get
 
 
-def pipeline(pipeline_name: str):
-    """Decorator to register a pipeline class in the global registry.
+def load(config: dict, container=None) -> Pipeline:
+    """Load and return a Pipeline instance from a configuration dictionary.
 
-    Registered pipelines can be retrieved by name using get_pipeline().
+    The configuration must contain a 'name' field with the registered pipeline
+    identifier, plus any additional keyword arguments required for that pipeline's
+    initialization. For nested components like preprocessors, the configuration
+    should include their initialization details.
 
-    Args:
-        pipeline_name: Unique identifier for the pipeline in the registry.
-
-    """
-
-    def decorator(cls):
-        register_pipeline(pipeline_name, cls)
-        return cls
-
-    return decorator
-
-
-def register_pipeline(name: str, cls: type[Pipeline]) -> None:
-    _pipeline_registry[name] = cls
-
-
-def get_pipeline(pipeline_name: str) -> type[Pipeline] | None:
-    """Retrieve a pipeline class from the registry by name.
+    Dependencies can be injected via a DependencyContainer. Values in the config
+    that start with "@" (e.g., "@tokenizer") will be resolved from the container.
 
     Args:
-        pipeline_name: Registered identifier of the pipeline to retrieve.
+        config: Configuration dictionary containing:
+            - 'name': Registered identifier of the pipeline.
+            - Additional key-value pairs for pipeline-specific parameters.
+            - 'preprocessors': Optional list of preprocessor configurations.
+        container: Optional DependencyContainer for resolving dependencies.
 
     Returns:
-        Pipeline class if found in the registry, None otherwise.
+        Initialized Pipeline instance.
+
+    Example:
+        >>> config = {
+        ...     "name": "text",
+        ...     "tokenizer": tokenizer_instance,
+        ...     "batch_size": 32,
+        ...     "preprocessors": [
+        ...         {"name": "autoregressive", "device": "cuda"}
+        ...     ]
+        ... }
+        >>> pipeline = load(config)
     """
-    if not _pipeline_registry:  # Refresh the imports.
-        pipelines_dir = Path(__file__).parent / "pipelines"
-        module_files = pipelines_dir.glob("*.py")
-        module_files = [f for f in module_files if not f.stem.startswith("_")]
+    from lumiere.data.preprocessor import Preprocessor, _registry as preprocessor_registry
+    from lumiere.loading import ConfigLoader
 
-        # Import each module to trigger @pipeline decorator registration
-        for module_file in module_files:
-            module_name = f"lumiere.data.pipelines.{module_file.stem}"
-            with contextlib.suppress(ImportError):
-                importlib.import_module(module_name)
+    # Create loaders
+    _pipeline_loader = ConfigLoader[Pipeline](_registry)
+    _preprocessor_loader = ConfigLoader[Preprocessor](preprocessor_registry)
 
-    return _pipeline_registry.get(pipeline_name)
+    # Convert config to dict and handle preprocessors specially
+    config_dict = dict(config)
+
+    # If preprocessors are specified, load them using the centralized loader
+    if "preprocessors" in config_dict and config_dict["preprocessors"] is not None:
+        preprocessors = [
+            _preprocessor_loader.load(dict(pc), container=container)
+            for pc in config_dict["preprocessors"]
+        ]
+        config_dict["preprocessors"] = preprocessors
+
+    return _pipeline_loader.load(config_dict, container=container)

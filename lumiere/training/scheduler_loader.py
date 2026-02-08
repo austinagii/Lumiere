@@ -22,66 +22,70 @@ Example:
     ... )
 """
 
-import contextlib
-import importlib
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
 import torch
 
+from lumiere.loading import Registry
 
 # A registry of schedulers indexed by custom names.
 # Scheduler classes should be callable that accept an optimizer and return
 # a torch.optim.lr_scheduler.LRScheduler instance
-_scheduler_registry: dict[str, type] = {}
+_registry = Registry[type](
+    name="scheduler",
+    base_module="lumiere.training.lr_schedulers",
+    discovery_paths=["."],
+)
+
+# Expose existing API for backward compatibility
+scheduler = _registry.decorator
+register_scheduler = _registry.register
+get_scheduler = _registry.get
+
+# Create loader
+from lumiere.loading import ConfigLoader
+
+_loader = ConfigLoader[torch.optim.lr_scheduler.LRScheduler](
+    _registry, required_params=["optimizer"]
+)
 
 
-def scheduler(scheduler_name: str):
-    """Decorator to register a scheduler class in the global registry.
+def load(
+    config: Mapping[str, Any],
+    optimizer: torch.optim.Optimizer,
+    container: Any = None,
+) -> torch.optim.lr_scheduler.LRScheduler:
+    """Load and return a LRScheduler instance from a configuration dictionary.
 
-    Registered schedulers can be retrieved by name using get_scheduler().
+    The configuration must contain a 'name' or 'type' field with the registered
+    scheduler identifier, plus any additional keyword arguments required for
+    that scheduler's initialization.
+
+    Dependencies can be injected via a DependencyContainer. Values in the config
+    that start with "@" (e.g., "@warmup_steps") will be resolved from the container.
 
     Args:
-        scheduler_name: Unique identifier for the scheduler in the registry.
-
-    """
-
-    def decorator(cls):
-        register_scheduler(scheduler_name, cls)
-        return cls
-
-    return decorator
-
-
-def register_scheduler(name: str, cls: type) -> None:
-    _scheduler_registry[name] = cls
-
-
-def get_scheduler(scheduler_name: str) -> type | None:
-    """Retrieve a scheduler class from the registry by name.
-
-    Args:
-        scheduler_name: Registered identifier of the scheduler to retrieve.
+        config: Configuration dictionary containing:
+            - 'name' or 'type': Registered identifier of the scheduler.
+            - Additional key-value pairs for scheduler-specific parameters.
+            - Values starting with "@" will be resolved from the container.
+        optimizer: The optimizer instance to schedule.
+        container: Optional DependencyContainer for resolving dependencies.
 
     Returns:
-        Scheduler class if found in the registry, None otherwise.
+        Initialized LRScheduler instance.
+
+    Example:
+        >>> config = {"name": "cosine-annealing", "warmup_steps": 500}
+        >>> scheduler = load(config, optimizer)
     """
-    if not _scheduler_registry:  # Refresh the imports.
-        schedulers_dir = Path(__file__).parent / "lr_schedulers"
-        if not schedulers_dir.exists():
-            return None
+    # Support both 'name' and 'type' for flexibility
+    config_dict = dict(config)
+    if "name" not in config_dict and "type" in config_dict:
+        config_dict["name"] = config_dict.pop("type")
 
-        module_files = schedulers_dir.glob("*.py")
-        module_files = [f for f in module_files if not f.stem.startswith("_")]
-
-        # Import each module to trigger @scheduler decorator registration
-        for module_file in module_files:
-            module_name = f"lumiere.training.lr_schedulers.{module_file.stem}"
-            with contextlib.suppress(ImportError):
-                importlib.import_module(module_name)
-
-    return _scheduler_registry.get(scheduler_name)
+    return _loader.load(config_dict, optimizer, container=container)
 
 
 class SchedulerLoader:

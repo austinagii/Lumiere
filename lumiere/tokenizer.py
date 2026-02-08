@@ -1,9 +1,6 @@
-import contextlib
-import importlib
 from collections import OrderedDict
-from collections.abc import Generator, Iterable
+from collections.abc import Generator, Iterable, Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -86,51 +83,50 @@ class Trainable(Protocol):
 
 
 # A registry of tokenizers indexed by custom names.
-_tokenizer_registry: dict[str, type[Tokenizer]] = {}
+from lumiere.loading import ConfigLoader, Registry
+
+_registry = Registry[type[Tokenizer]](
+    name="tokenizer",
+    base_module="lumiere.tokenizers",
+    discovery_paths=["."],
+)
+
+# Expose existing API for backward compatibility
+tokenizer = _registry.decorator
+register_tokenizer = _registry.register
+get_tokenizer = _registry.get
+
+# Create loader
+_loader = ConfigLoader[Tokenizer](_registry)
 
 
-def tokenizer(tokenizer_name: str):
-    """Decorator to register a tokenizer class in the global registry.
+def load(config: Mapping[str, Any], container: Any = None) -> Tokenizer:
+    """Load and return a Tokenizer instance from a configuration dictionary.
 
-    Registered tokenizers can be retrieved by name using get_tokenizer().
+    The configuration must contain a 'name' or 'type' field with the registered
+    tokenizer identifier, plus any additional keyword arguments required for
+    that tokenizer's initialization.
+
+    Dependencies can be injected via a DependencyContainer. Values in the config
+    that start with "@" (e.g., "@vocab_size") will be resolved from the container.
 
     Args:
-        tokenizer_name: Unique identifier for the tokenizer in the registry.
-
-    """
-
-    def decorator(cls):
-        register_tokenizer(tokenizer_name, cls)
-        return cls
-
-    return decorator
-
-
-def register_tokenizer(name: str, cls: type[Tokenizer]) -> None:
-    _tokenizer_registry[name] = cls
-
-
-def get_tokenizer(tokenizer_name: str) -> type[Tokenizer] | None:
-    """Retrieve a tokenizer class from the registry by name.
-
-    Args:
-        tokenizer_name: Registered identifier of the tokenizer to retrieve.
+        config: Configuration dictionary containing:
+            - 'name' or 'type': Registered identifier of the tokenizer.
+            - Additional key-value pairs for tokenizer-specific parameters.
+            - Values starting with "@" will be resolved from the container.
+        container: Optional DependencyContainer for resolving dependencies.
 
     Returns:
-        Tokenizer class if found in the registry, None otherwise.
+        Initialized Tokenizer instance.
+
+    Example:
+        >>> config = {"name": "bpe", "vocab_size": 30000}
+        >>> tokenizer = load(config)
     """
-    if not _tokenizer_registry:  # Refresh the imports.
-        tokenizers_dir = Path(__file__).parent / "tokenizers"
-        if not tokenizers_dir.exists():
-            return None
+    # Support both 'name' and 'type' for flexibility
+    config_dict = dict(config)
+    if "name" not in config_dict and "type" in config_dict:
+        config_dict["name"] = config_dict.pop("type")
 
-        module_files = tokenizers_dir.glob("*.py")
-        module_files = [f for f in module_files if not f.stem.startswith("_")]
-
-        # Import each module to trigger @tokenizer decorator registration
-        for module_file in module_files:
-            module_name = f"lumiere.tokenizers.{module_file.stem}"
-            with contextlib.suppress(ImportError):
-                importlib.import_module(module_name)
-
-    return _tokenizer_registry.get(tokenizer_name)
+    return _loader.load(config_dict, container=container)

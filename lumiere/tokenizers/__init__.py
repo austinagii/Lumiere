@@ -5,11 +5,10 @@ from lumiere.tokenizer import (
     Tokenizer,
     Trainable,
     get_tokenizer,
+    load,
     register_tokenizer,
     tokenizer,
 )
-
-from .loader import load
 
 
 # Import BPETokenizer with fallback for missing dependencies

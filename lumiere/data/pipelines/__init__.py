@@ -1,4 +1,4 @@
-from .loader import load
+from lumiere.data.pipeline import load
 from .text import TextPipeline
 
 
