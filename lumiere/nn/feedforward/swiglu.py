@@ -2,11 +2,11 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from lumiere.nn.component import component
+from lumiere.discover import discover
 from lumiere.utils import validation
 
 
-@component("feedforward", "swiglu")
+@discover(nn.Module, "feedforward.swiglu")
 class SwigluFeedForward(nn.Module):
     """A SwiGLU feed-forward network.
 

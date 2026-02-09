@@ -5,56 +5,6 @@ from typing import Any
 from torch import nn
 from torch.nn import LayerNorm, RMSNorm
 
-from lumiere.loading import HierarchicalRegistry
-
-# Registry for all neural network components
-_registry = HierarchicalRegistry[type[nn.Module]](
-    name="component",
-    base_module="lumiere.nn",
-    discovery_paths=["attention", "feedforward", "embedding", "blocks"],
-)
-
-
-def component(component_type: str, component_name: str):
-    """Decorator to register a component in the global registry.
-
-    Args:
-        component_type: The type/category of component (e.g., 'attention', 'feedforward').
-        component_name: The specific name of this component (e.g., 'multihead', 'linear').
-
-    Example:
-        >>> @component('attention', 'multihead')
-        >>> class MultiHeadAttention(nn.Module):
-        ...     pass
-    """
-    return _registry.decorator(component_type, component_name)
-
-
-def register_component(key: str, cls: type[nn.Module]) -> None:
-    """Register a component class in the registry.
-
-    Args:
-        key: The full key in format 'type.name' (e.g., 'attention.multihead').
-        cls: The component class to register.
-    """
-    if "." not in key:
-        raise ValueError(f"Component key must be in format 'type.name', got: {key}")
-    component_type, component_name = key.split(".", 1)
-    _registry.register(component_type, component_name, cls)
-
-
-def get_component(component_type: str, component_name: str) -> type[nn.Module] | None:
-    """Retrieve a component class from the registry.
-
-    Args:
-        component_type: The type/category of component.
-        component_name: The specific name of the component.
-
-    Returns:
-        Component class if found, None otherwise.
-    """
-    return _registry.get_by_parts(component_type, component_name)
-
 
 def create_factory(config: dict[str, Any], container: Any = None):
     """Create a factory function from a component configuration.
@@ -89,6 +39,7 @@ def create_factory(config: dict[str, Any], container: Any = None):
             f"Got: {config}"
         )
 
+    from lumiere.discover import get_component
     component_cls = get_component(component_type, component_name)
     if component_cls is None:
         raise ValueError(
@@ -122,5 +73,6 @@ def _resolve_value(value: Any, container: Any, context: str, key: str) -> Any:
 
 
 # Register PyTorch normalization layers at module import time
-register_component("normalization.layer", LayerNorm)
-register_component("normalization.rms", RMSNorm)
+from lumiere.discover import register
+register(nn.Module, "normalization.layer", LayerNorm)
+register(nn.Module, "normalization.rms", RMSNorm)

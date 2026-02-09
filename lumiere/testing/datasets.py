@@ -1,7 +1,8 @@
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from lumiere.data.dataset import dataset
+from lumiere.data.dataset import Dataset
+from lumiere.discover import discover
 
 
 class IdentityDataset:
@@ -68,7 +69,7 @@ class StringDataset:
         return _get_split()
 
 
-@dataset("lorem-ipsum")
+@discover(Dataset, "lorem-ipsum")
 class LoremIpsumDataset:
     """A toy dataset containing Lorem Ipsum."""
 
@@ -100,7 +101,7 @@ class LoremIpsumDataset:
         return _get_split()
 
 
-@dataset("famous-quotes")
+@discover(Dataset, "famous-quotes")
 class FamousQuotesDataset:
     """A toy dataset containing famous quotes."""
 

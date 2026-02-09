@@ -2,8 +2,11 @@
 
 import torch
 
-from lumiere.training.optimizer_loader import optimizer
+from lumiere.discover import discover
 
 
 # Register PyTorch's AdamW optimizer directly
-optimizer("adamw")(torch.optim.AdamW)
+@discover(torch.optim.Optimizer, "adamw")
+class AdamW(torch.optim.AdamW):
+    """Wrapper for PyTorch's AdamW optimizer."""
+    pass

@@ -281,7 +281,7 @@ class TransformerBuilder:
             # If this spec defines a module type and name, create a factory for it
             if "type" in spec and "name" in spec:
                 # Get the component class to check which params it accepts
-                from lumiere.nn.component import get_component
+                from lumiere.discover import get_component
                 component_type = spec.get("type")
                 component_name = spec.get("name")
                 component_cls = get_component(component_type, component_name)

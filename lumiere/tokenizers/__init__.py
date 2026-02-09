@@ -4,10 +4,6 @@ from lumiere.tokenizer import (
     SpecialToken,
     Tokenizer,
     Trainable,
-    get_tokenizer,
-    load,
-    register_tokenizer,
-    tokenizer,
 )
 
 
@@ -17,26 +13,18 @@ try:
 
     __all__ = [
         "BPETokenizer",
-        "load",
         "SPECIAL_TOKENS",
         "Serializable",
         "SpecialToken",
         "Tokenizer",
         "Trainable",
-        "tokenizer",
-        "register_tokenizer",
-        "get_tokenizer",
     ]
 except ImportError:
     # tokenizers library not installed
     __all__ = [
-        "load",
         "SPECIAL_TOKENS",
         "Serializable",
         "SpecialToken",
         "Tokenizer",
         "Trainable",
-        "tokenizer",
-        "register_tokenizer",
-        "get_tokenizer",
     ]

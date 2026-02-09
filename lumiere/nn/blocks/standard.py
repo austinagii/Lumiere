@@ -3,11 +3,11 @@ from collections.abc import Callable
 import torch
 from torch import nn
 
-from lumiere.nn.component import component
+from lumiere.discover import discover
 from lumiere.utils import validation
 
 
-@component("block", "standard")
+@discover(nn.Module, "block.standard")
 class StandardTransformerBlock(nn.Module):
     """A decoder transformer block.
 

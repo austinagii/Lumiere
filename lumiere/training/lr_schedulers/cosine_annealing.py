@@ -2,50 +2,43 @@
 
 import torch
 
-from lumiere.training.scheduler_loader import scheduler
+from lumiere.discover import discover
 
 
-def cosine_annealing_scheduler(
-    optimizer: torch.optim.Optimizer,
-    warmup_steps: int,
-    max_epochs: int,
-    epoch_steps: int,
-) -> torch.optim.lr_scheduler.LRScheduler:
-    """Create a cosine annealing learning rate scheduler with linear warmup.
+@discover(torch.optim.lr_scheduler.LRScheduler, "cosine-annealing")
+class CosineAnnealingScheduler(torch.optim.lr_scheduler.LRScheduler):
+    """Cosine annealing scheduler with warmup."""
 
-    Args:
-        optimizer: The optimizer to schedule.
-        warmup_steps: Number of warmup steps for linear warmup.
-        max_epochs: Maximum number of training epochs.
-        epoch_steps: Number of steps per epoch.
+    def __init__(
+        self,
+        optimizer: torch.optim.Optimizer,
+        warmup_steps: int,
+        max_epochs: int,
+        epoch_steps: int,
+    ):
+        """Initialize the scheduler.
 
-    Returns:
-        A configured LambdaLR scheduler.
+        Args:
+            optimizer: The optimizer to schedule.
+            warmup_steps: Number of warmup steps for linear warmup.
+            max_epochs: Maximum number of training epochs.
+            epoch_steps: Number of steps per epoch.
+        """
+        self.warmup_steps = warmup_steps
+        self.max_epochs = max_epochs
+        self.epoch_steps = epoch_steps
+        super().__init__(optimizer)
 
-    Example:
-        >>> scheduler_config = {
-        ...     "name": "cosine-annealing",
-        ...     "warmup_steps": 500,
-        ...     "max_epochs": 250,
-        ...     "epoch_steps": 2000
-        ... }
-        >>> scheduler = load_scheduler(scheduler_config, optimizer)
-    """
+    def get_lr(self):
+        """Calculate learning rate for current step."""
+        step = self.last_epoch + 1
 
-    def lr_lambda(step):
-        # Add 1 to step to ensure that the initial learning rate is non zero.
-        step += 1
-
-        if step <= warmup_steps:
-            return step / warmup_steps
+        if step <= self.warmup_steps:
+            scale = step / self.warmup_steps
         else:
-            progress = (step - warmup_steps) / (
-                max_epochs * epoch_steps - warmup_steps
+            progress = (step - self.warmup_steps) / (
+                self.max_epochs * self.epoch_steps - self.warmup_steps
             )
-            return 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159)))
+            scale = 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159)))
 
-    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-
-
-# Register the scheduler function
-scheduler("cosine-annealing")(cosine_annealing_scheduler)
+        return [base_lr * scale for base_lr in self.base_lrs]

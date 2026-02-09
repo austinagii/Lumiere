@@ -3,10 +3,11 @@ from collections.abc import Generator, Iterable
 import tokenizers
 from tokenizers import decoders, models, normalizers, pre_tokenizers, trainers
 
-from lumiere.tokenizer import SPECIAL_TOKENS, Serializable, Tokenizer, tokenizer
+from lumiere.discover import discover
+from lumiere.tokenizer import SPECIAL_TOKENS, Serializable, Tokenizer
 
 
-@tokenizer("bpe")
+@discover(Tokenizer, "bpe")
 class BPETokenizer(Tokenizer, Serializable):
     def __init__(self, vocab_size: int = 30000, min_frequency: int = 2):
         self.tokenizer = tokenizers.Tokenizer(models.BPE())

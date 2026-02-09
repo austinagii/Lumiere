@@ -3,11 +3,11 @@ from collections import OrderedDict
 import torch
 from torch import nn
 
-from lumiere.nn.component import component
+from lumiere.discover import discover
 from lumiere.utils import validation
 
 
-@component("feedforward", "linear")
+@discover(nn.Module, "feedforward.linear")
 class LinearFeedForward(nn.Module):
     """A position-wise feed-forward network.
 

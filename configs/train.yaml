@@ -39,6 +39,11 @@ data:
   datasets:
     - name: wikitext
 
+tokenizer:
+  name: bpe
+  vocab_size: 4096
+  min_frequency: 2
+
 pipeline:
   name: text
   tokenizer: "@tokenizer"
@@ -49,11 +54,6 @@ pipeline:
   preprocessors:
     - name: autoregressive
       device: mps
-
-tokenizer:
-  name: bpe
-  vocab_size: 4096
-  min_frequency: 2
 
 optimizer:
   name: adamw

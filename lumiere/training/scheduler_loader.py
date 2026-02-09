@@ -27,66 +27,6 @@ from typing import Any
 
 import torch
 
-from lumiere.loading import Registry
-
-# A registry of schedulers indexed by custom names.
-# Scheduler classes should be callable that accept an optimizer and return
-# a torch.optim.lr_scheduler.LRScheduler instance
-_registry = Registry[type](
-    name="scheduler",
-    base_module="lumiere.training.lr_schedulers",
-    discovery_paths=["."],
-)
-
-# Expose existing API for backward compatibility
-scheduler = _registry.decorator
-register_scheduler = _registry.register
-get_scheduler = _registry.get
-
-# Create loader
-from lumiere.loading import ConfigLoader
-
-_loader = ConfigLoader[torch.optim.lr_scheduler.LRScheduler](
-    _registry, required_params=["optimizer"]
-)
-
-
-def load(
-    config: Mapping[str, Any],
-    optimizer: torch.optim.Optimizer,
-    container: Any = None,
-) -> torch.optim.lr_scheduler.LRScheduler:
-    """Load and return a LRScheduler instance from a configuration dictionary.
-
-    The configuration must contain a 'name' or 'type' field with the registered
-    scheduler identifier, plus any additional keyword arguments required for
-    that scheduler's initialization.
-
-    Dependencies can be injected via a DependencyContainer. Values in the config
-    that start with "@" (e.g., "@warmup_steps") will be resolved from the container.
-
-    Args:
-        config: Configuration dictionary containing:
-            - 'name' or 'type': Registered identifier of the scheduler.
-            - Additional key-value pairs for scheduler-specific parameters.
-            - Values starting with "@" will be resolved from the container.
-        optimizer: The optimizer instance to schedule.
-        container: Optional DependencyContainer for resolving dependencies.
-
-    Returns:
-        Initialized LRScheduler instance.
-
-    Example:
-        >>> config = {"name": "cosine-annealing", "warmup_steps": 500}
-        >>> scheduler = load(config, optimizer)
-    """
-    # Support both 'name' and 'type' for flexibility
-    config_dict = dict(config)
-    if "name" not in config_dict and "type" in config_dict:
-        config_dict["name"] = config_dict.pop("type")
-
-    return _loader.load(config_dict, optimizer, container=container)
-
 
 class SchedulerLoader:
     """Load a learning rate scheduler from a configuration specification.
@@ -130,7 +70,8 @@ class SchedulerLoader:
                 "Scheduler config must contain either 'name' or 'type' field."
             )
 
-        scheduler_cls = get_scheduler(scheduler_name)
+        from lumiere.discover import get
+        scheduler_cls = get(torch.optim.lr_scheduler.LRScheduler, scheduler_name)
         if scheduler_cls is None:
             raise ValueError(
                 f"The specified scheduler '{scheduler_name}' could not be found in the registry."  # noqa: E501

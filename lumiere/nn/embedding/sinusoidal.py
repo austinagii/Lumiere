@@ -1,11 +1,11 @@
 import torch
 from torch import nn
 
-from lumiere.nn.component import component
+from lumiere.discover import discover
 from lumiere.utils import validation
 
 
-@component("embedding", "sinusoidal")
+@discover(nn.Module, "embedding.sinusoidal")
 class SinusoidalPositionalEmbedding(nn.Module):
     """Converts token IDs to positional-encoded token embeddings.
 

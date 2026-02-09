@@ -113,3 +113,38 @@ class DependencyContainer:
         new_container._dependencies = self._dependencies.copy()
         new_container._type_dependencies = self._type_dependencies.copy()
         return new_container
+
+    def __getattr__(self, name: str) -> Any:
+        """Get a dependency as an attribute.
+
+        This allows accessing dependencies using dot notation:
+            container.tokenizer instead of container.get("tokenizer")
+
+        Args:
+            name: The name of the dependency.
+
+        Returns:
+            The registered dependency.
+
+        Raises:
+            AttributeError: If the dependency is not found.
+        """
+        if name.startswith("_"):
+            # Don't intercept private attributes
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        if name in self._dependencies:
+            return self._dependencies[name]
+        raise AttributeError(f"Dependency '{name}' not found in container")
+
+    def __hasattr__(self, name: str) -> bool:
+        """Check if a dependency exists as an attribute.
+
+        Args:
+            name: The name to check.
+
+        Returns:
+            True if the dependency is registered, False otherwise.
+        """
+        if name.startswith("_"):
+            return super().__hasattr__(name)
+        return name in self._dependencies

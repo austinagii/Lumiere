@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from collections.abc import Generator, Iterable, Mapping
+from collections.abc import Generator, Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -80,53 +80,3 @@ class Trainable(Protocol):
     def train(self, dataset: Iterable[Any]) -> None:
         """Train the class on the specified dataset."""
         pass
-
-
-# A registry of tokenizers indexed by custom names.
-from lumiere.loading import ConfigLoader, Registry
-
-_registry = Registry[type[Tokenizer]](
-    name="tokenizer",
-    base_module="lumiere.tokenizers",
-    discovery_paths=["."],
-)
-
-# Expose existing API for backward compatibility
-tokenizer = _registry.decorator
-register_tokenizer = _registry.register
-get_tokenizer = _registry.get
-
-# Create loader
-_loader = ConfigLoader[Tokenizer](_registry)
-
-
-def load(config: Mapping[str, Any], container: Any = None) -> Tokenizer:
-    """Load and return a Tokenizer instance from a configuration dictionary.
-
-    The configuration must contain a 'name' or 'type' field with the registered
-    tokenizer identifier, plus any additional keyword arguments required for
-    that tokenizer's initialization.
-
-    Dependencies can be injected via a DependencyContainer. Values in the config
-    that start with "@" (e.g., "@vocab_size") will be resolved from the container.
-
-    Args:
-        config: Configuration dictionary containing:
-            - 'name' or 'type': Registered identifier of the tokenizer.
-            - Additional key-value pairs for tokenizer-specific parameters.
-            - Values starting with "@" will be resolved from the container.
-        container: Optional DependencyContainer for resolving dependencies.
-
-    Returns:
-        Initialized Tokenizer instance.
-
-    Example:
-        >>> config = {"name": "bpe", "vocab_size": 30000}
-        >>> tokenizer = load(config)
-    """
-    # Support both 'name' and 'type' for flexibility
-    config_dict = dict(config)
-    if "name" not in config_dict and "type" in config_dict:
-        config_dict["name"] = config_dict.pop("type")
-
-    return _loader.load(config_dict, container=container)

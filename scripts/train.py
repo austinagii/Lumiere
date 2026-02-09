@@ -9,14 +9,17 @@ import torch
 import yaml
 
 from lumiere import DependencyContainer
-from lumiere.data.datasets import load as load_dataloader
-from lumiere.data.pipelines import load as load_pipeline
+from lumiere.loading import (
+    load_dataset as load_dataloader,
+    load_optimizer,
+    load_pipeline,
+    load_scheduler,
+    load_tokenizer,
+)
 from lumiere.models import load as load_model
-from lumiere.tokenizers import load as load_tokenizer
 from lumiere.training import Trainer
 from lumiere.training.loss import cross_entropy_loss
-from lumiere.training.lr_schedulers import load as load_scheduler
-from lumiere.training.optimizers import load as load_optimizer
+from lumiere.utils.device import get_device
 
 
 logging.basicConfig(
@@ -46,25 +49,6 @@ def load_config(config_path: str) -> dict:
 
     logger.info(f"Loaded configuration from {config_path}")
     return config
-
-
-def get_device() -> torch.device:
-    """Get the best available device for training.
-
-    Returns:
-        The torch device to use for training.
-    """
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        logger.info(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-        logger.info("Using MPS (Metal) device")
-    else:
-        device = torch.device("cpu")
-        logger.info("Using CPU device")
-
-    return device
 
 
 def init_training_components(config: dict, device: torch.device):

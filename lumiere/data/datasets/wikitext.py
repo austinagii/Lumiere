@@ -6,7 +6,8 @@ from typing import Final
 
 import datasets
 
-from lumiere.data.dataset import dataset
+from lumiere.data.dataset import Dataset
+from lumiere.discover import discover
 
 
 _DATASET_ID = "Salesforce/wikitext"
@@ -26,7 +27,7 @@ _ARTICLE_HEADER_PATTERN: Final[re.Pattern] = re.compile(
 )
 
 
-@dataset("wikitext")
+@discover(Dataset, "wikitext")
 class WikiText2Dataset:
     """Loads the WikiText-2 dataset.
 

@@ -3,7 +3,7 @@ from typing import Any
 
 from lumiere.utils.iterators import MergeMode, merge_iterators
 
-from .dataset import Dataset, get_dataset
+from .dataset import Dataset
 
 
 class DataLoader:
@@ -92,7 +92,8 @@ class DataLoader:
         if (dataset_name := dataset_config.get("name")) is None:
             raise ValueError("A dataset config must contain a dataset name.")
 
-        dataset_cls = get_dataset(dataset_name)
+        from lumiere.discover import get
+        dataset_cls = get(Dataset, dataset_name)
         if dataset_cls is None:
             raise ValueError(
                 f"The specified dataset '{dataset_name}' could not be found in the registry."  # noqa: E501
