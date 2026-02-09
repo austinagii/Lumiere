@@ -13,7 +13,7 @@ from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Emb
 from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.data import DataLoader
 from lumiere.data.datasets import WikiText2Dataset
-from lumiere.data.pipeline import TextPipeline
+from lumiere.data.pipelines.text import TextPipeline
 from lumiere.data.preprocessors import (
     AutoregressiveLanguageModellingPreprocessor,
 )

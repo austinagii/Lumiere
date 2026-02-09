@@ -2,7 +2,7 @@ from collections.abc import Generator
 
 import pytest
 
-from lumiere.data.dataset import DataLoader
+from lumiere.data import DataLoader
 from lumiere.tokenizers import BPETokenizer, SPECIAL_TOKENS, Tokenizer
 
 

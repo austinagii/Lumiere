@@ -1,4 +1,4 @@
-from lumiere.data.preprocessor import Preprocessor
+from lumiere.data import Preprocessor
 from lumiere.discover import discover
 
 

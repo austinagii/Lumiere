@@ -1,9 +1,54 @@
+"""Data handling classes and protocols for datasets, pipelines, and preprocessing.
+
+This module provides the core abstractions for working with data in Lumière:
+- Dataset: Protocol for accessing different data splits
+- Pipeline: Protocol for processing data into batches
+- Preprocessor: Base class for data preprocessing
+- DataLoader: Load and merge samples from multiple datasets
+"""
+
 from collections.abc import Iterator, Mapping
-from typing import Any
+from typing import Any, Protocol, TypeVar
 
 from lumiere.utils.iterators import MergeMode, merge_iterators
 
-from .dataset import Dataset
+
+T = TypeVar("T")
+
+
+class Dataset(Protocol):
+    """Protocol defining the interface for dataset implementations.
+
+    All dataset classes must implement the __getitem__ method to provide
+    access to different data splits (e.g., train, validation, test).
+
+    """
+
+    def __getitem__(self, split_name: str) -> Iterator[T]:
+        """Return an iterator over samples from the specified split.
+
+        Args:
+            split_name: Name of the split to access (e.g., "train", "valid", "test").
+
+        Returns:
+            An Iterator over samples from the specified split.
+
+        Raises:
+            KeyError: If the specified split is not present in the dataset.
+        """
+        ...
+
+
+class Pipeline(Protocol):
+    """Protocol defining the interface for pipeline implementations."""
+
+    def batches(self, data): ...
+
+
+class Preprocessor:
+    """Base class for preprocessor implementations."""
+
+    def __call__(self, *args, **kwargs) -> Any: ...
 
 
 class DataLoader:
@@ -67,6 +112,15 @@ class DataLoader:
     def from_config(
         cls, dataset_configs: list[Mapping[str, Any]], merge_mode
     ) -> "DataLoader":
+        """Create a DataLoader from configuration dictionaries.
+
+        Args:
+            dataset_configs: List of dataset configuration dictionaries.
+            merge_mode: Strategy for merging iterators from multiple datasets.
+
+        Returns:
+            Initialized DataLoader instance.
+        """
         datasets = [cls._init_dataset(config) for config in dataset_configs]
 
         return cls(datasets, merge_mode=merge_mode)
@@ -93,6 +147,7 @@ class DataLoader:
             raise ValueError("A dataset config must contain a dataset name.")
 
         from lumiere.discover import get
+
         dataset_cls = get(Dataset, dataset_name)
         if dataset_cls is None:
             raise ValueError(

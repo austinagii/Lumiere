@@ -9,7 +9,7 @@ from lumiere.nn.components.attention import MultiHeadAttention
 from lumiere.nn.components.block import TransformerBlock
 from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
 from lumiere.nn.components.feedforward import LinearFeedForward
-from lumiere.data.dataset import DataLoader
+from lumiere.data import DataLoader
 from lumiere.data.preprocessing import to_training_batches
 from lumiere.tokenizers import SPECIAL_TOKENS, Tokenizer
 from lumiere.models.transformer import Transformer

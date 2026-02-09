@@ -7,7 +7,7 @@ from pathlib import Path
 import lumiere.deepscale as ds
 
 from lumiere.config.config import Config
-from lumiere.data.dataloader import get_data_loader
+from lumiere.data import DataLoader
 from lumiere.data.preprocessing import to_training_batches
 from lumiere.tokenizers import SPECIAL_TOKENS, Tokenizer
 from lumiere.models.transformer import Transformer

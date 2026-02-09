@@ -3,8 +3,7 @@ from collections.abc import Iterable
 
 import torch
 
-from lumiere.data.pipeline import Pipeline
-from lumiere.data.preprocessor import Preprocessor
+from lumiere.data import Pipeline, Preprocessor
 from lumiere.discover import discover
 from lumiere.tokenizers import Tokenizer
 from lumiere.utils.validation import (

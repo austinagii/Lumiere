@@ -23,8 +23,11 @@ Example:
     ...     print(sample)
 """
 
-from .dataloader import DataLoader
+from .data import DataLoader, Dataset, Pipeline, Preprocessor
 
 __all__ = [
     "DataLoader",
+    "Dataset",
+    "Pipeline",
+    "Preprocessor",
 ]

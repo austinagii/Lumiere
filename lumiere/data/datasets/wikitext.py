@@ -6,7 +6,7 @@ from typing import Final
 
 import datasets
 
-from lumiere.data.dataset import Dataset
+from lumiere.data import Dataset
 from lumiere.discover import discover
 
 

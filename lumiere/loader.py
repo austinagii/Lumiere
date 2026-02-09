@@ -4,10 +4,7 @@ from typing import Any, TypeVar
 
 import torch
 
-from lumiere.data.dataloader import DataLoader
-from lumiere.data.dataset import Dataset
-from lumiere.data.pipeline import Pipeline
-from lumiere.data.preprocessor import Preprocessor
+from lumiere.data import DataLoader, Dataset, Pipeline, Preprocessor
 from lumiere.discover import get
 from lumiere.tokenizer import Tokenizer
 

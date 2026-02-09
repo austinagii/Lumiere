@@ -7,8 +7,7 @@ import torch
 from torch import nn
 from tqdm import tqdm
 
-from lumiere.data import DataLoader
-from lumiere.data.pipeline import Pipeline
+from lumiere.data import DataLoader, Pipeline
 
 from .loss import Loss
 

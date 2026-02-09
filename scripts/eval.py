@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from tqdm import tqdm
 
 from lumiere.config.config import Config
-from lumiere.data.dataloader import get_data_loader
+from lumiere.data import DataLoader
 from lumiere.data.preprocessing import to_training_batches
 from lumiere.tokenizers import SPECIAL_TOKENS
 from lumiere.models.transformer import Transformer

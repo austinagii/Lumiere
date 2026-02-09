@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from lumiere.data.dataset import DataLoader
+from lumiere.data import DataLoader
 from lumiere.utils.testing.datasets import FamousQuotesDataset, LoremIpsumDataset
 
 

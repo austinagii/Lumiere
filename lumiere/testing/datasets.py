@@ -1,7 +1,7 @@
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from lumiere.data.dataset import Dataset
+from lumiere.data import Dataset
 from lumiere.discover import discover
 
 
