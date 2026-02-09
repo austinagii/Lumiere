@@ -109,3 +109,50 @@ disallow_untyped_defs = false
 [[tool.mypy.overrides]]
 module = ["torch.*", "wandb.*", "transformers.*", "pytest.*", "datasets.*"]
 ignore_missing_imports = true
+
+[tool.lumiere.discovery]
+# Registry configuration for the discovery system
+# Each entry configures how a specific type's registry should be created
+
+[tool.lumiere.discovery.registries.tokenizer]
+type = "lumiere.tokenizer.Tokenizer"
+name = "tokenizer"
+base_module = "lumiere.tokenizers"
+discovery_paths = ["."]
+
+[tool.lumiere.discovery.registries.dataset]
+type = "lumiere.data.dataset.Dataset"
+name = "dataset"
+base_module = "lumiere.data.datasets"
+discovery_paths = ["."]
+
+[tool.lumiere.discovery.registries.pipeline]
+type = "lumiere.data.pipeline.Pipeline"
+name = "pipeline"
+base_module = "lumiere.data.pipelines"
+discovery_paths = ["."]
+
+[tool.lumiere.discovery.registries.preprocessor]
+type = "lumiere.data.preprocessor.Preprocessor"
+name = "preprocessor"
+base_module = "lumiere.data.preprocessors"
+discovery_paths = ["."]
+
+[tool.lumiere.discovery.registries.optimizer]
+type = "torch.optim.Optimizer"
+name = "optimizer"
+base_module = "lumiere.training.optimizers"
+discovery_paths = ["."]
+
+[tool.lumiere.discovery.registries.scheduler]
+type = "torch.optim.lr_scheduler.LRScheduler"
+name = "scheduler"
+base_module = "lumiere.training.lr_schedulers"
+discovery_paths = ["."]
+
+[tool.lumiere.discovery.registries.component]
+type = "torch.nn.Module"
+name = "component"
+base_module = "lumiere.nn"
+discovery_paths = ["attention", "feedforward", "embedding", "blocks"]
+hierarchical = true
