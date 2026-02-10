@@ -29,18 +29,19 @@ class TestBpeTokenizer:
 
         assert isinstance(actual_output, list)
         assert len(actual_output) > 0
-        assert all(isinstance(token, str) for token in actual_output)
+        assert all(isinstance(token, int) for token in actual_output)
 
     def test_tokenize_recognizes_special_tokens(self, tokenizer):
         text = "<|sot|> the quick dog <|eot|> <|pad|>"
 
         actual_output = tokenizer.tokenize(text)
 
-        # Should contain special tokens as separate tokens
-        tokens_str = " ".join(actual_output)
-        assert "<|sot|>" in tokens_str
-        assert "<|eot|>" in tokens_str
-        assert "<|pad|>" in tokens_str
+        # Should contain special tokens as token IDs
+        # Decode back to check if special tokens are preserved
+        decoded = tokenizer.decode(actual_output)
+        assert "<|sot|>" in decoded
+        assert "<|eot|>" in decoded
+        assert "<|pad|>" in decoded
 
     def test_tokenize_returns_an_empty_list_if_the_text_is_empty(self, tokenizer):
         actual_output = tokenizer.tokenize("")
@@ -53,7 +54,7 @@ class TestBpeTokenizer:
             "the lazy dog jumped over the fox",
         ]
 
-        actual_output = tokenizer.tokenize_all(corpus)
+        actual_output = list(tokenizer.tokenize_all(corpus))
 
         assert isinstance(actual_output, list)
         assert len(actual_output) == 2
@@ -68,7 +69,7 @@ class TestBpeTokenizer:
             "the lazy dog jumped over the fox",
         ]
 
-        actual_output = tokenizer.tokenize_all(corpus, lazy=True)
+        actual_output = tokenizer.tokenize_all(corpus)
 
         assert isinstance(actual_output, Generator)
         result_list = list(actual_output)
@@ -81,42 +82,41 @@ class TestBpeTokenizer:
     ):
         corpus = []
 
-        actual_output = tokenizer.tokenize_all(corpus, lazy=True)
+        actual_output = tokenizer.tokenize_all(corpus)
 
         with pytest.raises(StopIteration):
             next(actual_output)
 
-        actual_output = tokenizer.tokenize_all(corpus, lazy=False)
-
-        assert actual_output == []
-
     def test_tokenize_all_returns_empty_outputs_when_corpus_is_empty(self, tokenizer):
         corpus = [""]
-        actual_output = tokenizer.tokenize_all(corpus, lazy=True)
+        actual_output = tokenizer.tokenize_all(corpus)
 
         assert list(actual_output) == [[]]
 
     def test_encode_returns_a_list_of_token_ids(self, tokenizer):
-        # First tokenize to get actual tokens from trained tokenizer
+        # encode() expects string tokens, but we can test it with the underlying tokenizer
+        # Get actual string tokens from the underlying tokenizer
         text = "the quick dog jumped over the fox"
-        tokens = tokenizer.tokenize(text)
+        encoding = tokenizer.tokenizer.encode(text)
+        string_tokens = encoding.tokens
 
-        actual_output = tokenizer.encode(tokens)
+        actual_output = tokenizer.encode(string_tokens)
 
         assert isinstance(actual_output, list)
-        assert len(actual_output) <= len(tokens)
+        assert len(actual_output) == len(string_tokens)
         assert all(isinstance(token_id, int) for token_id in actual_output)
         assert all(token_id >= 0 for token_id in actual_output)
 
     def test_encode_all_returns_a_nested_list_of_token_ids_when_executing_eagerly(
         self, tokenizer
     ):
-        # First tokenize to get actual tokens
+        # Get string tokens from the underlying tokenizer
         text = "the quick dog jumped over the fox"
-        tokens = tokenizer.tokenize(text)
-        corpus = [tokens]
+        encoding = tokenizer.tokenizer.encode(text)
+        string_tokens = encoding.tokens
+        corpus = [string_tokens]
 
-        actual_output = tokenizer.encode_all(corpus)
+        actual_output = list(tokenizer.encode_all(corpus))
 
         assert isinstance(actual_output, list)
         assert len(actual_output) == 1
@@ -129,12 +129,13 @@ class TestBpeTokenizer:
     def test_encode_all_returns_a_generator_of_token_ids_when_executing_lazily(
         self, tokenizer
     ):
-        # First tokenize to get actual tokens
+        # Get string tokens from the underlying tokenizer
         text = "the quick dog jumped over the fox"
-        tokens = tokenizer.tokenize(text)
-        corpus = [tokens]
+        encoding = tokenizer.tokenizer.encode(text)
+        string_tokens = encoding.tokens
+        corpus = [string_tokens]
 
-        actual_output = tokenizer.encode_all(corpus, lazy=True)
+        actual_output = tokenizer.encode_all(corpus)
 
         assert isinstance(actual_output, Generator)
         result_list = list(actual_output)
@@ -146,10 +147,9 @@ class TestBpeTokenizer:
         )
 
     def test_decode_returns_a_string(self, tokenizer):
-        # First tokenize then encode to get valid IDs
+        # tokenize() returns IDs, decode() converts them back to text
         text = "the quick dog jumped over the fox"
-        tokens = tokenizer.tokenize(text)
-        token_ids = tokenizer.encode(tokens)
+        token_ids = tokenizer.tokenize(text)
 
         actual_output = tokenizer.decode(token_ids)
 
@@ -164,10 +164,9 @@ class TestBpeTokenizer:
             "the quick dog jumped over the fox",
             "the lazy dog jumped over the fox",
         ]
-        tokens = tokenizer.tokenize_all(text)
-        token_ids = tokenizer.encode_all(tokens)
+        token_ids = tokenizer.tokenize_all(text)
 
-        actual_output = tokenizer.decode_all(token_ids)
+        actual_output = list(tokenizer.decode_all(token_ids))
 
         assert isinstance(actual_output, list)
         assert len(actual_output) == 2
@@ -177,12 +176,11 @@ class TestBpeTokenizer:
     def test_decode_all_returns_a_generator_of_strings_when_executing_lazily(
         self, tokenizer
     ):
-        # First tokenize then encode to get valid IDs
+        # tokenize() returns IDs
         text = "the quick dog jumped over the fox"
-        tokens = tokenizer.tokenize(text)
-        token_ids = [tokenizer.encode(tokens)]
+        token_ids = [tokenizer.tokenize(text)]
 
-        actual_output = tokenizer.decode_all(token_ids, lazy=True)
+        actual_output = tokenizer.decode_all(token_ids)
 
         assert isinstance(actual_output, Generator)
         result_list = list(actual_output)
@@ -190,7 +188,7 @@ class TestBpeTokenizer:
         assert all(isinstance(text, str) for text in result_list)
 
     def test_can_train_from_a_corpus(self):
-        tokenizer = Tokenizer(vocab_size=32, min_frequency=2)
+        tokenizer = BPETokenizer(vocab_size=32, min_frequency=2)
 
         corpus = [
             "the quick dog jumped over the fox",
@@ -211,7 +209,7 @@ class TestBpeTokenizer:
         alphabet = set([char for sentence in corpus for char in sentence])
         alphabet.update(set([token.token for token in SPECIAL_TOKENS.values()]))
 
-        tokenizer = Tokenizer(vocab_size=10, min_frequency=2)
+        tokenizer = BPETokenizer(vocab_size=10, min_frequency=2)
         tokenizer.train(corpus)
 
         assert tokenizer.vocab_size == len(alphabet)
@@ -228,7 +226,7 @@ class TestBpeTokenizer:
         alphabet = set([char for sentence in corpus for char in sentence])
         alphabet.update(set([token.token for token in SPECIAL_TOKENS.values()]))
 
-        tokenizer = Tokenizer(vocab_size=len(alphabet), min_frequency=2)
+        tokenizer = BPETokenizer(vocab_size=len(alphabet), min_frequency=2)
         tokenizer.train(corpus)
 
         assert tokenizer.vocab_size == len(alphabet)
@@ -246,7 +244,7 @@ class TestBpeTokenizer:
         alphabet.update(set([token.token for token in SPECIAL_TOKENS.values()]))
 
         target_vocab_size = len(alphabet) - 5
-        tokenizer = Tokenizer(vocab_size=target_vocab_size, min_frequency=2)
+        tokenizer = BPETokenizer(vocab_size=target_vocab_size, min_frequency=2)
         tokenizer.train(corpus)
 
         assert tokenizer.vocab_size > target_vocab_size
@@ -263,7 +261,7 @@ class TestBpeTokenizer:
         ],
     )
     def test_tokenizer_respects_vocab_size(self, split, vocab_size):
-        tokenizer = Tokenizer(vocab_size=vocab_size, min_frequency=2)
+        tokenizer = BPETokenizer(vocab_size=vocab_size, min_frequency=2)
 
         dataloader = DataLoader([{"name": "wikitext", "split": split}])
 

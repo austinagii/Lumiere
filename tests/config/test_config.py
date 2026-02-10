@@ -1,6 +1,6 @@
 import pytest
 
-from lumiere.config.config import Config
+from lumiere.training.config import Config
 
 
 @pytest.fixture

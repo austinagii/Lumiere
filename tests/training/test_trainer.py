@@ -8,7 +8,7 @@ from torch.nn import RMSNorm
 from torch.optim import SGD
 
 from lumiere.nn.components.attention import MultiHeadAttention
-from lumiere.nn.components.block import TransformerBlock
+from lumiere.nn.components.blocks import StandardTransformerBlock
 from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
 from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.data import DataLoader
@@ -20,11 +20,11 @@ from lumiere.data.preprocessors import (
 from lumiere.tokenizers import SPECIAL_TOKENS, BPETokenizer
 from lumiere.nn.architectures.transformer import Transformer
 from lumiere.training import Trainer
-from lumiere.training.schedulers import cosine_annealing_lr_scheduler
+from lumiere.nn.schedulers.cosine_annealing import CosineAnnealingScheduler
 from lumiere.utils.device import get_device
-from lumiere.utils.testing.datasets import IdentityDataset
-from lumiere.utils.testing.models import IdentityModel
-from lumiere.utils.testing.pipelines import IdentityPipeline
+from lumiere.testing.datasets import IdentityDataset
+from lumiere.testing.models import IdentityModel
+from lumiere.testing.pipelines import IdentityPipeline
 
 
 VOCAB_SIZE = 512
@@ -70,7 +70,7 @@ def model():
             embedding_size=EMBEDDING_SIZE,
             padding_id=SPECIAL_TOKENS["padding"].id,
         ),
-        block_factory=lambda: TransformerBlock(
+        block_factory=lambda: StandardTransformerBlock(
             attention_factory=lambda: MultiHeadAttention(
                 num_heads=1, embedding_size=EMBEDDING_SIZE, d_key=3, d_value=3
             ),
@@ -93,7 +93,7 @@ def optimizer(model):
 
 @pytest.fixture
 def scheduler(optimizer):
-    return cosine_annealing_lr_scheduler(
+    return CosineAnnealingScheduler(
         optimizer, warmup_steps=10, max_epochs=100, epoch_steps=10
     )
 

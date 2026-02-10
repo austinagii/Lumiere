@@ -1,3 +1,5 @@
 """Neural network component implementations."""
 
-__all__ = []
+from .blocks import StandardTransformerBlock
+
+__all__ = ["StandardTransformerBlock"]

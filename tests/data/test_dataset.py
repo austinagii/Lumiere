@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 
 from lumiere.data import DataLoader
-from lumiere.utils.testing.datasets import FamousQuotesDataset, LoremIpsumDataset
+from lumiere.testing.datasets import FamousQuotesDataset, LoremIpsumDataset
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ class TestDataLoader:
     # ===========================================
 
     def test_init_initializes_datasets_according_to_provided_args(self, dataset_config):
-        dataloader = DataLoader(**dataset_config)
+        dataloader = DataLoader.from_config(dataset_config["datasets"], merge_mode="greedy")
 
         assert isinstance(dataloader.datasets[0], LoremIpsumDataset)
         assert dataloader.datasets[0].source == "Invitica Morialis Aeturnus"
@@ -49,13 +49,13 @@ class TestDataLoader:
         dataset_config["datasets"][1]["name"] = "arc"
 
         with pytest.raises(ValueError):
-            DataLoader(**dataset_config)
+            DataLoader.from_config(dataset_config["datasets"], merge_mode="greedy")
 
     def test_init_raises_error_if_invalid_dataset_arg_is_provided(self, dataset_config):
         dataset_config["datasets"][0]["invalid_args"] = "value"
 
         with pytest.raises(RuntimeError):
-            DataLoader(**dataset_config)
+            DataLoader.from_config(dataset_config["datasets"], merge_mode="greedy")
 
     def test_init_raises_error_if_dataset_could_not_be_initialized(
         self, mocker, dataset_config
@@ -66,20 +66,20 @@ class TestDataLoader:
         )
 
         with pytest.raises(RuntimeError):
-            DataLoader(**dataset_config)
+            DataLoader.from_config(dataset_config["datasets"], merge_mode="greedy")
 
     def test_init_raises_an_error_if_specified_merge_mode_does_not_exist(
         self, dataset_config
     ):
         with pytest.raises(ValueError):
-            DataLoader(merge_mode="hyperbolic", **dataset_config)
+            DataLoader.from_config(dataset_config["datasets"], merge_mode="hyperbolic")
 
     # ===========================================
     # =========== TEST SPLIT ACCESS =============
     # ===========================================
 
     def test_iteritem_uses_greedy_merge_mode_by_default(self, dataset_config):
-        dataloader = DataLoader(**dataset_config)
+        dataloader = DataLoader.from_config(dataset_config["datasets"], merge_mode="greedy")
 
         assert list(dataloader["train"]) == [
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
@@ -95,7 +95,7 @@ class TestDataLoader:
         ]
 
     def test_iteritem_uses_specified_merge_mode_if_specified(self, dataset_config):
-        greedy_dataloader = DataLoader(merge_mode="greedy", **dataset_config)
+        greedy_dataloader = DataLoader.from_config(dataset_config["datasets"], merge_mode="greedy")
 
         assert list(greedy_dataloader["train"]) == [
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
@@ -110,7 +110,7 @@ class TestDataLoader:
             "The only impossible journey is the one you never begin.",
         ]
 
-        circular_dataloader = DataLoader(merge_mode="circular", **dataset_config)
+        circular_dataloader = DataLoader.from_config(dataset_config["datasets"], merge_mode="circular")
 
         assert list(circular_dataloader["train"]) == [
             "Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
@@ -128,7 +128,7 @@ class TestDataLoader:
     def test_getitem_excludes_a_datasets_not_containing_specified_split(
         self, dataset_config
     ):
-        dataloader = DataLoader(**dataset_config)
+        dataloader = DataLoader.from_config(dataset_config["datasets"], merge_mode="greedy")
 
         assert list(dataloader["validation"]) == [
             "Aliquam erat volutpat. Vivamus eu magna sem.",

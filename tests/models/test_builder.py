@@ -7,14 +7,14 @@ from torch.nn import RMSNorm
 from lumiere.nn.components.feedforward import (
     LinearFeedForward,
 )
-from lumiere.nn.architectures.builder import (
+from lumiere.nn.builder import (
     TransformerBuilder,
-    TransformerSpec,
+    ModelSpec,
 )
 
 
-class TestTransformerSpec:
-    def test_transformer_spec_can_be_initialized_from_argument_dict(self):
+class TestModelSpec:
+    def test_model_spec_can_be_initialized_from_argument_dict(self):
         args = {
             "context_size": 512,
             "embedding_size": 1024,
@@ -29,7 +29,7 @@ class TestTransformerSpec:
                 },
             },
         }
-        spec = TransformerSpec(args)
+        spec = ModelSpec(args)
 
         assert spec.args == args
         assert spec["context_size"] == 512
@@ -43,7 +43,7 @@ class TestTransformerSpec:
 
     def test_init_raises_an_error_if_args_is_none(self):
         with pytest.raises(ValueError):
-            TransformerSpec(None)
+            ModelSpec(None)
 
     def test_from_yaml_correctly_builds_spec_from_yaml_file(self):
         yaml_content = """
@@ -63,7 +63,7 @@ class TestTransformerSpec:
             yaml_path = f.name
 
         try:
-            spec = TransformerSpec.from_yaml(yaml_path)
+            spec = ModelSpec.from_yaml(yaml_path)
 
             assert spec["context_size"] == 512
             assert spec["embedding_size"] == 1024
@@ -78,14 +78,14 @@ class TestTransformerSpec:
 
     def test_from_yaml_raises_error_if_file_path_is_invalid(self):
         with pytest.raises(ValueError):
-            TransformerSpec.from_yaml(123)
+            ModelSpec.from_yaml(123)
 
     def test_from_yaml_raises_error_if_file_path_does_not_exist(self):
         with pytest.raises(FileNotFoundError):
-            TransformerSpec.from_yaml("/path/to/nonexistent/file.yaml")
+            ModelSpec.from_yaml("/path/to/nonexistent/file.yaml")
 
     def test_getitem_retrieves_argument_value(self):
-        spec = TransformerSpec(
+        spec = ModelSpec(
             {
                 "context_size": 512,
                 "embedding_size": 1024,
@@ -98,7 +98,7 @@ class TestTransformerSpec:
         assert spec["num_blocks"] == 6
 
     def test_getitem_retrieves_component_arguments_using_dot_notation(self):
-        spec = TransformerSpec(
+        spec = ModelSpec(
             {
                 "context_size": 512,
                 "embedding_size": 1024,
@@ -110,7 +110,7 @@ class TestTransformerSpec:
         assert spec["block.hidden_size"] == 768
 
     def test_setitem_sets_argument_to_specified_value(self):
-        spec = TransformerSpec(
+        spec = ModelSpec(
             {
                 "context_size": 512,
                 "embedding_size": 1024,
@@ -126,7 +126,7 @@ class TestTransformerSpec:
         assert spec["block.hidden_size"] == 1024
 
     def test_setitem_creates_ancestor_if_missing(self):
-        spec = TransformerSpec(
+        spec = ModelSpec(
             {
                 "context_size": 512,
                 "embedding_size": 1024,
@@ -141,7 +141,7 @@ class TestTransformerSpec:
 
 class TestTransformerBuilder:
     def test_build_produces_a_transformer_that_matches_provided_spec(self):
-        spec = TransformerSpec(
+        spec = ModelSpec(
             {
                 "vocab_size": 1024,
                 "context_size": 64,
@@ -213,7 +213,7 @@ class TestTransformerBuilder:
         assert isinstance(transformer.final_norm, RMSNorm)
 
     def test_build_inherits_ancestor_args_when_module_args_are_omitted(self):
-        spec = TransformerSpec(
+        spec = ModelSpec(
             {
                 "vocab_size": 1024,
                 "context_size": 64,

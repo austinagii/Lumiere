@@ -5,7 +5,7 @@ import torch
 
 from lumiere.data import DataLoader, Pipeline
 from lumiere.tokenizers import SPECIAL_TOKENS, AsciiTokenizer
-from lumiere.utils.testing.datasets import FamousQuotesDataset, StringDataset
+from lumiere.testing.datasets import FamousQuotesDataset, StringDataset
 
 
 def assert_mask(tokens, mask, pad_id):

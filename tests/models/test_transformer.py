@@ -6,7 +6,7 @@ from lumiere.nn.components.attention import MultiHeadAttention
 from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
 from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.nn.architectures.transformer import Transformer
-from lumiere.nn.components.block import TransformerBlock
+from lumiere.nn.components.blocks import StandardTransformerBlock
 
 
 class TestModel:
@@ -27,7 +27,7 @@ class TestModel:
                 embedding_size=embedding_size,
                 padding_id=0,
             ),
-            block_factory=lambda: TransformerBlock(
+            block_factory=lambda: StandardTransformerBlock(
                 attention_factory=lambda: MultiHeadAttention(
                     num_heads=4, embedding_size=embedding_size, d_key=16, d_value=16
                 ),

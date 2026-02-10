@@ -60,9 +60,9 @@ def transformer_block_factory():
         normalization=lambda: RMSNorm(16),
     ) -> TransformerBlock:
         return TransformerBlock(
-            attention_factory=attention,
-            feedforward_factory=feedforward,
-            normalization_factory=normalization,
+            attention=attention,
+            feedforward=feedforward,
+            normalization=normalization,
             pre_norm=pre_norm,
             post_norm=post_norm,
         )
