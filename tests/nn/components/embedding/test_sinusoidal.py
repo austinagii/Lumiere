@@ -8,7 +8,7 @@ from lumiere.nn.components.embedding import (
 )
 
 
-class TestEmbedding:
+class TestSinusoidalPositionalEmbedding:
     @pytest.mark.parametrize("vocab_size", [1, 16, 32])
     @pytest.mark.parametrize("context_size", [1, 16, 32])
     @pytest.mark.parametrize("embedding_size", [2, 64, 128])
@@ -115,7 +115,7 @@ class TestEmbedding:
         assert torch.all(token_embeddings[0, -1] == 0)
 
 
-class TestPositionalEncoding:
+class TestSinusoidalPositionalEncoding:
     @pytest.mark.parametrize(
         ("context_size", "embedding_size"),
         [

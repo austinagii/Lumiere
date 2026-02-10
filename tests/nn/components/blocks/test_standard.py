@@ -70,7 +70,7 @@ def transformer_block_factory():
     return factory
 
 
-class TestTransformerBlock:
+class TestStandardTransformerBlock:
     @pytest.mark.parametrize(
         "pre_norm, post_norm, expected_normalized",
         [

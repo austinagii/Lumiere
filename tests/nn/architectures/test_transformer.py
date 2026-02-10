@@ -9,7 +9,7 @@ from lumiere.nn.architectures.transformer import Transformer
 from lumiere.nn.components.blocks import StandardTransformerBlock
 
 
-class TestModel:
+class TestTransformer:
     @pytest.mark.parametrize("vocab_size", [100])
     @pytest.mark.parametrize("embedding_size", [64])
     @pytest.mark.parametrize("context_size", [16])

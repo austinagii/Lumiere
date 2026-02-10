@@ -21,7 +21,7 @@ def tokenizer():
     return tokenizer
 
 
-class TestBpeTokenizer:
+class TestBPETokenizer:
     def test_tokenize_returns_a_list_of_tokens(self, tokenizer):
         text = "the quick brown fox jumped the lazy dog"
 

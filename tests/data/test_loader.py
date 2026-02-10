@@ -61,7 +61,7 @@ class TestDataLoader:
         self, mocker, dataset_config
     ):
         mocker.patch(
-            "tests.data.test_dataset.FamousQuotesDataset.__init__",
+            "tests.data.test_loader.FamousQuotesDataset.__init__",
             side_effect=FileNotFoundError("A random error occurred."),
         )
 
