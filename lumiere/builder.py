@@ -1,6 +1,7 @@
 """Classes for dynamically building a Transformer model from a specification."""
 
 import inspect
+from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -9,8 +10,108 @@ import yaml
 from torch import nn
 from torch.nn import LayerNorm, RMSNorm
 
+from lumiere.di import DependencyContainer, resolve_value
 from lumiere.nn.architectures.transformer import Transformer
 from lumiere.nn.components.component import create_factory
+
+
+def load(
+    config: Mapping[str, Any], container: DependencyContainer | None = None
+) -> nn.Module:
+    """Load and return a Model instance from a hierarchical configuration.
+
+    This loader uses the TransformerBuilder to construct models from hierarchical
+    specifications with factory configurations. It supports dependency injection
+    for all configuration values.
+
+    Args:
+        config: Hierarchical configuration dictionary. Factory fields (like
+            'embedding_factory', 'block_factory') should contain 'type' and
+            'name' fields plus component-specific parameters.
+        container: Optional DependencyContainer for resolving dependencies.
+
+    Returns:
+        Initialized Model instance.
+
+    Raises:
+        ValueError: If a dependency cannot be resolved or component not found.
+        RuntimeError: If an error occurs during model initialization.
+
+    Example:
+        >>> config = {
+        ...     "vocab_size": 30000,
+        ...     "context_size": 512,
+        ...     "num_blocks": 12,
+        ...     "embedding_factory": {
+        ...         "type": "embedding",
+        ...         "name": "sinusoidal",
+        ...         "padding_id": 0
+        ...     },
+        ...     "block_factory": {
+        ...         "type": "block",
+        ...         "name": "standard",
+        ...         "attention_factory": {
+        ...             "type": "attention",
+        ...             "name": "multihead",
+        ...             "num_heads": 8
+        ...         },
+        ...         "feedforward_factory": {
+        ...             "type": "feedforward",
+        ...             "name": "linear",
+        ...             "d_ff": 2048
+        ...         },
+        ...         "normalization_factory": {
+        ...             "type": "normalization",
+        ...             "name": "rms"
+        ...         }
+        ...     },
+        ...     "normalization_factory": {
+        ...         "type": "normalization",
+        ...         "name": "rms"
+        ...     }
+        ... }
+        >>> model = load(config)
+    """
+    try:
+        # Resolve dependencies in the config
+        resolved_config = _resolve_nested_config(config, container)
+
+        # Build the model using TransformerBuilder
+        spec = ModelSpec(resolved_config)
+        return TransformerBuilder.build(spec, container=container)
+    except Exception as e:
+        raise RuntimeError(f"Error building model from spec: {e}") from e
+
+
+def _resolve_nested_config(
+    config: Mapping[str, Any], container: DependencyContainer | None
+) -> dict[str, Any]:
+    """Recursively resolve dependencies in a nested configuration.
+
+    Args:
+        config: Configuration dictionary that may contain nested dicts.
+        container: Optional DependencyContainer for resolving dependencies.
+
+    Returns:
+        Configuration with all dependencies resolved.
+    """
+    resolved = {}
+    for key, value in config.items():
+        if isinstance(value, dict):
+            # Recursively resolve nested configs
+            resolved[key] = _resolve_nested_config(value, container)
+        elif isinstance(value, list):
+            # Resolve list items
+            resolved[key] = [
+                _resolve_nested_config(item, container)
+                if isinstance(item, dict)
+                else resolve_value(item, container)
+                for item in value
+            ]
+        else:
+            # Resolve single values
+            resolved[key] = resolve_value(value, container)
+    return resolved
 
 
 class ModelSpec:

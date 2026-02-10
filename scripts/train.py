@@ -9,6 +9,7 @@ import torch
 import yaml
 
 from lumiere import DependencyContainer
+from lumiere.builder import load as load_model
 from lumiere.loader import (
     load_dataset as load_dataloader,
     load_optimizer,
@@ -16,7 +17,6 @@ from lumiere.loader import (
     load_scheduler,
     load_tokenizer,
 )
-from lumiere.architecture_loader import load as load_model
 from lumiere.training import Trainer
 from lumiere.training.loss import cross_entropy_loss
 from lumiere.utils.device import get_device

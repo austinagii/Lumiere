@@ -5,6 +5,7 @@ from typing import Any, TypeVar
 import torch
 
 from lumiere.data import DataLoader, Dataset, Pipeline, Preprocessor
+from lumiere.di import resolve_value
 from lumiere.discover import get
 from lumiere.tokenizer import Tokenizer
 
@@ -188,45 +189,3 @@ def load_pipeline(config: dict[str, Any], container: Any = None) -> Pipeline:
         config_dict["preprocessors"] = preprocessors
 
     return load(Pipeline, config_dict, container)
-
-
-def resolve_value(value: Any, container: Any = None) -> Any:
-    """Resolve a configuration value with dependency injection support.
-
-    This function handles the @variable syntax for dependency injection, allowing
-    configuration values to reference variables from a DependencyContainer.
-
-    Args:
-        value: The value to resolve. Can be:
-            - str starting with '@': Variable reference to resolve from container
-            - dict: Recursively resolve all values in the dictionary
-            - list: Recursively resolve all items in the list
-            - Any other type: Return as-is
-        container: Optional DependencyContainer to resolve variable references from
-
-    Returns:
-        The resolved value with all @variable references replaced by their actual values
-
-    Examples:
-        >>> resolve_value("@vocab_size", container)
-        50000
-        >>> resolve_value({"lr": 0.001, "betas": "@betas"}, container)
-        {"lr": 0.001, "betas": (0.9, 0.999)}
-        >>> resolve_value([1, 2, "@hidden_size"], container)
-        [1, 2, 768]
-    """
-    if isinstance(value, str) and value.startswith("@"):
-        if container is None:
-            raise ValueError(
-                f"Cannot resolve variable '{value}' without a dependency container"
-            )
-        var_name = value[1:]  # Remove '@' prefix
-        if not hasattr(container, var_name):
-            raise ValueError(f"Variable '{var_name}' not found in dependency container")
-        return getattr(container, var_name)
-    elif isinstance(value, dict):
-        return {k: resolve_value(v, container) for k, v in value.items()}
-    elif isinstance(value, list):
-        return [resolve_value(item, container) for item in value]
-    else:
-        return value
