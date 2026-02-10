@@ -5,7 +5,7 @@ from torch.nn import RMSNorm
 from lumiere.nn.components.attention import MultiHeadAttention
 from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
 from lumiere.nn.components.feedforward import LinearFeedForward
-from lumiere.models.transformer import Transformer
+from lumiere.nn.architectures.transformer import Transformer
 from lumiere.nn.components.block import TransformerBlock
 
 

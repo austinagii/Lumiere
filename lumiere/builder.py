@@ -9,8 +9,8 @@ import yaml
 from torch import nn
 from torch.nn import LayerNorm, RMSNorm
 
-from lumiere.models.transformer import Transformer
-from lumiere.nn.component import create_factory
+from lumiere.nn.architectures.transformer import Transformer
+from lumiere.nn.components.component import create_factory
 
 
 class ModelSpec:

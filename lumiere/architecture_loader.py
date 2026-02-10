@@ -108,7 +108,9 @@ def _resolve_nested_config(
     return resolved
 
 
-def _resolve_value(value: Any, container: DependencyContainer | None, context: str, key: str) -> Any:
+def _resolve_value(
+    value: Any, container: DependencyContainer | None, context: str, key: str
+) -> Any:
     """Resolve a config value, handling dependency injection references.
 
     Args:

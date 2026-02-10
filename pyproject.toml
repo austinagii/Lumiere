@@ -141,18 +141,18 @@ discovery_paths = ["."]
 [tool.lumiere.discovery.registries.optimizer]
 type = "torch.optim.Optimizer"
 name = "optimizer"
-base_module = "lumiere.training.optimizers"
+base_module = "lumiere.nn.optimizers"
 discovery_paths = ["."]
 
 [tool.lumiere.discovery.registries.scheduler]
 type = "torch.optim.lr_scheduler.LRScheduler"
 name = "scheduler"
-base_module = "lumiere.training.lr_schedulers"
+base_module = "lumiere.nn.schedulers"
 discovery_paths = ["."]
 
 [tool.lumiere.discovery.registries.component]
 type = "torch.nn.Module"
 name = "component"
-base_module = "lumiere.nn"
+base_module = "lumiere.nn.components"
 discovery_paths = ["attention", "feedforward", "embedding", "blocks"]
 hierarchical = true

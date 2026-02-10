@@ -67,7 +67,7 @@ def create_factory(config: dict[str, Any], container: Any = None):
 
 def _resolve_value(value: Any, container: Any, context: str, key: str) -> Any:
     """Resolve a config value, handling dependency injection references."""
-    from lumiere.loading import resolve_value
+    from lumiere.loader import resolve_value
 
     return resolve_value(value, container)
 

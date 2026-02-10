@@ -12,7 +12,7 @@ from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.data import DataLoader
 from lumiere.data.preprocessing import to_training_batches
 from lumiere.tokenizers import SPECIAL_TOKENS, Tokenizer
-from lumiere.models.transformer import Transformer
+from lumiere.nn.architectures.transformer import Transformer
 from lumiere.training.eval import EvalMetrics, evaluate
 
 

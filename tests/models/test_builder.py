@@ -7,7 +7,7 @@ from torch.nn import RMSNorm
 from lumiere.nn.components.feedforward import (
     LinearFeedForward,
 )
-from lumiere.models.builder import (
+from lumiere.nn.architectures.builder import (
     TransformerBuilder,
     TransformerSpec,
 )

@@ -18,7 +18,7 @@ from lumiere.data.preprocessors import (
     AutoregressiveLanguageModellingPreprocessor,
 )
 from lumiere.tokenizers import SPECIAL_TOKENS, BPETokenizer
-from lumiere.models.transformer import Transformer
+from lumiere.nn.architectures.transformer import Transformer
 from lumiere.training import Trainer
 from lumiere.training.schedulers import cosine_annealing_lr_scheduler
 from lumiere.utils.device import get_device

@@ -1,7 +1,7 @@
-from .attention import MultiHeadAttention
-from .blocks import StandardTransformerBlock
-from .embedding import SinusoidalPositionalEmbedding
-from .feedforward import LinearFeedForward, SwigluFeedForward
+from .components.attention import MultiHeadAttention
+from .components.blocks import StandardTransformerBlock
+from .components.embedding import SinusoidalPositionalEmbedding
+from .components.feedforward import LinearFeedForward, SwigluFeedForward
 
 
 __all__ = [
