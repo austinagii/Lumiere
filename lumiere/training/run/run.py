@@ -12,13 +12,13 @@ from typing import Any
 import torch
 from azure.storage.blob import BlobServiceClient
 
-from lumiere.deepscale.config import Config
-from lumiere.deepscale.storage.clients import (
+from lumiere.training.config import Config
+from lumiere.persistence.clients import (
     AzureBlobStorageClient,
     FileSystemStorageClient,
-    StorageClient,
 )
-from lumiere.deepscale.storage.errors import (
+from lumiere.persistence.storage_client import StorageClient
+from lumiere.persistence.errors import (
     ArtifactNotFoundError,
     CheckpointNotFoundError,
     RunNotFoundError,

@@ -24,13 +24,13 @@ import yaml
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.blob import BlobServiceClient
 
-from lumiere.deepscale.storage.errors import (
+from lumiere.persistence.errors import (
     ArtifactNotFoundError,
     CheckpointNotFoundError,
     RunNotFoundError,
     StorageError,
 )
-from lumiere.deepscale.storage.storage_client import StorageClient
+from lumiere.persistence.storage_client import StorageClient
 
 
 # Disable Azure blob storage logging

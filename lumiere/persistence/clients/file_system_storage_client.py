@@ -18,12 +18,12 @@ from typing import Any
 
 import yaml
 
-from lumiere.deepscale.storage.errors import (
+from lumiere.persistence.errors import (
     CheckpointNotFoundError,
     RunNotFoundError,
     StorageError,
 )
-from lumiere.deepscale.storage.storage_client import StorageClient
+from lumiere.persistence.storage_client import StorageClient
 
 
 DEFAULT_BASE_DIR = Path(".")

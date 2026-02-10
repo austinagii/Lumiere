@@ -1,6 +1,6 @@
 from typing import Any, Protocol
 
-from lumiere.deepscale.run.checkpoint import Checkpoint
+from lumiere.training.run.checkpoint import Checkpoint
 
 
 class StorageClient(Protocol):
