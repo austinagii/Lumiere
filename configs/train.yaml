@@ -1,6 +1,20 @@
 # The argument tree, a hirearchy of initialization arguments for each component with the
 # top level name.
 
+runs:
+  checkpoints:
+    sources:
+      - filesystem
+      - azure-blob
+    destinations:
+      - filesystem
+      - azure-blob
+
+storage:
+  clients:
+    filesystem:
+      basedir: ./runs
+
 model:
   vocab_size: 4096
   context_size: 64
