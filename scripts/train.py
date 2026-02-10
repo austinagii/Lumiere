@@ -85,12 +85,12 @@ def init_run_manager(config: dict) -> tuple[str, RunManager]:
     """
     run_id = generate_run_id()
 
-    # Initialize RunManager with storage configuration
-    runs_config = config.get("runs", {})
-    run_manager = RunManager.from_config(runs_config)
+    # Convert dict to Config object for RunManager
+    config_obj = Config(config)
+    run_manager = RunManager.from_config(config_obj)
 
     # Initialize the run
-    run_manager.init_run(run_id, config)
+    run_manager.init_run(config)
 
     logger.info(f"Initialized new training run with ID: {run_id}")
     return run_id, run_manager
@@ -188,8 +188,8 @@ def resume_from_checkpoint(
         Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer, run_manager, checkpoint)
     """
     # Initialize RunManager
-    runs_config = config.get("runs", {})
-    run_manager = RunManager.from_config(runs_config)
+    config_obj = Config(config)
+    run_manager = RunManager.from_config(config_obj)
 
     # Load checkpoint
     logger.info(f"Loading checkpoint '{checkpoint_tag}' from run '{run_id}'...")
