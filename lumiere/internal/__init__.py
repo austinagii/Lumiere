@@ -1,6 +1,5 @@
-"""Internal infrastructure for component loading and building."""
+"""Internal infrastructure for component loading and registry."""
 
-from lumiere.internal.builder import ModelSpec, TransformerBuilder, load
 from lumiere.internal.di import DependencyContainer, resolve_value
 from lumiere.internal.loader import (
     load as load_component,
@@ -14,10 +13,6 @@ from lumiere.internal.registry import discover, get, get_component, register
 
 
 __all__ = [
-    # Builder
-    "ModelSpec",
-    "TransformerBuilder",
-    "load",
     # DI
     "DependencyContainer",
     "resolve_value",

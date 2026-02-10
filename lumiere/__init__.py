@@ -1,7 +1,7 @@
 """Lumiere - A deep learning framework."""
 
 from .internal.di import DependencyContainer
-from .internal.builder import load as load_model
+from .nn.builder import load as load_model
 from .internal.loader import (
     load_dataset,
     load_optimizer,

@@ -9,7 +9,7 @@ import torch
 import yaml
 
 from lumiere import DependencyContainer
-from lumiere.internal.builder import load as load_model
+from lumiere.nn.builder import load as load_model
 from lumiere.internal.loader import (
     load_dataset as load_dataloader,
     load_optimizer,
