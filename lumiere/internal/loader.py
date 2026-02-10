@@ -5,8 +5,8 @@ from typing import Any, TypeVar
 import torch
 
 from lumiere.data import DataLoader, Dataset, Pipeline, Preprocessor
-from lumiere.di import resolve_value
-from lumiere.discover import get
+from lumiere.internal.di import resolve_value
+from lumiere.internal.registry import get
 from lumiere.tokenizer import Tokenizer
 
 

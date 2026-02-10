@@ -3,7 +3,7 @@ from collections.abc import Generator, Iterable
 import tokenizers
 from tokenizers import decoders, models, normalizers, pre_tokenizers, trainers
 
-from lumiere.discover import discover
+from lumiere.internal.registry import discover
 from lumiere.tokenizer import SPECIAL_TOKENS, Serializable, Tokenizer
 
 

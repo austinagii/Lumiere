@@ -3,7 +3,7 @@ from collections.abc import Callable
 import torch
 from torch import nn
 
-from lumiere.discover import discover
+from lumiere.internal.registry import discover
 from lumiere.utils import validation
 
 

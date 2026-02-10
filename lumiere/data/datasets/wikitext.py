@@ -7,7 +7,7 @@ from typing import Final
 import datasets
 
 from lumiere.data import Dataset
-from lumiere.discover import discover
+from lumiere.internal.registry import discover
 
 
 _DATASET_ID = "Salesforce/wikitext"

@@ -2,7 +2,7 @@
 
 import torch
 
-from lumiere.discover import register
+from lumiere.internal.registry import register
 
 
 register(torch.optim.Optimizer, "adamw", torch.optim.AdamW)

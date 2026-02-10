@@ -39,7 +39,7 @@ def create_factory(config: dict[str, Any], container: Any = None):
             f"Got: {config}"
         )
 
-    from lumiere.discover import get_component
+    from lumiere.internal.registry import get_component
     component_cls = get_component(component_type, component_name)
     if component_cls is None:
         raise ValueError(
@@ -67,12 +67,12 @@ def create_factory(config: dict[str, Any], container: Any = None):
 
 def _resolve_value(value: Any, container: Any, context: str, key: str) -> Any:
     """Resolve a config value, handling dependency injection references."""
-    from lumiere.di import resolve_value
+    from lumiere.internal.di import resolve_value
 
     return resolve_value(value, container)
 
 
 # Register PyTorch normalization layers at module import time
-from lumiere.discover import register
+from lumiere.internal.registry import register
 register(nn.Module, "normalization.layer", LayerNorm)
 register(nn.Module, "normalization.rms", RMSNorm)

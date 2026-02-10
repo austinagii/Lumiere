@@ -4,7 +4,7 @@ from collections.abc import Iterable
 import torch
 
 from lumiere.data import Pipeline, Preprocessor
-from lumiere.discover import discover
+from lumiere.internal.registry import discover
 from lumiere.tokenizers import Tokenizer
 from lumiere.utils.validation import (
     validate_integer,

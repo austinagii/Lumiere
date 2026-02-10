@@ -2,7 +2,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from lumiere.data import Dataset
-from lumiere.discover import discover
+from lumiere.internal.registry import discover
 
 
 class IdentityDataset:

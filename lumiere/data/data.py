@@ -146,7 +146,7 @@ class DataLoader:
         if (dataset_name := dataset_config.get("name")) is None:
             raise ValueError("A dataset config must contain a dataset name.")
 
-        from lumiere.discover import get
+        from lumiere.internal.registry import get
 
         dataset_cls = get(Dataset, dataset_name)
         if dataset_cls is None:

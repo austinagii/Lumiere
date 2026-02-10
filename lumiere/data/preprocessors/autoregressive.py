@@ -1,5 +1,5 @@
 from lumiere.data import Preprocessor
-from lumiere.discover import discover
+from lumiere.internal.registry import discover
 
 
 @discover(Preprocessor, "autoregressive")

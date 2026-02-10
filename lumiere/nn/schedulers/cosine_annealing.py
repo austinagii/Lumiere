@@ -2,7 +2,7 @@
 
 import torch
 
-from lumiere.discover import discover
+from lumiere.internal.registry import discover
 
 
 @discover(torch.optim.lr_scheduler.LRScheduler, "cosine-annealing")
