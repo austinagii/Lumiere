@@ -141,11 +141,11 @@ class TestTransformerBlock:
     # ==============================================
     def test_rms_normalization_is_used_by_default(self):
         block = TransformerBlock(
-            attention_factory=lambda: MultiHeadAttention(
+            attention=lambda: MultiHeadAttention(
                 num_heads=2, embedding_size=16, d_key=8, d_value=8
             ),
-            feedforward_factory=lambda: LinearFeedForward(16, 2),
-            normalization_factory=lambda: RMSNorm(16),
+            feedforward=lambda: LinearFeedForward(16, 2),
+            normalization=lambda: RMSNorm(16),
             pre_norm=True,
             post_norm=True,
         )
@@ -184,11 +184,11 @@ class TestTransformerBlock:
     )
     def test_specified_feedforward_factory_is_used(self, factory, expected_module):
         block = TransformerBlock(
-            attention_factory=lambda: MultiHeadAttention(
+            attention=lambda: MultiHeadAttention(
                 num_heads=2, embedding_size=16, d_key=8, d_value=8
             ),
-            feedforward_factory=factory,
-            normalization_factory=lambda: RMSNorm(16),
+            feedforward=factory,
+            normalization=lambda: RMSNorm(16),
         )
 
         assert isinstance(block.feedforward, expected_module)

@@ -3,7 +3,8 @@ import functools as ft
 import pytest
 import torch
 
-from lumiere.data import DataLoader, Pipeline
+from lumiere.data import DataLoader
+from lumiere.data.pipelines.text import TextPipeline
 from lumiere.tokenizers import SPECIAL_TOKENS, AsciiTokenizer
 from lumiere.testing.datasets import FamousQuotesDataset, StringDataset
 
@@ -18,7 +19,7 @@ def assert_mask(tokens, mask, pad_id):
 @pytest.fixture(scope="module")
 def dataloader():
     quotes_dataset = FamousQuotesDataset(tone="glass", topics=["success"])
-    return DataLoader.from_datasets([quotes_dataset])
+    return DataLoader([quotes_dataset])
 
 
 @pytest.fixture
@@ -27,11 +28,9 @@ def tokenizer():
 
 
 @pytest.fixture
-def pipeline_factory(dataloader, tokenizer):
+def pipeline_factory(tokenizer):
     return ft.partial(
-        Pipeline,
-        split="train",
-        dataloader=dataloader,
+        TextPipeline,
         tokenizer=tokenizer,
         pad_id=SPECIAL_TOKENS["padding"].id,
     )
@@ -40,7 +39,7 @@ def pipeline_factory(dataloader, tokenizer):
 class TestPipeline:
     """Tests for the Pipeline class."""
 
-    def test_produces_batches_of_data_from_datasources(self, pipeline_factory):
+    def test_produces_batches_of_data_from_datasources(self, dataloader, pipeline_factory):
         num_batches = 3
         batch_size = 2
         context_size = 8
@@ -73,7 +72,7 @@ class TestPipeline:
             (num_batches, batch_size, context_size), dtype=torch.bool
         )
 
-        batches = pipeline.batches(num_batches=num_batches)
+        batches = pipeline.batches(dataloader["train"], num_batches=num_batches)
         token_batches, mask_batches = [
             torch.stack(b) for b in zip(*batches, strict=False)
         ]
@@ -94,11 +93,9 @@ class TestPipeline:
         context_size = 8
         tokenizer = AsciiTokenizer()
         datasets = [StringDataset({"train": ["A short sample", "And another"]})]
-        dataloader = DataLoader.from_datasets(datasets)
+        dataloader = DataLoader(datasets)
 
-        pipeline = Pipeline(
-            dataloader=dataloader,
-            split="train",
+        pipeline = TextPipeline(
             tokenizer=tokenizer,
             pad_id=SPECIAL_TOKENS["padding"].id,
             batch_size=batch_size,
@@ -106,7 +103,7 @@ class TestPipeline:
             sliding_window_size=0,
         )
 
-        batches = pipeline.batches(num_batches=num_batches)
+        batches = pipeline.batches(dataloader["train"], num_batches=num_batches)
         token_batches, mask_batches = [
             torch.stack(b) for b in zip(*batches, strict=False)
         ]
@@ -144,7 +141,7 @@ class TestPipeline:
         assert torch.equal(mask_batches, expected_mask_batches)
 
     def test_produces_partial_batch_if_insufficient_tokens_in_samples(self):
-        dataloader = DataLoader.from_datasets(
+        dataloader = DataLoader(
             [StringDataset({"train": ["A short sample"]})]
         )
         pipeline = Pipeline(

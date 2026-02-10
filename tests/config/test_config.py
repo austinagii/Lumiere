@@ -34,22 +34,22 @@ def file(tmp_path):
 class TestConfig:
     def test_config_can_be_loaded_from_a_file(self, file):
         config = Config.from_file(file)
-        assert config.model["name"] == "gpt2"
-        assert config.model["vocab_size"] == 50257
-        assert config.model["n_layers"] == 12
-        assert config.model["n_heads"] == 12
-        assert config.model["n_embd"] == 768
+        assert config["model.name"] == "gpt2"
+        assert config["model.vocab_size"] == 50257
+        assert config["model.n_layers"] == 12
+        assert config["model.n_heads"] == 12
+        assert config["model.n_embd"] == 768
 
-        assert config.tokenizer["name"] == "gpt2"
-        assert config.tokenizer["vocab_size"] == 50257
+        assert config["tokenizer.name"] == "gpt2"
+        assert config["tokenizer.vocab_size"] == 50257
 
-        assert config.dataset["name"] == "wikitext2"
-        assert config.dataset["split"] == "train"
+        assert config["data.name"] == "wikitext2"
+        assert config["data.split"] == "train"
 
-        assert config.training["batch_size"] == 16
-        assert config.training["learning_rate"] == 0.001
-        assert config.training["num_epochs"] == 10
-        assert config.logging["log_interval"] == 100
+        assert config["training.batch_size"] == 16
+        assert config["training.learning_rate"] == 0.001
+        assert config["training.num_epochs"] == 10
+        assert config["logging.log_interval"] == 100
 
     def test_an_error_is_raised_if_the_config_file_does_not_exist(self):
         with pytest.raises(FileNotFoundError):
