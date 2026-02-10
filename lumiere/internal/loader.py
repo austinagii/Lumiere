@@ -7,7 +7,7 @@ import torch
 from lumiere.data import DataLoader, Dataset, Pipeline, Preprocessor
 from lumiere.internal.di import resolve_value
 from lumiere.internal.registry import get
-from lumiere.tokenizer import Tokenizer
+from lumiere.tokenizers import Tokenizer
 
 
 T = TypeVar("T")

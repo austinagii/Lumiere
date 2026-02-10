@@ -1,4 +1,4 @@
-from lumiere.tokenizer import (
+from lumiere.tokenizers.base import (
     SPECIAL_TOKENS,
     Serializable,
     SpecialToken,
