@@ -21,23 +21,23 @@ class TestModel:
             vocab_size=vocab_size,
             context_size=context_size,
             num_blocks=2,
-            embedding_factory=lambda: Embedding(
+            embedding=lambda: Embedding(
                 vocab_size=vocab_size,
                 context_size=context_size,
                 embedding_size=embedding_size,
                 padding_id=0,
             ),
-            block_factory=lambda: StandardTransformerBlock(
-                attention_factory=lambda: MultiHeadAttention(
+            block=lambda: StandardTransformerBlock(
+                attention=lambda: MultiHeadAttention(
                     num_heads=4, embedding_size=embedding_size, d_key=16, d_value=16
                 ),
-                feedforward_factory=lambda: LinearFeedForward(embedding_size, 16),
-                normalization_factory=lambda: RMSNorm(embedding_size),
+                feedforward=lambda: LinearFeedForward(embedding_size, 16),
+                normalization=lambda: RMSNorm(embedding_size),
                 dropout=0.0,
                 pre_norm=True,
                 post_norm=False,
             ),
-            normalization_factory=lambda: RMSNorm(embedding_size),
+            normalization=lambda: RMSNorm(embedding_size),
         )
 
         # Create random token IDs

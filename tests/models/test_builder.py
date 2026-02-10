@@ -146,38 +146,44 @@ class TestTransformerBuilder:
                 "vocab_size": 1024,
                 "context_size": 64,
                 "num_blocks": 4,
-                "embedding_factory": {
-                    "type": "sinusoidal",
+                "embedding": {
+                    "type": "embedding",
+                    "name": "sinusoidal",
                     "vocab_size": 1024,
                     "context_size": 64,
                     "embedding_size": 128,
                     "padding_id": 0,
                 },
-                "block_factory": {
-                    "type": "standard",
-                    "attention_factory": {
-                        "type": "multihead",
+                "block": {
+                    "type": "block",
+                    "name": "standard",
+                    "attention": {
+                        "type": "attention",
+                        "name": "multihead",
                         "num_heads": 4,
                         "embedding_size": 128,
                         "d_key": 32,
                         "d_value": 32,
                     },
-                    "feedforward_factory": {
-                        "type": "linear",
+                    "feedforward": {
+                        "type": "feedforward",
+                        "name": "linear",
                         "embedding_size": 128,
                         "d_ff": 256,
                         "dropout": 0.1,
                     },
-                    "normalization_factory": {
-                        "type": "rms",
+                    "normalization": {
+                        "type": "normalization",
+                        "name": "rms",
                         "normalized_shape": 128,
                     },
                     "dropout": 0.1,
                     "pre_norm": True,
                     "post_norm": True,
                 },
-                "normalization_factory": {
-                    "type": "rms",
+                "normalization": {
+                    "type": "normalization",
+                    "name": "rms",
                     "normalized_shape": 128,
                 },
             }
@@ -223,29 +229,35 @@ class TestTransformerBuilder:
                 "num_heads": 4,
                 "d_key": 32,
                 "d_value": 32,
-                "embedding_factory": {
-                    "type": "sinusoidal",
+                "embedding": {
+                    "type": "embedding",
+                    "name": "sinusoidal",
                     "padding_id": 0,
                 },
-                "block_factory": {
-                    "type": "standard",
-                    "attention_factory": {
-                        "type": "multihead",
+                "block": {
+                    "type": "block",
+                    "name": "standard",
+                    "attention": {
+                        "type": "attention",
+                        "name": "multihead",
                     },
-                    "feedforward_factory": {
-                        "type": "linear",
+                    "feedforward": {
+                        "type": "feedforward",
+                        "name": "linear",
                         "d_ff": 256,
                         "dropout": 0.1,
                     },
-                    "normalization_factory": {
-                        "type": "rms",
+                    "normalization": {
+                        "type": "normalization",
+                        "name": "rms",
                     },
                     "dropout": 0.1,
                     "pre_norm": True,
                     "post_norm": True,
                 },
-                "normalization_factory": {
-                    "type": "rms",
+                "normalization": {
+                    "type": "normalization",
+                    "name": "rms",
                 },
             }
         )

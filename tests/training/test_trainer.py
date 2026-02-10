@@ -35,7 +35,7 @@ BATCH_SIZE = 4
 
 @pytest.fixture(scope="module")
 def dataloader():
-    return DataLoader.from_datasets([WikiText2Dataset("1:1:0")])
+    return DataLoader([WikiText2Dataset("1:1:0")])
 
 
 @pytest.fixture(scope="module")
@@ -64,25 +64,25 @@ def model():
         vocab_size=VOCAB_SIZE,
         context_size=CONTEXT_SIZE,
         num_blocks=1,
-        embedding_factory=lambda: Embedding(
+        embedding=lambda: Embedding(
             vocab_size=VOCAB_SIZE,
             context_size=CONTEXT_SIZE,
             embedding_size=EMBEDDING_SIZE,
             padding_id=SPECIAL_TOKENS["padding"].id,
         ),
-        block_factory=lambda: StandardTransformerBlock(
-            attention_factory=lambda: MultiHeadAttention(
+        block=lambda: StandardTransformerBlock(
+            attention=lambda: MultiHeadAttention(
                 num_heads=1, embedding_size=EMBEDDING_SIZE, d_key=3, d_value=3
             ),
-            feedforward_factory=lambda: LinearFeedForward(
+            feedforward=lambda: LinearFeedForward(
                 embedding_size=EMBEDDING_SIZE, d_ff=3, dropout=0
             ),
-            normalization_factory=lambda: RMSNorm(EMBEDDING_SIZE),
+            normalization=lambda: RMSNorm(EMBEDDING_SIZE),
             dropout=0,
             pre_norm=True,
             post_norm=False,
         ),
-        normalization_factory=lambda: RMSNorm(EMBEDDING_SIZE),
+        normalization=lambda: RMSNorm(EMBEDDING_SIZE),
     )
 
 
@@ -312,7 +312,7 @@ class TestTrainer:
                 ],
             }
         )
-        dataloader = DataLoader.from_datasets([dataset])
+        dataloader = DataLoader([dataset])
         expected_train_loss = torch.tensor([7.1039], dtype=torch.float32)
         expected_validation_loss = torch.tensor([7.1686], dtype=torch.float32)
 

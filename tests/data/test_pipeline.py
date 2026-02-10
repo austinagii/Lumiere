@@ -144,9 +144,7 @@ class TestPipeline:
         dataloader = DataLoader(
             [StringDataset({"train": ["A short sample"]})]
         )
-        pipeline = Pipeline(
-            dataloader=dataloader,
-            split="train",
+        pipeline = TextPipeline(
             tokenizer=AsciiTokenizer(),
             batch_size=8,
             context_size=6,
@@ -154,7 +152,7 @@ class TestPipeline:
             sliding_window_size=0,
         )
 
-        batches = pipeline.batches()
+        batches = pipeline.batches(dataloader["train"])
 
         expected_shape = (3, 6)
         assert all(
