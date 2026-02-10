@@ -23,7 +23,7 @@ Example:
     ...     print(sample)
 """
 
-from .data import DataLoader, Dataset, Pipeline, Preprocessor
+from .base import DataLoader, Dataset, Pipeline, Preprocessor
 
 __all__ = [
     "DataLoader",
