@@ -17,16 +17,21 @@ class DependencyContainer:
     when needed for object construction.
 
     Example:
-        >>> container = DependencyContainer()
-        >>> tokenizer = BPETokenizer()
-        >>> container.register("tokenizer", tokenizer)
-        >>> container.register_type(Tokenizer, tokenizer)
-        >>>
-        >>> # Retrieve by name
-        >>> tok = container.get("tokenizer")
-        >>>
-        >>> # Retrieve by type
-        >>> tok = container.get_type(Tokenizer)
+        ```python
+        from lumiere.tokenizers.bpe import BPETokenizer
+        from lumiere.tokenizers import Tokenizer
+
+        container = DependencyContainer()
+        tokenizer = BPETokenizer()
+        container.register("tokenizer", tokenizer)
+        container.register_type(Tokenizer, tokenizer)
+
+        # Retrieve by name
+        tok = container.get("tokenizer")
+
+        # Retrieve by type
+        tok = container.get_type(Tokenizer)
+        ```
     """
 
     def __init__(self):
@@ -168,12 +173,16 @@ def resolve_value(value: Any, container: DependencyContainer | None = None) -> A
         The resolved value with all @variable references replaced by their actual values
 
     Examples:
-        >>> resolve_value("@vocab_size", container)
-        50000
-        >>> resolve_value({"lr": 0.001, "betas": "@betas"}, container)
-        {"lr": 0.001, "betas": (0.9, 0.999)}
-        >>> resolve_value([1, 2, "@hidden_size"], container)
-        [1, 2, 768]
+        ```python
+        resolve_value("@vocab_size", container)
+        # Output: 50000
+
+        resolve_value({"lr": 0.001, "betas": "@betas"}, container)
+        # Output: {"lr": 0.001, "betas": (0.9, 0.999)}
+
+        resolve_value([1, 2, "@hidden_size"], container)
+        # Output: [1, 2, 768]
+        ```
     """
     if isinstance(value, str) and value.startswith("@"):
         if container is None:

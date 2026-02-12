@@ -13,10 +13,17 @@ pipenv install mkdocs mkdocs-material mkdocstrings[python] mkdocs-gen-files mkdo
 ### Serve Locally
 
 ```bash
-pipenv run mkdocs serve
+# Serve with live reload for docs and source code
+pipenv run docs
+
+# Or manually
+pipenv run mkdocs serve --watch lumiere/
 ```
 
 Visit [http://localhost:8000](http://localhost:8000)
+
+The development server includes live reload - changes to markdown files in `docs/`
+or Python docstrings in `lumiere/` will automatically rebuild and refresh your browser.
 
 ### Build Static Site
 

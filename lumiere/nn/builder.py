@@ -39,39 +39,41 @@ def load(
         RuntimeError: If an error occurs during model initialization.
 
     Example:
-        >>> config = {
-        ...     "vocab_size": 30000,
-        ...     "context_size": 512,
-        ...     "num_blocks": 12,
-        ...     "embedding_factory": {
-        ...         "type": "embedding",
-        ...         "name": "sinusoidal",
-        ...         "padding_id": 0
-        ...     },
-        ...     "block_factory": {
-        ...         "type": "block",
-        ...         "name": "standard",
-        ...         "attention_factory": {
-        ...             "type": "attention",
-        ...             "name": "multihead",
-        ...             "num_heads": 8
-        ...         },
-        ...         "feedforward_factory": {
-        ...             "type": "feedforward",
-        ...             "name": "linear",
-        ...             "d_ff": 2048
-        ...         },
-        ...         "normalization_factory": {
-        ...             "type": "normalization",
-        ...             "name": "rms"
-        ...         }
-        ...     },
-        ...     "normalization_factory": {
-        ...         "type": "normalization",
-        ...         "name": "rms"
-        ...     }
-        ... }
-        >>> model = load(config)
+        ```python
+        config = {
+            "vocab_size": 30000,
+            "context_size": 512,
+            "num_blocks": 12,
+            "embedding_factory": {
+                "type": "embedding",
+                "name": "sinusoidal",
+                "padding_id": 0
+            },
+            "block_factory": {
+                "type": "block",
+                "name": "standard",
+                "attention_factory": {
+                    "type": "attention",
+                    "name": "multihead",
+                    "num_heads": 8
+                },
+                "feedforward_factory": {
+                    "type": "feedforward",
+                    "name": "linear",
+                    "d_ff": 2048
+                },
+                "normalization_factory": {
+                    "type": "normalization",
+                    "name": "rms"
+                }
+            },
+            "normalization_factory": {
+                "type": "normalization",
+                "name": "rms"
+            }
+        }
+        model = load(config)
+        ```
     """
     try:
         # Resolve dependencies in the config
@@ -215,16 +217,16 @@ class ModelSpec:
             KeyError: If the argument is not found in the specification.
 
         Example:
-        >>> spec = TransformerSpec(
-        ...     {
-        ...         'embedding_size': 1024,
-        ...         'block': {
-        ...             'hidden_size': 512
-        ...         }
-        ...     }
-        ... )
-        >>> spec['block.hidden_size']
-        512
+            ```python
+            spec = TransformerSpec({
+                'embedding_size': 1024,
+                'block': {
+                    'hidden_size': 512
+                }
+            })
+            print(spec['block.hidden_size'])
+            # Output: 512
+            ```
         """
         if not isinstance(argname, str) or len(argname) == 0:
             raise TypeError("Argument name must be a non-empty string.")
@@ -279,15 +281,15 @@ class ModelSpec:
             TypeError: If argname is not a non-empty string.
 
         Example:
-        >>> spec = ModelSpec(
-        ...     {
-        ...         'embedding_size': 1024,
-        ...         'block': {
-        ...             'hidden_size': 512
-        ...         }
-        ...     }
-        ... )
-        >>> spec['block.feedforward.d_proj_up'] = 10
+            ```python
+            spec = ModelSpec({
+                'embedding_size': 1024,
+                'block': {
+                    'hidden_size': 512
+                }
+            })
+            spec['block.feedforward.d_proj_up'] = 10
+            ```
 
         """
         if not isinstance(argname, str) or len(argname) == 0:

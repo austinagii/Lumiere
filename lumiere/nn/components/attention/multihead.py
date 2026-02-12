@@ -34,15 +34,18 @@ class MultiHeadAttention(nn.Module):
             embedding_size).
 
     Example:
-        >>> import torch
-        >>> from lumiere.nn.components.attention import MultiHeadAttention
-        >>> x = torch.randn(1, 3, 128)
-        >>> attention = MultiHeadAttention(12, 128, 64, 64)
-        >>> output, attention_weights = attention(x)
-        >>> print(output.shape)
-        torch.Size([1, 3, 128])
-        >>> print(attention_weights.shape)
-        torch.Size([1, 12, 3, 3])
+        ```python
+        import torch
+        from lumiere.nn.components.attention import MultiHeadAttention
+
+        x = torch.randn(1, 3, 128)
+        attention = MultiHeadAttention(12, 128, 64, 64)
+        output, attention_weights = attention(x)
+        print(output.shape)
+        # Output: torch.Size([1, 3, 128])
+        print(attention_weights.shape)
+        # Output: torch.Size([1, 12, 3, 3])
+        ```
     """
 
     def __init__(
@@ -164,11 +167,14 @@ def split_heads(
         Tensor of shape (batch_size, num_heads, context_size, num_dimensions)
 
     Example:
-        >>> import torch
-        >>> tensor = torch.randn(1, 3, 12)
-        >>> output = split_heads(tensor, 2, 6)
-        >>> print(output.shape)
-        torch.Size([1, 2, 3, 6])
+        ```python
+        import torch
+
+        tensor = torch.randn(1, 3, 12)
+        output = split_heads(tensor, 2, 6)
+        print(output.shape)
+        # Output: torch.Size([1, 2, 3, 6])
+        ```
     """
     return tensor.view(
         tensor.shape[0], tensor.shape[1], num_heads, num_features
@@ -189,11 +195,14 @@ def concat_heads(tensor: torch.Tensor) -> torch.Tensor:
         Tensor of shape (batch_size, context_size, num_heads * num_dimensions)
 
     Example:
-        >>> import torch
-        >>> tensor = torch.randn(1, 2, 3, 4)
-        >>> output = concat_heads(tensor)
-        >>> print(output.shape)
-        torch.Size([1, 3, 12])
+        ```python
+        import torch
+
+        tensor = torch.randn(1, 2, 3, 4)
+        output = concat_heads(tensor)
+        print(output.shape)
+        # Output: torch.Size([1, 3, 12])
+        ```
     """
     return tensor.transpose(1, 2).reshape(tensor.shape[0], tensor.shape[2], -1)
 

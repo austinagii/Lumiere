@@ -43,9 +43,12 @@ class WikiText2Dataset:
         ValueError: If all splits are specified to be empty.
 
     Example:
-        >>> wikitext = WikiText2Dataset("20:30:50")
-        >>> for sample in wikitext["train"]:
-        ...     # process the sample
+        ```python
+        wikitext = WikiText2Dataset("20:30:50")
+        for sample in wikitext["train"]:
+            # process the sample
+            pass
+        ```
 
     """
 
@@ -85,7 +88,18 @@ class WikiText2Dataset:
 
     @staticmethod
     def _get_split_percentages(split: str | None) -> dict[str, int]:
-        """Return the percentage of each split to be used."""
+        """Parse split specification string into split percentages.
+
+        Args:
+            split: Split specification in format `"train:validation:test"` (e.g., `"50:100:30"`).
+                Empty or `None` defaults to `"100:100:100"`.
+
+        Returns:
+            Dictionary mapping split names to their percentages. Splits with 0% are excluded.
+
+        Raises:
+            ValueError: If the split string format is invalid.
+        """
         split_percentages = {"train": 100, "validation": 100, "test": 100}
 
         if split is not None:
@@ -106,7 +120,17 @@ class WikiText2Dataset:
         return split_percentages
 
     def __getitem__(self, split_name: str) -> Generator[str, None, None]:
-        """Return an iterator over samples in the specified split."""
+        """Return an iterator over samples in the specified split.
+
+        Args:
+            split_name: Name of the split to access (`"train"`, `"validation"`, or `"test"`).
+
+        Returns:
+            Generator yielding complete Wikipedia articles as strings.
+
+        Raises:
+            KeyError: If the specified split is not available.
+        """
         if self._splits.get(split_name) is None:
             raise KeyError(f"Invalid split '{split_name}'.")
 
@@ -149,4 +173,12 @@ class WikiText2Dataset:
 
     @staticmethod
     def _concat_article(text: list[str]) -> str:
+        """Concatenate text segments into a single article with special tokens.
+
+        Args:
+            text: List of text segments belonging to the same article.
+
+        Returns:
+            Concatenated article text wrapped in start-of-text and end-of-text tokens.
+        """
         return f"<|sot|>{''.join(text)}<|eot|>"

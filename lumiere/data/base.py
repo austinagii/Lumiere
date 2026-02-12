@@ -37,12 +37,40 @@ class Dataset(Protocol):
 
 
 class Pipeline(Protocol):
-    """Protocol defining the interface for pipeline implementations."""
+    """Protocol defining the interface for pipeline implementations.
 
-    def batches(self, data): ...
+    Pipelines transform raw data into batches suitable for model training or inference.
+    They typically handle tokenization, batching, padding, and preprocessing.
+    """
+
+    def batches(self, data):
+        """Convert raw data into batches.
+
+        Args:
+            data: Iterable of raw data samples.
+
+        Returns:
+            Iterator yielding batches ready for model consumption.
+        """
+        ...
 
 
 class Preprocessor:
-    """Base class for preprocessor implementations."""
+    """Base class for preprocessor implementations.
 
-    def __call__(self, *args, **kwargs) -> Any: ...
+    Preprocessors transform batches of data, typically applied after batching
+    but before feeding to the model. Common preprocessors include shifting for
+    autoregressive training or data augmentation.
+    """
+
+    def __call__(self, *args, **kwargs) -> Any:
+        """Apply preprocessing to the input data.
+
+        Args:
+            *args: Positional arguments (typically batch data).
+            **kwargs: Keyword arguments.
+
+        Returns:
+            Transformed data.
+        """
+        ...

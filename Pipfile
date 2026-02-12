@@ -32,5 +32,8 @@ mkdocs-literate-nav = "*"
 mkdocs-section-index = "*"
 mkdocs-autorefs = "*"
 
+[scripts]
+docs = "mkdocs serve --watch lumiere/"
+
 [requires]
 python_version = "3.12"

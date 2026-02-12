@@ -32,9 +32,14 @@ def load(
         Initialized instance of the requested type
 
     Example:
-        >>> tokenizer = load(Tokenizer, {"name": "bpe", "vocab_size": 4096})
-        >>> optimizer = load(Optimizer, {"name": "adamw", "lr": 0.001},
-        ...                  params=model.parameters())
+        ```python
+        tokenizer = load(Tokenizer, {"name": "bpe", "vocab_size": 4096})
+        optimizer = load(
+            torch.optim.Optimizer,
+            {"name": "adamw", "lr": 0.001},
+            params=model.parameters()
+        )
+        ```
     """
     # Get the implementation name
     name = config.get("name") or config.get("type")
@@ -74,7 +79,9 @@ def load_tokenizer(config: dict[str, Any], container: Any = None) -> Tokenizer:
         Initialized Tokenizer instance
 
     Example:
-        >>> tokenizer = load_tokenizer({"name": "bpe", "vocab_size": 30000})
+        ```python
+        tokenizer = load_tokenizer({"name": "bpe", "vocab_size": 30000})
+        ```
     """
     return load(Tokenizer, config, container)
 
@@ -95,10 +102,12 @@ def load_optimizer(
         Initialized Optimizer instance
 
     Example:
-        >>> optimizer = load_optimizer(
-        ...     {"name": "adamw", "lr": 0.001},
-        ...     model.parameters()
-        ... )
+        ```python
+        optimizer = load_optimizer(
+            {"name": "adamw", "lr": 0.001},
+            model.parameters()
+        )
+        ```
     """
     return load(torch.optim.Optimizer, config, container, params=params)
 
@@ -119,10 +128,12 @@ def load_scheduler(
         Initialized LRScheduler instance
 
     Example:
-        >>> scheduler = load_scheduler(
-        ...     {"name": "cosine-annealing", "warmup_steps": 500},
-        ...     optimizer
-        ... )
+        ```python
+        scheduler = load_scheduler(
+            {"name": "cosine-annealing", "warmup_steps": 500},
+            optimizer
+        )
+        ```
     """
     return load(
         torch.optim.lr_scheduler.LRScheduler, config, container, optimizer=optimizer
@@ -140,10 +151,12 @@ def load_dataset(config: dict[str, Any], container: Any = None) -> DataLoader:
         Initialized DataLoader instance wrapping one or more datasets
 
     Example:
-        >>> dataloader = load_dataset({
-        ...     "datasets": [{"name": "wikitext"}],
-        ...     "merge_mode": "round_robin"
-        ... })
+        ```python
+        dataloader = load_dataset({
+            "datasets": [{"name": "wikitext"}],
+            "merge_mode": "round_robin"
+        })
+        ```
     """
     if (dataset_configs := config.get("datasets")) is None:
         raise ValueError("Configuration must contain a 'datasets' field")
@@ -173,12 +186,14 @@ def load_pipeline(config: dict[str, Any], container: Any = None) -> Pipeline:
         Initialized Pipeline instance
 
     Example:
-        >>> pipeline = load_pipeline({
-        ...     "name": "text",
-        ...     "tokenizer": tokenizer,
-        ...     "batch_size": 32,
-        ...     "preprocessors": [{"name": "autoregressive"}]
-        ... })
+        ```python
+        pipeline = load_pipeline({
+            "name": "text",
+            "tokenizer": tokenizer,
+            "batch_size": 32,
+            "preprocessors": [{"name": "autoregressive"}]
+        })
+        ```
     """
     # Handle nested preprocessors
     config_dict = dict(config)

@@ -5,13 +5,16 @@ interface for storing and retrieving training configurations and model checkpoin
 Azure Blob Storage.
 
 Example:
-    >>> from azure.storage.blob import BlobServiceClient
-    >>> from os import environ
-    >>> blob_client = BlobServiceClient.from_connection_string(
-    >>>     environ["AZURE_BLOB_CONNECTION_STRING"]
-    >>> )
-    >>> storage = AzureBlobStorageClient(blob_client, "my-container")
-    >>> storage.init_run("run-123", {"max_epochs": 10})
+    ```python
+    from azure.storage.blob import BlobServiceClient
+    from os import environ
+
+    blob_client = BlobServiceClient.from_connection_string(
+        environ["AZURE_BLOB_CONNECTION_STRING"]
+    )
+    storage = AzureBlobStorageClient(blob_client, "my-container")
+    storage.init_run("run-123", {"max_epochs": 10})
+    ```
 """
 
 import logging

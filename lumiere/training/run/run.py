@@ -34,25 +34,56 @@ MAX_THREAD_POOL_SIZE: int = 5
 
 @dataclass
 class Run:
+    """A training run with a unique identifier and configuration.
+
+    Attributes:
+        _id: The unique identifier for this run.
+        _config: The training configuration for this run.
+    """
+
     _id: str
     _config: dict[Any, Any]
 
     @classmethod
     def from_config(cls, config: dict[Any, Any]) -> None:
+        """Create a new run with a generated ID from a configuration.
+
+        Args:
+            config: The training configuration dictionary.
+
+        Returns:
+            A new `Run` instance with a randomly generated ID.
+        """
         return cls(generate_run_id(), config)
 
     @property
     def id(self):
-        """The run id."""
+        """The unique identifier for this training run.
+
+        Returns:
+            The run ID as a string.
+        """
         return self._id
 
     @property
     def config(self):
-        """The run config."""
+        """The training configuration for this run.
+
+        Returns:
+            Configuration dictionary containing training parameters.
+        """
         return self._config
 
 
 def generate_run_id(n: int = 8):
+    """Generate a random alphanumeric run identifier.
+
+    Args:
+        n: The length of the identifier. Defaults to `8`.
+
+    Returns:
+        A random string of length `n` containing letters and digits.
+    """
     alphabet = string.ascii_letters + string.digits
     return "".join([secrets.choice(alphabet) for _ in range(n)])
 
@@ -63,6 +94,21 @@ class StorageSources(StrEnum):
 
 
 def init_azure_blob_storage_client():
+    """Initialize an Azure Blob Storage client from environment variables.
+
+    Reads the Azure connection string and container name from the environment
+    and creates an `AzureBlobStorageClient` instance.
+
+    Returns:
+        Configured `AzureBlobStorageClient` instance.
+
+    Raises:
+        RuntimeError: If required environment variables are not set.
+
+    Environment Variables:
+        AZURE_BLOB_CONNECTION_STRING: Azure Storage account connection string.
+        AZURE_BLOB_CONTAINER_NAME: Name of the blob container to use.
+    """
     if (connection_string := os.getenv("AZURE_BLOB_CONNECTION_STRING")) is None:
         raise RuntimeError(
             "Required environment variable 'AZURE_BLOB_CONNECTION_STRING' not found."
@@ -79,7 +125,16 @@ def init_azure_blob_storage_client():
 
 
 class RunManager:
-    """Manages training runs"""
+    """Manages training runs with multi-backend storage support.
+
+    Handles initialization, resumption, checkpointing, and artifact storage for
+    training runs. Supports multiple storage backends (filesystem, Azure Blob Storage)
+    with automatic failover for loading operations.
+
+    Attributes:
+        storage_clients: List of storage clients for saving checkpoints and artifacts.
+        retrieval_clients: List of storage clients for loading checkpoints and artifacts.
+    """
 
     def __init__(
         self,
@@ -98,6 +153,14 @@ class RunManager:
 
     @classmethod
     def from_config(cls, config: Config) -> "RunManager":
+        """Create a `RunManager` from a configuration object.
+
+        Args:
+            config: Configuration object containing storage and checkpoint settings.
+
+        Returns:
+            Configured `RunManager` instance.
+        """
         fs_base_path = config.get("storage.clients.filesystem.basedir")
 
         return cls(
@@ -106,25 +169,35 @@ class RunManager:
             fs_base_path=fs_base_path,
         )
 
-    # This method may no longer be necessary based on usage.
     @classmethod
     def from_config_file(cls, file_path: str | Path) -> "RunManager":
+        """Create a `RunManager` from a YAML configuration file.
+
+        Args:
+            file_path: Path to the YAML configuration file.
+
+        Returns:
+            Configured `RunManager` instance.
+        """
         config = Config.from_yaml(file_path)
 
         return RunManager.from_config(config)
 
     def init_run(self, run_config: dict[Any, Any]) -> str:
-        """Intiailizes a new run with the specified training configuration.
+        """Initialize a new training run with the specified configuration.
 
-        For each of the data sources specified as destinations for this instance,
-        this method will initialize the run in that data source and store the run
-        configuration.
+        Creates a new run with a unique identifier and stores the configuration
+        across all configured storage destinations. Executes initialization in
+        parallel across all destinations using a thread pool.
 
-        If the run could not be initialized in any of the destination data sources
-        then an error will be raised.
+        Args:
+            run_config: Dictionary containing the training configuration.
 
         Returns:
-            The unique indentifier of the newly initalized run.
+            The unique identifier of the newly initialized run.
+
+        Raises:
+            Exception: If initialization fails in any destination.
         """
         self.run = Run.from_config(run_config)
 
@@ -195,6 +268,16 @@ class RunManager:
         checkpoint_type: CheckpointType,
         checkpoint: Checkpoint,
     ) -> None:
+        """Save a checkpoint for the current training run.
+
+        Saves the checkpoint to all configured storage destinations in parallel
+        using a thread pool. The checkpoint tag is generated based on the type
+        (e.g., `"epoch:0001"` for epoch checkpoints, `"best"` for best checkpoint).
+
+        Args:
+            checkpoint_type: Type of checkpoint (EPOCH, BEST, or FINAL).
+            checkpoint: The checkpoint object to save.
+        """
         checkpoint_tag = self._create_checkpoint_tag(checkpoint_type, checkpoint)
 
         with futures.ThreadPoolExecutor(
@@ -214,6 +297,22 @@ class RunManager:
         checkpoint_tag: str,
         device: torch.device = torch.device("cpu"),
     ) -> dict[str, Any]:
+        """Load a checkpoint for the current training run.
+
+        Attempts to load the checkpoint from each configured retrieval source in
+        order until successful. If the checkpoint is not found in any source,
+        raises an error.
+
+        Args:
+            checkpoint_tag: The tag identifying the checkpoint (e.g., `"best"`, `"epoch:0001"`).
+            device: The device to load the checkpoint onto. Defaults to CPU.
+
+        Returns:
+            Deserialized checkpoint dictionary.
+
+        Raises:
+            CheckpointNotFoundError: If the checkpoint is not found in any source.
+        """
         for client in self.retrieval_clients:
             try:
                 checkpoint_bytes = client.load_checkpoint(self.run.id, checkpoint_tag)

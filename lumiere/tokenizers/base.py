@@ -6,6 +6,13 @@ from typing import Any, Protocol
 
 @dataclass
 class SpecialToken:
+    """A special token with an ID and string representation.
+
+    Attributes:
+        id: The unique integer identifier for this special token.
+        token: The string representation of the special token.
+    """
+
     id: int
     token: str
 
@@ -20,63 +27,140 @@ SPECIAL_TOKENS = OrderedDict(
 
 
 class Tokenizer(Protocol):
-    def tokenize(self, text: str) -> list[int]:
-        """Tokenizes the specified text.
+    """Protocol defining the interface for tokenizer implementations.
 
-        By default, each token will be returned as it's string representation from the
-        original text. If `to_ids` is `True`, then the integer ID of each token is
-        returned instead.
+    Tokenizers convert text strings into sequences of token IDs that can be
+    processed by language models. They support both encoding (text to IDs)
+    and decoding (IDs to text).
+    """
+
+    def tokenize(self, text: str) -> list[int]:
+        """Tokenize a text string into a sequence of token IDs.
+
+        Args:
+            text: The text string to tokenize.
+
+        Returns:
+            List of token IDs representing the tokenized text.
         """
         ...
 
     def tokenize_all(self, corpus: Iterable[str]) -> Generator[list[int], None, None]:
-        """Tokenizes the specified text.
+        """Tokenize multiple text strings into sequences of token IDs.
 
-        When `lazy` is `True`, a generator of lists of tokens is returned.
-        Otherwise, a list of lists of tokens is returned. If `to_ids` is `True`,
-        the tokens are converted to their corresponding IDs.
+        Args:
+            corpus: Iterable of text strings to tokenize.
+
+        Returns:
+            Generator yielding lists of token IDs for each text.
         """
         ...
 
     # TODO: Consider removing these 'encoding' methods.
     def encode(self, tokens: Iterable[str]) -> list[int]:
-        """Convert a sequence of tokens to their integer IDs."""
+        """Convert a sequence of token strings to their integer IDs.
+
+        Args:
+            tokens: Iterable of token strings.
+
+        Returns:
+            List of token IDs.
+        """
         ...
 
     def encode_all(
         self, corpus: Iterable[Iterable[str]]
     ) -> Generator[list[int], None, None]:
-        """Convert a nested sequence of tokens to sequences of their integer IDs."""
+        """Convert multiple sequences of token strings to sequences of integer IDs.
+
+        Args:
+            corpus: Iterable of iterables containing token strings.
+
+        Returns:
+            Generator yielding lists of token IDs for each sequence.
+        """
         ...
 
     def decode(self, token_ids: Iterable[int]) -> str:
-        """Convert a sequence of toekn IDs to their string representation."""
+        """Convert a sequence of token IDs to their string representation.
+
+        Args:
+            token_ids: Iterable of token IDs.
+
+        Returns:
+            Decoded text string.
+        """
         ...
 
     def decode_all(self, corpus: Iterable[Iterable[int]]) -> Generator[str, None, None]:
-        """Convert a nested sequence of token ids to their string representations."""
+        """Convert multiple sequences of token IDs to their string representations.
+
+        Args:
+            corpus: Iterable of iterables containing token IDs.
+
+        Returns:
+            Generator yielding decoded text strings for each sequence.
+        """
         ...
 
     def train(self, corpus: Iterable[str]):
-        """Train the tokenizer on a sequence of strings."""
+        """Train the tokenizer on a text corpus.
+
+        Args:
+            corpus: Iterable of text strings to train on.
+
+        Returns:
+            Self for method chaining.
+        """
         ...
 
     def vocab_size(self) -> int:
-        """Get the vocab size of the tokenizer."""
+        """Get the vocabulary size of the tokenizer.
+
+        Returns:
+            Number of tokens in the vocabulary including special tokens.
+        """
         ...
 
 
 class Serializable(Protocol):
+    """Protocol for objects that can be serialized to and from bytes.
+
+    Enables saving and loading tokenizers from disk or storage.
+    """
+
     def from_bytes(cls, bytes: bytes, *args, **kwargs):
-        """Create a tokenizer from its byte representation."""
+        """Deserialize an object from its byte representation.
+
+        Args:
+            bytes: Serialized object bytes.
+            *args: Additional positional arguments for initialization.
+            **kwargs: Additional keyword arguments for initialization.
+
+        Returns:
+            Deserialized object instance.
+        """
         ...
 
     def __bytes__(self):
-        """Convert this tokenizer to its byte representation."""
+        """Serialize this object to its byte representation.
+
+        Returns:
+            Serialized object as bytes.
+        """
         ...
 
 
 class Trainable(Protocol):
+    """Protocol for objects that can be trained on datasets.
+
+    Training typically involves learning parameters or vocabularies from data.
+    """
+
     def train(self, dataset: Iterable[Any]) -> None:
-        """Train the class on the specified dataset."""
+        """Train the object on the specified dataset.
+
+        Args:
+            dataset: Iterable of training samples.
+        """
         pass

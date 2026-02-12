@@ -21,14 +21,16 @@ def create_factory(config: dict[str, Any], container: Any = None):
         A callable factory function that creates the component.
 
     Example:
-        >>> config = {
-        ...     "type": "attention",
-        ...     "name": "multihead",
-        ...     "num_heads": 8,
-        ...     "d_key": 64
-        ... }
-        >>> factory = create_factory(config)
-        >>> attention_module = factory()
+        ```python
+        config = {
+            "type": "attention",
+            "name": "multihead",
+            "num_heads": 8,
+            "d_key": 64
+        }
+        factory = create_factory(config)
+        attention_module = factory()
+        ```
     """
     component_type = config.get("type")
     component_name = config.get("name")

@@ -8,13 +8,33 @@ SUBKEY_SEPARATOR = "."
 
 
 class Config:
-    """Configuration for the DeepScale module."""
+    """Configuration object with dot notation access and singleton pattern.
+
+    Provides hierarchical configuration access using dot notation (e.g., `config["model.vocab_size"]`).
+    Implements the singleton pattern to ensure only one configuration instance exists.
+
+    Args:
+        data: Dictionary containing the configuration data.
+        override: Whether to override an existing singleton instance. Defaults to `False`.
+
+    Example:
+        ```python
+        config = Config({"model": {"vocab_size": 30000}})
+        vocab_size = config["model.vocab_size"]
+        print(vocab_size)
+        # Output: 30000
+        ```
+    """
 
     _instance = None
 
     @classmethod
     def is_initialized(cls) -> bool:
-        """Whether the configuration has been initialized."""
+        """Check whether the configuration singleton has been initialized.
+
+        Returns:
+            `True` if the singleton is initialized, `False` otherwise.
+        """
         return (
             cls._instance is not None
             and hasattr(cls._instance, "_initialized")
@@ -23,12 +43,28 @@ class Config:
 
     @classmethod
     def get_instance(cls):
-        """Return the Config singleton."""
+        """Return the configuration singleton instance.
+
+        Returns:
+            The `Config` singleton instance, or `None` if not initialized.
+        """
         return cls._instance
 
     @classmethod
     def from_yaml(cls, path: str | Path, override=False):
-        """Create a Config instance from a file."""
+        """Create a `Config` instance from a YAML file.
+
+        Args:
+            path: Path to the YAML configuration file.
+            override: Whether to override an existing singleton instance. Defaults to `False`.
+
+        Returns:
+            Initialized `Config` instance.
+
+        Raises:
+            ValueError: If the path is invalid.
+            FileNotFoundError: If the file does not exist.
+        """
         if isinstance(path, str):
             try:
                 path = Path(path)
@@ -36,7 +72,7 @@ class Config:
                 raise ValueError(f"'{path}' is not a valid path")
 
         if not path.exists():
-            raise FileNotFoundError(f"DeepScale config file not found: {path}")
+            raise FileNotFoundError(f"Configuration file not found: {path}")
 
         with open(path) as f:
             config = yaml.safe_load(f)
@@ -54,6 +90,14 @@ class Config:
             self._initialized = True
 
     def get(self, key: str) -> Any:
+        """Get a configuration value using dot notation, returning `None` if not found.
+
+        Args:
+            key: The configuration key using dot notation (e.g., `"model.vocab_size"`).
+
+        Returns:
+            The configuration value, or `None` if the key is not found.
+        """
         value = None
         try:
             value = self.__getitem__(key)
@@ -63,6 +107,18 @@ class Config:
         return value
 
     def __getitem__(self, key: str):
+        """Get a configuration value using dot notation.
+
+        Args:
+            key: The configuration key using dot notation (e.g., `"model.vocab_size"`).
+
+        Returns:
+            The configuration value.
+
+        Raises:
+            TypeError: If the key is not a non-empty string.
+            KeyError: If the key is not found in the configuration.
+        """
         if not isinstance(key, str) or len(key) == 0:
             raise TypeError("Key must be a non-empty string.")
 
@@ -78,6 +134,15 @@ class Config:
         return obj
 
     def __setitem__(self, key: str, value: Any):
+        """Set a configuration value using dot notation.
+
+        Args:
+            key: The configuration key using dot notation (e.g., `"model.vocab_size"`).
+            value: The value to set.
+
+        Raises:
+            TypeError: If the key is not a non-empty string.
+        """
         if not isinstance(key, str) or len(key) == 0:
             raise TypeError("Key must be a non-empty string.")
 
@@ -94,17 +159,34 @@ class Config:
         obj[key_components[len(key_components) - 1]] = value
 
     def __str__(self):
-        return yaml.dump(self.config, default_flow_style=False)
+        """Return a YAML string representation of the configuration.
 
-    def __str__(self):
-        return yaml.dump(self.config, default_flow_style=False)
+        Returns:
+            YAML-formatted string of the configuration data.
+        """
+        return yaml.dump(self.data, default_flow_style=False)
 
     def __iter__(self):
-        yield from self.config.items()
+        """Iterate over configuration items.
+
+        Yields:
+            Tuples of `(key, value)` pairs from the configuration.
+        """
+        yield from self.data.items()
 
     @classmethod
     def from_file(cls, config_path: str) -> "Config":
-        """Create a Config instance from a file."""
+        """Create a `Config` instance from a YAML file.
+
+        Args:
+            config_path: Path to the YAML configuration file.
+
+        Returns:
+            Initialized `Config` instance.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+        """
         if not Path(config_path).exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
 

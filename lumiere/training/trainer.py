@@ -58,25 +58,26 @@ class Trainer:
         device: str | torch.device = "cpu",
         state: TrainingState | None = None,
     ):
-        """Initiallize the trainer.
+        """Initialize the trainer.
 
-        Arguments:
+        Args:
             model: The model to be trained.
-            pipeline: The pipeline that produces the training data.
+            dataloader: The dataloader that provides train/validation splits.
+            pipeline: The pipeline that processes and batches the training data.
             loss_fn: The loss function to evaluate model performance.
             optimizer: The optimizer for updating model parameters.
-            scheduler: The learning rate scheduler.
-            max_epochs: The maximum number of epochs for training.
-            stopping_threshold: The minimum performance improvement required before
-                to register improvement.
+            scheduler: Optional learning rate scheduler. Defaults to `None`.
+            max_epochs: The maximum number of epochs for training. If `None`, trains
+                indefinitely until early stopping criteria are met. Defaults to `None`.
+            stopping_threshold: The minimum performance improvement required to
+                register improvement. Defaults to `1e-3`.
             patience: The maximum number of epochs without improvement before stopping
-                training.
-            gradient_clip_norm: Maximum norm for gradient clipping.
-            progress_prefix: The variable part of the progress bar.
-            progress_suffix: The title of the progress bar.
-            device: Device to run the training on. Defaults to CPU.
-            state: The initial state of the trainer.
-
+                training. If `None`, trains until `max_epochs` is reached. Defaults to `None`.
+            gradient_clip_norm: Maximum norm for gradient clipping. Defaults to `1e-6`.
+            device: Device to run the training on. Can be `"cpu"`, `"cuda"`, or `"mps"`.
+                Defaults to `"cpu"`.
+            state: The initial state of the trainer. If `None`, creates a new `TrainingState`.
+                Defaults to `None`.
         """
         self.model = model.to(device)
         self.dataloader = dataloader
@@ -99,7 +100,15 @@ class Trainer:
         }
 
     def train(self) -> TrainingState:
-        """Train a model."""
+        """Train the model and execute the training loop.
+
+        Performs iterative training with automatic validation, early stopping, and
+        hook execution. Training continues until `max_epochs` is reached or early
+        stopping criteria are met (if `patience` is specified).
+
+        Returns:
+            Final training state containing metrics and counters.
+        """
         while self.max_epochs is None or self.state.current_epoch < self.max_epochs:
             self.state.current_epoch += 1
             self._execute_hooks("pre_epoch")
@@ -138,19 +147,15 @@ class Trainer:
         return self.state
 
     def _fit(self) -> EvalMetrics:
-        """Fit the model for next token prediction.
+        """Fit the model on the training data for one epoch.
 
-        Processes the entire data provided across the specified number of batches.
-        The models parameters are updated using the gradient of the average batch
-        loss.
+        Processes the entire training dataset, updating model parameters using
+        gradient descent with the configured optimizer and optional learning rate
+        scheduler. Applies gradient clipping to prevent gradient explosion.
 
-        Args:
-            model: The model to be fit to the data.
-            data: The data the model is to be fitted to. An iterable of tuples containing
-                a tensor of tokens, and a corresponding padding mask.
-            loss_fn: The function to evaluate the model's performance.
-            state: The current training state for this model.
-
+        Returns:
+            Training metrics including average loss, number of batches processed,
+            number of steps taken, and time elapsed.
         """
         self.model.train()
         self.model.zero_grad()
@@ -215,7 +220,14 @@ class Trainer:
         )
 
     def _eval(self) -> EvalMetrics:
-        """Evaluate the transformer model on the specified data."""
+        """Evaluate the model on the validation data.
+
+        Runs the model in evaluation mode (no gradient computation) on the validation
+        split to compute loss metrics.
+
+        Returns:
+            Evaluation metrics including average loss and number of batches processed.
+        """
         self.model.eval()
 
         total_loss = 0.0
@@ -259,25 +271,45 @@ class Trainer:
         )
 
     def register_pre_epoch_hook(self, fn: Callable[["Trainer"], None]) -> None:
-        """Register a function to execute before processing the data for an epoch."""
+        """Register a function to execute before each epoch begins.
+
+        Args:
+            fn: Callback function that receives the trainer instance.
+        """
         self._hooks["pre_epoch"].append(fn)
 
     def register_post_epoch_hook(self, fn: Callable[["Trainer"], None]) -> None:
-        """Register a function to execute after processing the data for an epoch."""
+        """Register a function to execute after each epoch completes.
+
+        Args:
+            fn: Callback function that receives the trainer instance.
+        """
         self._hooks["post_epoch"].append(fn)
 
     def register_post_fit_hook(
         self, fn: Callable[["Trainer", EvalMetrics], None]
     ) -> None:
-        """Register a function to execute after fitting the model to the data."""
+        """Register a function to execute after training on each epoch.
+
+        Args:
+            fn: Callback function that receives the trainer instance and training metrics.
+        """
         self._hooks["post_fit"].append(fn)
 
     def register_post_eval_hook(self, fn: Callable[["Trainer", EvalMetrics], None]):
-        """Register a function to execute after evaluating the model on the validation data."""
+        """Register a function to execute after validation on each epoch.
+
+        Args:
+            fn: Callback function that receives the trainer instance and evaluation metrics.
+        """
         self._hooks["post_eval"].append(fn)
 
     def register_eval_improvement_hook(self, fn: Callable):
-        """Register a function to execute if validation performance improves after evaluation."""
+        """Register a function to execute when validation loss improves.
+
+        Args:
+            fn: Callback function that receives the trainer instance.
+        """
         self._hooks["eval_improvement"].append(fn)
 
     def _execute_hooks(self, event, /, *args):

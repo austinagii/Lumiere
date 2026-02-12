@@ -23,10 +23,34 @@ class Checkpoint(dict):
 
     A checkpoint is a dictionary of key-value pairs that can be saved and loaded.
     The key-value pairs can be arbitrary, but they are typically used to store the
-    state of a model, optimizer, and other training parameters.
+    state of a model, optimizer, scheduler, and training metrics like epoch number
+    and loss values.
+
+    Supports attribute-style access (e.g., `checkpoint.epoch`) in addition to
+    dictionary-style access (e.g., `checkpoint["epoch"]`).
+
+    Args:
+        **kwargs: Key-value pairs to store in the checkpoint.
+
+    Example:
+        ```python
+        checkpoint = Checkpoint(
+            model=model.state_dict(),
+            optimizer=optimizer.state_dict(),
+            epoch=5,
+            loss=0.123
+        )
+        print(checkpoint.epoch)
+        # Output: 5
+        ```
     """
 
     def __init__(self, **kwargs):
+        """Initialize a checkpoint with the specified key-value pairs.
+
+        Args:
+            **kwargs: Key-value pairs to store in the checkpoint.
+        """
         super().__init__(**kwargs)
 
     def __getattr__(self, key):
@@ -51,11 +75,13 @@ class Checkpoint(dict):
         desired device using the `device` argument.
 
         Example:
-            >>> checkpoint = Checkpoint(epoch=7, global_step=128, eval_loss=0.0103243)
-            >>> bytes_data = bytes(checkpoint)
-            >>> checkpoint_from_bytes = Checkpoint.from_bytes(bytes_data)
-            >>> checkpoint_from_bytes == checkpoint
-            True
+            ```python
+            checkpoint = Checkpoint(epoch=7, global_step=128, eval_loss=0.0103243)
+            bytes_data = bytes(checkpoint)
+            checkpoint_from_bytes = Checkpoint.from_bytes(bytes_data)
+            print(checkpoint_from_bytes == checkpoint)
+            # Output: True
+            ```
 
         Args:
             bytes: The bytes object to construct the checkpoint from.
@@ -68,4 +94,16 @@ class Checkpoint(dict):
 
 
 class Checkpointable(Protocol):
-    def to_checkpoint(self) -> Checkpoint: ...
+    """Protocol for objects that can be converted to checkpoints.
+
+    Objects implementing this protocol can serialize their state into a `Checkpoint`
+    for saving during training.
+    """
+
+    def to_checkpoint(self) -> Checkpoint:
+        """Convert this object to a checkpoint.
+
+        Returns:
+            A `Checkpoint` containing the object's state.
+        """
+        ...

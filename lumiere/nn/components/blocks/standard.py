@@ -17,15 +17,18 @@ class StandardTransformerBlock(nn.Module):
     attention layer, followed by a position-wise feed-forward layer.
 
     Example:
-        >>> import torch
-        >>> from lumiere.nn.components import StandardTransformerBlock as TransformerBlock
-        >>> x = torch.randn(1, 10, 128)
-        >>> block = TransformerBlock(128, 12, 64, 64, 256)
-        >>> output, attention_weights = block(x)
-        >>> print(output.shape)
-        torch.Size([1, 10, 128])
-        >>> print(attention_weights.shape)
-        torch.Size([1, 12, 10, 10])
+        ```python
+        import torch
+        from lumiere.nn.components import StandardTransformerBlock as TransformerBlock
+
+        x = torch.randn(1, 10, 128)
+        block = TransformerBlock(128, 12, 64, 64, 256)
+        output, attention_weights = block(x)
+        print(output.shape)
+        # Output: torch.Size([1, 10, 128])
+        print(attention_weights.shape)
+        # Output: torch.Size([1, 12, 10, 10])
+        ```
 
     """
 

@@ -32,13 +32,16 @@ class SinusoidalPositionalEmbedding(nn.Module):
             the range [0, vocab_size).
 
     Example:
-        >>> import torch
-        >>> from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
-        >>> x = torch.tensor([[1, 2, 3], [4, 5, 6]])
-        >>> embedding = Embedding(10, 10)
-        >>> output = embedding(x)
-        >>> print(output.shape)
-        torch.Size([2, 3, 10])
+        ```python
+        import torch
+        from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
+
+        x = torch.tensor([[1, 2, 3], [4, 5, 6]])
+        embedding = Embedding(10, 3, 10)
+        output = embedding(x)
+        print(output.shape)
+        # Output: torch.Size([2, 3, 10])
+        ```
     """
 
     def __init__(

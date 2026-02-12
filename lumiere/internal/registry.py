@@ -25,9 +25,11 @@ def discover(type_cls: type, name: str):
         name: The name/id for this implementation
 
     Example:
-        >>> @discover(Tokenizer, "bpe")
-        >>> class BPETokenizer:
-        ...     pass
+        ```python
+        @discover(Tokenizer, "bpe")
+        class BPETokenizer:
+            pass
+        ```
     """
 
     def decorator(cls: T) -> T:
