@@ -24,6 +24,13 @@ jupyterlab = "*"
 ruff = "*"
 coverage = "*"
 pre-commit = "*"
+mkdocs = "*"
+mkdocs-material = "*"
+mkdocstrings = {extras = ["python"], version = "*"}
+mkdocs-gen-files = "*"
+mkdocs-literate-nav = "*"
+mkdocs-section-index = "*"
+mkdocs-autorefs = "*"
 
 [requires]
 python_version = "3.12"
