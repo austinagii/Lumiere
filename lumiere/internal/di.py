@@ -155,6 +155,70 @@ class DependencyContainer:
         return name in self._dependencies
 
 
+# Global dependency container singleton
+_global_container = DependencyContainer()
+
+
+def get_global_container() -> DependencyContainer:
+    """Get the global dependency container instance.
+
+    Returns:
+        The global DependencyContainer instance
+
+    Example:
+        ```python
+        container = get_global_container()
+        container.register("tokenizer", tokenizer)
+        ```
+    """
+    return _global_container
+
+
+def register_dependency(name: str, instance: Any) -> None:
+    """Register a dependency in the global container.
+
+    This is a convenience function for registering dependencies without
+    needing to access the global container directly.
+
+    Args:
+        name: The name to register the dependency under
+        instance: The dependency instance to register
+
+    Example:
+        ```python
+        from lumiere import register_dependency
+
+        tokenizer = BPETokenizer(vocab_size=30000)
+        register_dependency("tokenizer", tokenizer)
+
+        # Now the tokenizer can be referenced in configs
+        model = Loader.model({"embedding": {"tokenizer": "@tokenizer"}})
+        ```
+    """
+    _global_container.register(name, instance)
+
+
+def clear_global_dependencies() -> None:
+    """Clear all dependencies from the global container.
+
+    This is primarily useful for test isolation to ensure tests
+    don't affect each other through shared global state.
+
+    Example:
+        ```python
+        import pytest
+        from lumiere import clear_global_dependencies
+
+        @pytest.fixture(autouse=True)
+        def reset_container():
+            clear_global_dependencies()
+            yield
+            clear_global_dependencies()
+        ```
+    """
+    _global_container.clear()
+
+
 def resolve_value(value: Any, container: DependencyContainer | None = None) -> Any:
     """Resolve a configuration value with dependency injection support.
 
@@ -167,7 +231,8 @@ def resolve_value(value: Any, container: DependencyContainer | None = None) -> A
             - dict: Recursively resolve all values in the dictionary
             - list: Recursively resolve all items in the list
             - Any other type: Return as-is
-        container: Optional DependencyContainer to resolve variable references from
+        container: Optional DependencyContainer to resolve variable references from.
+            If None, uses the global dependency container.
 
     Returns:
         The resolved value with all @variable references replaced by their actual values
@@ -186,9 +251,7 @@ def resolve_value(value: Any, container: DependencyContainer | None = None) -> A
     """
     if isinstance(value, str) and value.startswith("@"):
         if container is None:
-            raise ValueError(
-                f"Cannot resolve variable '{value}' without a dependency container"
-            )
+            container = _global_container
         var_name = value[1:]  # Remove '@' prefix
         resolved = container.get(var_name)
         if resolved is None:

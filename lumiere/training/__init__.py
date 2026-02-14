@@ -1,6 +1,6 @@
 from .checkpoint import Checkpoint, CheckpointType
 from .config import Config
-from .manager import Run, RunManager, generate_run_id
+from .run import Run, RunManager, generate_run_id
 from .trainer import Trainer
 
 

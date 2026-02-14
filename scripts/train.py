@@ -1,28 +1,21 @@
-"""Training script for Lumière models with checkpointing support."""
+"""Training script for Lumière models."""
 
 import argparse
 import logging
-import signal
 import sys
-from pathlib import Path
 
 import torch
-import yaml
 
-from lumiere import DependencyContainer
-from lumiere.internal.loader import (
-    load_dataset as load_dataloader,
-    load_model,
-    load_optimizer,
-    load_pipeline,
-    load_scheduler,
-    load_tokenizer,
+from lumiere import Loader, register_dependency
+from lumiere.training import (
+    Checkpoint,
+    CheckpointType,
+    RunManager,
+    Trainer,
 )
-from lumiere.training import Trainer
 from lumiere.training.config import Config
 from lumiere.training.loss import cross_entropy_loss
-from lumiere.training import Checkpoint, CheckpointType, RunManager, generate_run_id
-from lumiere.utils.device import get_device
+from lumiere.utils import get_device, register_signal_handlers
 
 
 logging.basicConfig(
@@ -31,122 +24,57 @@ logging.basicConfig(
     handlers=[logging.FileHandler("training.log"), logging.StreamHandler()],
 )
 
-# Disable Azure blob storage logging
-logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
-logging.getLogger("azure.core").setLevel(logging.WARNING)
-
 logger = logging.getLogger(__name__)
 
 
-def _exit_run(sig, frame):
-    """Handle training interruption gracefully."""
-    print()
-    logger.info("Training halted by user")
-    sys.exit(0)
-
-
-def _register_signal_handlers():
-    """Register signal handlers for gracefully stopping training."""
-    # Handle Ctrl+C gracefully.
-    signal.signal(signal.SIGINT, _exit_run)
-    # Handle `kill` command gracefully.
-    signal.signal(signal.SIGTERM, _exit_run)
-
-
-def load_config(config_path: str) -> dict:
-    """Load training configuration from YAML file.
+def init_training_run(config_path: str, device: torch.device):
+    """Initialize a new training run and all training components from configuration.
 
     Args:
-        config_path: Path to the YAML configuration file.
-
-    Returns:
-        Dictionary containing the training configuration.
-    """
-    config_file = Path(config_path)
-    if not config_file.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-
-    with open(config_file) as f:
-        config = yaml.safe_load(f)
-
-    logger.info(f"Loaded configuration from {config_path}")
-    return config
-
-
-def init_run_manager(config: dict) -> tuple[str, RunManager]:
-    """Initialize a new training run with checkpointing support.
-
-    Args:
-        config: Training configuration dictionary.
-
-    Returns:
-        Tuple of (run_id, run_manager)
-    """
-    run_id = generate_run_id()
-
-    # Convert dict to Config object for RunManager
-    config_obj = Config(config)
-    run_manager = RunManager.from_config(config_obj)
-
-    # Initialize the run
-    run_manager.init_run(config)
-
-    logger.info(f"Initialized new training run with ID: {run_id}")
-    return run_id, run_manager
-
-
-def init_training_components(
-    config: dict, device: torch.device, run_manager: RunManager = None
-):
-    """Initialize all training components from configuration.
-
-    Args:
-        config: Training configuration dictionary.
+        config_path: Path to training configuration YAML file.
         device: Device to use for training.
-        run_manager: Optional RunManager for saving artifacts.
 
     Returns:
-        Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer)
+        Tuple of (run_id, run_manager, model, dataloader, pipeline, optimizer, scheduler, tokenizer)
     """
-    # Initialize dependency container
-    container = DependencyContainer()
+    config = Config.from_yaml(config_path)
+    # fmt: off
+    assert config.get("tokenizer") is not None, "Config missing required 'tokenizer' section"  # NOQA: E501
+    assert config.get("data") is not None, "Config missing required 'data' section"
+    assert config.get("pipeline") is not None, "Config missing required 'pipeline' section"  # NOQA: E501
+    assert config.get("model") is not None, "Config missing required 'model' section"
+    assert config.get("optimizer") is not None, "Config missing required 'optimizer' section"  # NOQA: E501
+    assert config.get("training") is not None, "Config missing required 'training' section"  # NOQA: E501
+    # fmt: on
 
-    # Load and train tokenizer
+    run_manager = RunManager.from_config(config)
+    run_id = run_manager.init_run(config)
+    logger.info(f"Initialized new training run with ID: {run_id}")
+
     logger.info("Loading tokenizer...")
-    tokenizer_config = config.get("tokenizer", {})
-    tokenizer = load_tokenizer(tokenizer_config)
+    tokenizer = Loader.tokenizer(config["tokenizer"])
+    register_dependency("tokenizer", tokenizer)
     logger.info("Tokenizer loaded successfully")
 
-    # Register tokenizer in container for pipeline dependency injection
-    container.register("tokenizer", tokenizer)
-
-    # Load dataloader
     logger.info("Loading dataset...")
-    data_config = config.get("data", {})
-    dataloader = load_dataloader(data_config, container)
+    dataloader = Loader.data(config["data"])
     logger.info(f"Dataloader initialized with {len(dataloader.datasets)} dataset(s)")
 
-    # Train tokenizer on training data
     logger.info("Training tokenizer on training data...")
     tokenizer.train(dataloader["train"])
     logger.info(f"Tokenizer trained successfully (vocab size: {tokenizer.vocab_size})")
 
-    # Save tokenizer if run_manager is provided
     if run_manager is not None:
         logger.info("Saving tokenizer artifact...")
-        run_manager.save_artifact("tokenizer", bytes(tokenizer))
+        run_manager.save_artifact("tokenizer", tokenizer)
         logger.info("Tokenizer artifact saved successfully")
 
-    # Load pipeline with injected tokenizer
     logger.info("Loading pipeline...")
-    pipeline_config = config.get("pipeline", {})
-    pipeline = load_pipeline(pipeline_config, container)
+    pipeline = Loader.pipeline(config["pipeline"])
     logger.info("Pipeline loaded successfully")
 
-    # Build model
     logger.info("Building model...")
-    model_config = config.get("model", {})
-    model = load_model(model_config, container).to(device)
+    model = Loader.model(config["model"]).to(device)
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(
@@ -154,21 +82,28 @@ def init_training_components(
         f"Total params: {total_params:,}, Trainable: {trainable_params:,}"
     )
 
-    # Load optimizer
     logger.info("Loading optimizer...")
-    optimizer_config = config.get("optimizer", {})
-    optimizer = load_optimizer(optimizer_config, model.parameters(), container)
+    optimizer = Loader.optimizer(config["optimizer"], model.parameters())
     logger.info(f"Optimizer loaded: {type(optimizer).__name__}")
 
-    # Load scheduler
     scheduler = None
-    if "scheduler" in config:
+    if (scheduler_config := config.get("scheduler")) is not None:
         logger.info("Loading learning rate scheduler...")
-        scheduler_config = config["scheduler"]
-        scheduler = load_scheduler(scheduler_config, optimizer, container)
+        scheduler = Loader.scheduler(scheduler_config, optimizer)
         logger.info(f"Scheduler loaded: {type(scheduler).__name__}")
 
-    return model, dataloader, pipeline, optimizer, scheduler, tokenizer
+    logger.info("All components initialized successfully")
+
+    return (
+        run_id,
+        run_manager,
+        model,
+        dataloader,
+        pipeline,
+        optimizer,
+        scheduler,
+        tokenizer,
+    )
 
 
 def resume_from_checkpoint(
@@ -192,47 +127,46 @@ def resume_from_checkpoint(
     # Load checkpoint
     logger.info(f"Loading checkpoint '{checkpoint_tag}' from run '{run_id}'...")
     checkpoint = run_manager.load_checkpoint(run_id, checkpoint_tag)
+    assert checkpoint is not None, "Failed to load checkpoint"
     logger.info("Checkpoint loaded successfully")
 
     # Update config from checkpoint if available
     if "config" in checkpoint:
         config = checkpoint["config"]
 
-    # Initialize dependency container
-    container = DependencyContainer()
-
     # Load tokenizer from artifact
     logger.info("Loading tokenizer artifact...")
     tokenizer_bytes = run_manager.load_artifact(run_id, "tokenizer")
-    if tokenizer_bytes is None:
-        raise ValueError("Could not find tokenizer artifact")
+    assert tokenizer_bytes is not None, "Could not find tokenizer artifact"
 
-    tokenizer_config = config.get("tokenizer", {})
+    tokenizer_config = config.get("tokenizer") or {}
     # Assuming tokenizer has a from_bytes method
     from lumiere.tokenizers import Tokenizer
 
     tokenizer = Tokenizer.from_bytes(tokenizer_bytes)
+    assert tokenizer is not None, "Failed to deserialize tokenizer"
+    assert tokenizer.vocab_size > 0, "Tokenizer vocabulary is empty"
     logger.info("Tokenizer loaded successfully")
 
-    # Register tokenizer in container
-    container.register("tokenizer", tokenizer)
+    # Register tokenizer in global container
+    register_dependency("tokenizer", tokenizer)
 
     # Load dataloader
     logger.info("Loading dataset...")
-    data_config = config.get("data", {})
-    dataloader = load_dataloader(data_config, container)
+    data_config = config.get("data") or {}
+    dataloader = Loader.data(data_config)
     logger.info(f"Dataloader initialized with {len(dataloader.datasets)} dataset(s)")
 
     # Load pipeline
     logger.info("Loading pipeline...")
-    pipeline_config = config.get("pipeline", {})
-    pipeline = load_pipeline(pipeline_config, container)
+    pipeline_config = config.get("pipeline") or {}
+    pipeline = Loader.pipeline(pipeline_config)
     logger.info("Pipeline loaded successfully")
 
     # Build model and load state
     logger.info("Building model...")
     model_config = checkpoint.get("model_config") or config.get("model", {})
-    model = load_model(model_config, container).to(device)
+    model = Loader.model(model_config).to(device)
 
     if "model_state_dict" in checkpoint:
         model.load_state_dict(checkpoint["model_state_dict"])
@@ -240,8 +174,8 @@ def resume_from_checkpoint(
 
     # Load optimizer and state
     logger.info("Loading optimizer...")
-    optimizer_config = config.get("optimizer", {})
-    optimizer = load_optimizer(optimizer_config, model.parameters(), container)
+    optimizer_config = config.get("optimizer") or {}
+    optimizer = Loader.optimizer(optimizer_config, model.parameters())
 
     if "optimizer_state_dict" in checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -249,10 +183,10 @@ def resume_from_checkpoint(
 
     # Load scheduler and state
     scheduler = None
-    if "scheduler" in config:
+    scheduler_config = config.get("scheduler")
+    if scheduler_config is not None:
         logger.info("Loading scheduler...")
-        scheduler_config = config["scheduler"]
-        scheduler = load_scheduler(scheduler_config, optimizer, container)
+        scheduler = Loader.scheduler(scheduler_config, optimizer)
 
         if "scheduler_state_dict" in checkpoint:
             scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
@@ -328,7 +262,7 @@ def train(
         checkpoint_tag: Optional checkpoint tag to resume from (requires run_id).
     """
     # Load configuration
-    config = load_config(config_path)
+    config = Config.from_yaml(config_path)
 
     # Get device
     device = get_device()
@@ -338,12 +272,18 @@ def train(
     if run_id is None:
         # Start new run
         logger.info("Starting new training run...")
-        run_id, run_manager = init_run_manager(config)
 
         # Initialize components
-        model, dataloader, pipeline, optimizer, scheduler, tokenizer = (
-            init_training_components(config, device, run_manager)
-        )
+        (
+            run_id,
+            run_manager,
+            model,
+            dataloader,
+            pipeline,
+            optimizer,
+            scheduler,
+            tokenizer,
+        ) = init_training_run(config_path, device)
 
         starting_epoch = 0
     else:
@@ -370,7 +310,7 @@ def train(
         logger.info(f"Resuming from epoch {starting_epoch}")
 
     # Get training parameters
-    training_config = config.get("training", {})
+    training_config = config.get("training") or {}
 
     # Initialize trainer
     logger.info("Initializing trainer...")
@@ -448,7 +388,7 @@ def train(
 
 def main():
     """Main entry point for the training script."""
-    _register_signal_handlers()
+    register_signal_handlers()
 
     parser = argparse.ArgumentParser(
         description="Train a Lumière transformer model with checkpointing",

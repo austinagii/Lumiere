@@ -61,9 +61,7 @@ from typing import Any
 
 import torch
 
-from lumiere.training import Config
-
-from .run import Checkpoint, RunManager
+from lumiere.training import Config, Checkpoint, RunManager
 
 
 DS_CONFIG_PATH = "./deepscale.yaml"

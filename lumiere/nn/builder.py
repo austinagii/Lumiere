@@ -37,6 +37,8 @@ class ModelBuilder:
 
         Args:
             spec: The specification of the desired transformer.
+            container: Optional DependencyContainer for resolving dependencies.
+                If None, uses the global dependency container.
 
         Returns:
             A transformer built according to the provided specification.
@@ -46,6 +48,10 @@ class ModelBuilder:
                 parameter for a module is not found in the specification.
 
         """
+        # Use global container if none provided
+        if container is None:
+            from lumiere.internal.di import get_global_container
+            container = get_global_container()
 
         def _build_module_factory(module_type, module_args, container):
             """Perform a single-pass depth-first traversal of the spec tree.
