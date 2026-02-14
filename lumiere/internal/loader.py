@@ -1,12 +1,14 @@
 """Centralized loading for all component types."""
 
+from collections.abc import Mapping
 from typing import Any, TypeVar
 
 import torch
 
 from lumiere.data import DataLoader, Dataset, Pipeline, Preprocessor
-from lumiere.internal.di import resolve_value
+from lumiere.internal.di import DependencyContainer, resolve_value
 from lumiere.internal.registry import get
+from lumiere.nn import ModelBuilder
 from lumiere.tokenizers import Tokenizer
 
 
@@ -204,3 +206,63 @@ def load_pipeline(config: dict[str, Any], container: Any = None) -> Pipeline:
         config_dict["preprocessors"] = preprocessors
 
     return load(Pipeline, config_dict, container)
+
+
+def load_model(
+    config: Mapping[str, Any], container: DependencyContainer | None = None
+) -> torch.nn.Module:
+    """Load and return a Model instance from a hierarchical configuration.
+
+    This loader uses the TransformerBuilder to construct models from hierarchical
+    specifications with factory configurations. It supports dependency injection
+    for all configuration values.
+
+    Args:
+        config: Hierarchical configuration dictionary. Factory fields (like
+            'embedding_factory', 'block_factory') should contain 'type' and
+            'name' fields plus component-specific parameters.
+        container: Optional DependencyContainer for resolving dependencies.
+
+    Returns:
+        Initialized Model instance.
+
+    Raises:
+        ValueError: If a dependency cannot be resolved or component not found.
+        RuntimeError: If an error occurs during model initialization.
+
+    Example:
+        ```python
+        config = {
+            "vocab_size": 30000,
+            "context_size": 512,
+            "num_blocks": 12,
+            "embedding": {
+                "name": "sinusoidal",
+                "padding_id": 0
+            },
+            "block": {
+                "name": "standard",
+                "attention": {
+                    "name": "multihead",
+                    "num_heads": 8
+                },
+                "feedforward": {
+                    "name": "linear",
+                    "d_ff": 2048
+                },
+                "normalization": {
+                    "name": "rms"
+                }
+            },
+            "normalization": {
+                "name": "rms"
+            }
+        }
+        model = load(config)
+        ```
+    """
+    try:
+        # Build the model using TransformerBuilder
+        return ModelBuilder.build(config, container=container)
+    except Exception as e:
+        raise RuntimeError(f"Error building model from spec: {e}") from e

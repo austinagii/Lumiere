@@ -2,7 +2,6 @@
 
 import argparse
 import logging
-import os
 import signal
 import sys
 from pathlib import Path
@@ -11,9 +10,9 @@ import torch
 import yaml
 
 from lumiere import DependencyContainer
-from lumiere.nn.builder import load as load_model
 from lumiere.internal.loader import (
     load_dataset as load_dataloader,
+    load_model,
     load_optimizer,
     load_pipeline,
     load_scheduler,
@@ -96,7 +95,9 @@ def init_run_manager(config: dict) -> tuple[str, RunManager]:
     return run_id, run_manager
 
 
-def init_training_components(config: dict, device: torch.device, run_manager: RunManager = None):
+def init_training_components(
+    config: dict, device: torch.device, run_manager: RunManager = None
+):
     """Initialize all training components from configuration.
 
     Args:
@@ -171,10 +172,7 @@ def init_training_components(config: dict, device: torch.device, run_manager: Ru
 
 
 def resume_from_checkpoint(
-    run_id: str,
-    checkpoint_tag: str,
-    config: dict,
-    device: torch.device
+    run_id: str, checkpoint_tag: str, config: dict, device: torch.device
 ):
     """Resume training from a checkpoint.
 
@@ -212,6 +210,7 @@ def resume_from_checkpoint(
     tokenizer_config = config.get("tokenizer", {})
     # Assuming tokenizer has a from_bytes method
     from lumiere.tokenizers import Tokenizer
+
     tokenizer = Tokenizer.from_bytes(tokenizer_bytes)
     logger.info("Tokenizer loaded successfully")
 
@@ -259,7 +258,16 @@ def resume_from_checkpoint(
             scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
             logger.info("Scheduler state loaded from checkpoint")
 
-    return model, dataloader, pipeline, optimizer, scheduler, tokenizer, run_manager, checkpoint
+    return (
+        model,
+        dataloader,
+        pipeline,
+        optimizer,
+        scheduler,
+        tokenizer,
+        run_manager,
+        checkpoint,
+    )
 
 
 def create_checkpoint_saver(run_manager: RunManager, run_id: str, model, config: dict):
@@ -274,6 +282,7 @@ def create_checkpoint_saver(run_manager: RunManager, run_id: str, model, config:
     Returns:
         Hook function to save checkpoints.
     """
+
     def save_checkpoint_hook(trainer):
         """Save checkpoint at the end of each epoch."""
         checkpoint = Checkpoint(
@@ -283,7 +292,9 @@ def create_checkpoint_saver(run_manager: RunManager, run_id: str, model, config:
             optimizer_state_dict=trainer.optimizer.state_dict(),
             epoch=trainer.state.current_epoch,
             global_step=trainer.state.global_step,
-            best_loss=trainer.state.best_loss if hasattr(trainer.state, 'best_loss') else None,
+            best_loss=trainer.state.best_loss
+            if hasattr(trainer.state, "best_loss")
+            else None,
         )
 
         if trainer.scheduler is not None:
@@ -295,7 +306,7 @@ def create_checkpoint_saver(run_manager: RunManager, run_id: str, model, config:
         logger.info("Checkpoint saved successfully")
 
         # Save best checkpoint if this is the best epoch
-        if hasattr(trainer.state, 'best_loss') and hasattr(trainer.state, 'prev_loss'):
+        if hasattr(trainer.state, "best_loss") and hasattr(trainer.state, "prev_loss"):
             if trainer.state.prev_loss == trainer.state.best_loss:
                 logger.info("Saving 'best' checkpoint...")
                 run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
@@ -337,14 +348,23 @@ def train(
         starting_epoch = 0
     else:
         # Resume from checkpoint
-        logger.info(f"Resuming training run '{run_id}' from checkpoint '{checkpoint_tag}'...")
+        logger.info(
+            f"Resuming training run '{run_id}' from checkpoint '{checkpoint_tag}'..."
+        )
 
         if checkpoint_tag is None:
             checkpoint_tag = "latest"  # or "best", depending on your preference
 
-        model, dataloader, pipeline, optimizer, scheduler, tokenizer, run_manager, checkpoint = (
-            resume_from_checkpoint(run_id, checkpoint_tag, config, device)
-        )
+        (
+            model,
+            dataloader,
+            pipeline,
+            optimizer,
+            scheduler,
+            tokenizer,
+            run_manager,
+            checkpoint,
+        ) = resume_from_checkpoint(run_id, checkpoint_tag, config, device)
 
         starting_epoch = checkpoint.get("epoch", 0)
         logger.info(f"Resuming from epoch {starting_epoch}")
@@ -388,7 +408,9 @@ def train(
             optimizer_state_dict=trainer.optimizer.state_dict(),
             epoch=trainer.state.current_epoch,
             global_step=trainer.state.global_step,
-            best_loss=trainer.state.best_loss if hasattr(trainer.state, 'best_loss') else None,
+            best_loss=trainer.state.best_loss
+            if hasattr(trainer.state, "best_loss")
+            else None,
         )
 
         if trainer.scheduler is not None:
@@ -412,7 +434,9 @@ def train(
             global_step=trainer.state.global_step,
         )
         if trainer.scheduler is not None:
-            interrupt_checkpoint["scheduler_state_dict"] = trainer.scheduler.state_dict()
+            interrupt_checkpoint["scheduler_state_dict"] = (
+                trainer.scheduler.state_dict()
+            )
 
         run_manager.save_checkpoint(CheckpointType.EPOCH, interrupt_checkpoint)
         logger.info("Interrupt checkpoint saved")
