@@ -106,9 +106,7 @@ def init_training_run(config_path: str, device: torch.device):
     )
 
 
-def resume_from_checkpoint(
-    run_id: str, checkpoint_tag: str, config: dict, device: torch.device
-):
+def resume_training_run(run_id: str, checkpoint_tag: str, device: torch.device):
     """Resume training from a checkpoint.
 
     Args:
@@ -304,7 +302,7 @@ def train(
             tokenizer,
             run_manager,
             checkpoint,
-        ) = resume_from_checkpoint(run_id, checkpoint_tag, config, device)
+        ) = resume_training_run(run_id, checkpoint_tag, config, device)
 
         starting_epoch = checkpoint.get("epoch", 0)
         logger.info(f"Resuming from epoch {starting_epoch}")
