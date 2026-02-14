@@ -107,7 +107,7 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = ["torch.*", "wandb.*", "transformers.*", "pytest.*", "datasets.*"]
+module = ["torch.*", "wandb.*", "transformers.*", "pytest.*", "datasets.*", "yaml.*"]
 ignore_missing_imports = true
 
 [tool.lumiere.discovery]
