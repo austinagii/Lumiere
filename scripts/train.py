@@ -21,7 +21,7 @@ from lumiere.internal.loader import (
 from lumiere.training import Trainer
 from lumiere.training.config import Config
 from lumiere.training.loss import cross_entropy_loss
-from lumiere.training.run import Checkpoint, CheckpointType, RunManager, generate_run_id
+from lumiere.training import Checkpoint, CheckpointType, RunManager, generate_run_id
 from lumiere.utils.device import get_device
 
 

@@ -6,7 +6,7 @@ system.
 
 Example:
     ```python
-    from lumiere.training.run.checkpoint import Checkpoint
+    from lumiere.training.checkpoint import Checkpoint
 
     fs_storage_client = FileSystemStorageClient("./")
     fs_storage_client.init_run("run-123", {"max_epochs": 10})

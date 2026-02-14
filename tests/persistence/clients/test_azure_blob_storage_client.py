@@ -9,7 +9,7 @@ import yaml
 from azure.core.exceptions import AzureError, ResourceNotFoundError
 from azure.storage.blob import BlobServiceClient
 
-from lumiere.training.run import generate_run_id
+from lumiere.training import generate_run_id
 from lumiere.persistence.clients import AzureBlobStorageClient
 from lumiere.persistence.clients.azure_blob_storage_client import (
     disable_tokenizer_parallelism,

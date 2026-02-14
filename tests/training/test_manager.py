@@ -4,8 +4,7 @@ from typing import Any
 import pytest
 
 from lumiere.training.config import Config
-from lumiere.training.run import Run, RunManager
-from lumiere.training.run.checkpoint import Checkpoint, CheckpointType
+from lumiere.training import Checkpoint, CheckpointType, Run, RunManager
 from lumiere.persistence.clients import (
     AzureBlobStorageClient,
     FileSystemStorageClient,

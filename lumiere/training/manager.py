@@ -25,7 +25,7 @@ from lumiere.persistence.errors import (
     StorageError,
 )
 
-from .checkpoint import Checkpoint, CheckpointType
+from lumiere.training.checkpoint import Checkpoint, CheckpointType
 
 
 LOGGER = logging.getLogger(__name__)

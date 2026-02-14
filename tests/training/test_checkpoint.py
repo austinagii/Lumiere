@@ -1,4 +1,4 @@
-from lumiere.training.run import Checkpoint
+from lumiere.training import Checkpoint
 
 
 class TestCheckpoint:

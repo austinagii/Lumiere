@@ -8,7 +8,7 @@ import yaml
 
 from lumiere.persistence.clients import FileSystemStorageClient
 from lumiere.persistence.errors import StorageError
-from lumiere.training.run import generate_run_id
+from lumiere.training import generate_run_id
 
 
 # TODO: Add the following two fixtures to a test utils module.
