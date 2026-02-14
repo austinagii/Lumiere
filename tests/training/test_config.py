@@ -55,128 +55,65 @@ class TestConfig:
         with pytest.raises(FileNotFoundError):
             Config.from_file("non_existent_file.yaml")
 
+    def test_delitem_deletes_top_level_key(self):
+        config = Config({"model": {"vocab_size": 1000}, "tokenizer": {"name": "gpt2"}}, override=True)
 
-# class TestModelSpec:
-#     def test_model_spec_can_be_initialized_from_argument_dict(self):
-#         args = {
-#             "context_size": 512,
-#             "embedding_size": 1024,
-#             "num_blocks": 6,
-#             "block": {
-#                 "type": "standard",
-#                 "hidden_size": 768,
-#                 "dropout": 0.1,
-#                 "feedforward": {
-#                     "type": "linear",
-#                     "d_ff": 2048,
-#                 },
-#             },
-#         }
-#         spec = ModelSpec(args)
-#
-#         assert spec.args == args
-#         assert spec["context_size"] == 512
-#         assert spec["embedding_size"] == 1024
-#         assert spec["num_blocks"] == 6
-#         assert spec["block"]["type"] == "standard"
-#         assert spec["block"]["hidden_size"] == 768
-#         assert spec["block.dropout"] == 0.1
-#         assert spec["block.feedforward.type"] == "linear"
-#         assert spec["block.feedforward.d_ff"] == 2048
-#
-#     def test_init_raises_an_error_if_args_is_none(self):
-#         with pytest.raises(ValueError):
-#             ModelSpec(None)
-#
-#     def test_from_yaml_correctly_builds_spec_from_yaml_file(self):
-#         yaml_content = """
-#         context_size: 512
-#         embedding_size: 1024
-#         num_layers: 6
-#         block:
-#             type: standard
-#             hidden_size: 768
-#             dropout: 0.1
-#             feedforward:
-#                 type: linear
-#                 d_ff: 2048
-#         """
-#         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-#             f.write(yaml_content)
-#             yaml_path = f.name
-#
-#         try:
-#             spec = ModelSpec.from_yaml(yaml_path)
-#
-#             assert spec["context_size"] == 512
-#             assert spec["embedding_size"] == 1024
-#             assert spec["num_layers"] == 6
-#             assert spec["block.type"] == "standard"
-#             assert spec["block.hidden_size"] == 768
-#             assert spec["block.dropout"] == 0.1
-#             assert spec["block.feedforward.type"] == "linear"
-#             assert spec["block.feedforward.d_ff"] == 2048
-#         finally:
-#             Path(yaml_path).unlink()
-#
-#     def test_from_yaml_raises_error_if_file_path_is_invalid(self):
-#         with pytest.raises(ValueError):
-#             ModelSpec.from_yaml(123)
-#
-#     def test_from_yaml_raises_error_if_file_path_does_not_exist(self):
-#         with pytest.raises(FileNotFoundError):
-#             ModelSpec.from_yaml("/path/to/nonexistent/file.yaml")
-#
-#     def test_getitem_retrieves_argument_value(self):
-#         spec = ModelSpec(
-#             {
-#                 "context_size": 512,
-#                 "embedding_size": 1024,
-#                 "num_blocks": 6,
-#             }
-#         )
-#
-#         assert spec["context_size"] == 512
-#         assert spec["embedding_size"] == 1024
-#         assert spec["num_blocks"] == 6
-#
-#     def test_getitem_retrieves_component_arguments_using_dot_notation(self):
-#         spec = ModelSpec(
-#             {
-#                 "context_size": 512,
-#                 "embedding_size": 1024,
-#                 "num_blocks": 6,
-#                 "block": {"type": "standard", "hidden_size": 768, "dropout": 0.1},
-#             }
-#         )
-#
-#         assert spec["block.hidden_size"] == 768
-#
-#     def test_setitem_sets_argument_to_specified_value(self):
-#         spec = ModelSpec(
-#             {
-#                 "context_size": 512,
-#                 "embedding_size": 1024,
-#                 "num_blocks": 6,
-#                 "block": {"type": "standard", "hidden_size": 768, "dropout": 0.1},
-#             }
-#         )
-#
-#         spec["context_size"] = 2048
-#         spec["block.hidden_size"] = 1024
-#
-#         assert spec["context_size"] == 2048
-#         assert spec["block.hidden_size"] == 1024
-#
-#     def test_setitem_creates_ancestor_if_missing(self):
-#         spec = ModelSpec(
-#             {
-#                 "context_size": 512,
-#                 "embedding_size": 1024,
-#                 "num_blocks": 6,
-#             }
-#         )
-#
-#         spec["block.feedforward.type"] = "standard"
-#
-#         assert spec["block.feedforward"] == {"type": "standard"}
+        del config["tokenizer"]
+
+        assert config.get("tokenizer") is None
+        assert config["model.vocab_size"] == 1000
+
+    def test_delitem_deletes_nested_key_with_dot_notation(self):
+        config = Config({"model": {"vocab_size": 1000, "layers": 12}}, override=True)
+
+        del config["model.vocab_size"]
+
+        assert config.get("model.vocab_size") is None
+        assert config["model.layers"] == 12
+
+    def test_delitem_deletes_deeply_nested_key(self):
+        config = Config(
+            {
+                "model": {
+                    "block": {
+                        "feedforward": {
+                            "type": "linear",
+                            "d_ff": 2048
+                        }
+                    }
+                }
+            },
+            override=True
+        )
+
+        del config["model.block.feedforward.type"]
+
+        assert config.get("model.block.feedforward.type") is None
+        assert config["model.block.feedforward.d_ff"] == 2048
+
+    def test_delitem_raises_error_for_missing_key(self):
+        config = Config({"model": {"vocab_size": 1000}}, override=True)
+
+        with pytest.raises(KeyError, match="Field 'model.nonexistent' not found in config"):
+            del config["model.nonexistent"]
+
+    def test_delitem_raises_error_for_invalid_key_type(self):
+        config = Config({"model": {"vocab_size": 1000}}, override=True)
+
+        with pytest.raises(TypeError, match="Key must be a non-empty string"):
+            del config[123]
+
+    def test_setitem_creates_ancestor_if_missing(self):
+        config = Config(
+            {
+                "context_size": 512,
+                "embedding_size": 1024,
+                "num_blocks": 6,
+            },
+            override=True
+        )
+
+        config["block.feedforward.type"] = "standard"
+
+        assert config["block.feedforward.type"] == "standard"
+        assert config["block"] == {"feedforward": {"type": "standard"}}
