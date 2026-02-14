@@ -33,7 +33,7 @@ def file(tmp_path):
 
 class TestConfig:
     def test_config_can_be_loaded_from_a_file(self, file):
-        config = Config.from_file(file)
+        config = Config.from_file(file, override=True)
         assert config["model.name"] == "gpt2"
         assert config["model.vocab_size"] == 50257
         assert config["model.n_layers"] == 12

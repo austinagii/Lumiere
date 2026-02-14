@@ -1,14 +1,23 @@
 repos:
-  # Run tests with coverage
+  # Run fast tests on commit (excluding slow tests)
   - repo: local
     hooks:
-      - id: pytest-coverage
-        name: Run tests with coverage
-        entry: bash -c 'pipenv run coverage run -m pytest -v'
+      - id: pytest-fast
+        name: Run fast tests (excluding slow tests)
+        entry: bash -c 'pipenv run pytest -v -m "not slow" || exit 1'
         language: system
         pass_filenames: false
         always_run: true
-        stages: [pre-commit, pre-push]
+        stages: [pre-commit]
+
+      # Run all tests with coverage on push
+      - id: pytest-coverage-all
+        name: Run all tests with coverage
+        entry: bash -c 'pipenv run coverage run -m pytest -v || exit 1'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
       - id: coverage-check
         name: Check individual file coverage (minimum 60%)
@@ -33,11 +42,11 @@ repos:
             if [ -n "$failed_files" ]; then
               echo ""
               echo -e "❌ Files with coverage below 60%:$failed_files"
-              echo "Please add tests to increase coverage before committing."
+              echo "Please add tests to increase coverage before pushing."
               echo ""
               exit 1
             else
-              echo "✅ All files meet 60% coverage requirement! Proceeding with commit."
+              echo "✅ All files meet 60% coverage requirement! Proceeding with push."
               echo ""
               exit 0
             fi

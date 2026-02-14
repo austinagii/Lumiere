@@ -91,7 +91,7 @@ def _add_target_checkpoint(container_client):
 
 
 class TestAzureBlobStorageClient:
-    @pytest.mark.integration
+    @pytest.mark.slow
     def test_init_run_stores_run_config_as_blob(self, az_storage_client, container):
         # Define the training config.
         train_config_yaml = """
@@ -118,7 +118,7 @@ class TestAzureBlobStorageClient:
 
     # TODO: Add test to verify behavior when run config upload fails.
 
-    @pytest.mark.integration
+    @pytest.mark.slow
     def test_save_checkpoint_successfully_uploads_artifact(
         self, az_storage_client, container
     ):
@@ -147,7 +147,7 @@ class TestAzureBlobStorageClient:
         with pytest.raises(StorageError):
             az_storage_client.save_checkpoint("abc", "best", b"test")
 
-    @pytest.mark.integration
+    @pytest.mark.slow
     def test_load_checkpoint_successfully_downloads_artifact(
         self, az_storage_client, container
     ):
@@ -187,7 +187,7 @@ class TestAzureBlobStorageClient:
     # ------- SAVE_ARTIFACT TESTS -------
     # -----------------------------------
     
-    @pytest.mark.integration
+    @pytest.mark.slow
     @pytest.mark.parametrize(
         "artifact", [
             [1, 2, 3],
@@ -212,7 +212,7 @@ class TestAzureBlobStorageClient:
         assert blob_client.exists()
         assert blob_client.get_blob_properties().size != 0
 
-    @pytest.mark.integration
+    @pytest.mark.slow
     def test_save_artifact_overwrites_existing_artifact_is_overwrite_is_true(
         self, az_storage_client, container
     ):
@@ -240,7 +240,7 @@ class TestAzureBlobStorageClient:
         reconstructed_new = pickle.loads(blob_client.download_blob().readall())
         assert reconstructed_new != original_artifact
 
-    @pytest.mark.integration
+    @pytest.mark.slow
     def test_save_artifact_raises_error_if_existing_key_and_overwrite_is_false(
         self, az_storage_client, container_client, run_id, artifact_key
     ):
@@ -262,7 +262,7 @@ class TestAzureBlobStorageClient:
 
         assert pickle.loads(blob_client.download_blob().readall()) == artifact
 
-    @pytest.mark.integration
+    @pytest.mark.slow
     def test_save_artifact_does_not_overwite_existing_artifacts_by_default(
         self, az_storage_client, container_client, run_id, artifact_key
     ):
@@ -291,7 +291,7 @@ class TestAzureBlobStorageClient:
     # ------- LOAD_ARTIFACT TESTS -------
     # -----------------------------------
     
-    @pytest.mark.integration
+    @pytest.mark.slow
     @pytest.mark.parametrize(
         "artifact", [
             [1, 2, 3],
@@ -304,7 +304,7 @@ class TestAzureBlobStorageClient:
         az_storage_client.save_artifact(run_id, artifact_key, artifact, overwrite=True)
         assert az_storage_client.load_artifact(run_id, artifact_key) == artifact
          
-    @pytest.mark.integration
+    @pytest.mark.slow
     def test_load_artifact_returns_none_if_object_not_found(
         self, az_storage_client, run_id, artifact_key
     ):
@@ -321,7 +321,7 @@ class TestAzureBlobStorageClient:
             az_storage_client.load_artifact(run_id, artifact_key)
 
 
-@pytest.mark.integration
+@pytest.mark.slow
 class TestDisableTokenizerParallelism:
     def setup_method(self):
         # Ensure clean state

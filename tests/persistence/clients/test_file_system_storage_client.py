@@ -131,7 +131,7 @@ class TestFileSystemStorageClient:
     # ===============================
     # ===== SAVE_ARTIFACT TESTS =====
     # ===============================
-    @pytest.mark.integration
+    @pytest.mark.slow
     @pytest.mark.parametrize(
         "artifact",
         [
@@ -225,7 +225,7 @@ class TestFileSystemStorageClient:
     # ===============================
     # ===== LOAD_ARTIFACT TESTS =====
     # ===============================
-    @pytest.mark.integration
+    @pytest.mark.slow
     @pytest.mark.parametrize(
         "artifact",
         [

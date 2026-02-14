@@ -247,7 +247,7 @@ class TestBPETokenizer:
 
         assert tokenizer.vocab_size > target_vocab_size
 
-    @pytest.mark.integration
+    @pytest.mark.slow
     @pytest.mark.parametrize(
         ("split,vocab_size"),
         [

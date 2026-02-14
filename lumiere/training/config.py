@@ -209,11 +209,12 @@ class Config:
         yield from self.data.items()
 
     @classmethod
-    def from_file(cls, config_path: str) -> "Config":
+    def from_file(cls, config_path: str, override=False) -> "Config":
         """Create a `Config` instance from a YAML file.
 
         Args:
             config_path: Path to the YAML configuration file.
+            override: Whether to override an existing singleton instance. Defaults to `False`.
 
         Returns:
             Initialized `Config` instance.
@@ -227,4 +228,4 @@ class Config:
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
-        return cls(config)
+        return cls(config, override)

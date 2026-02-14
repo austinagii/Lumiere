@@ -146,7 +146,7 @@ def capture_inputs(storage):
 class TestTrainer:
     """Tests for the 'Trainer' class."""
 
-    @pytest.mark.integration
+    @pytest.mark.slow
     def test_fit_optimizes_model_parameters(self, trainer_builder, device):
         trainer = trainer_builder(max_epochs=3)
         optimizer = MagicMock(wraps=trainer.optimizer)
@@ -174,6 +174,7 @@ class TestTrainer:
         assert optimizer.step.call_count == metrics.global_step
         assert scheduler.step.call_count == metrics.global_step
 
+    @pytest.mark.slow
     def test_train_trains_model_on_all_training_data(
         self, trainer_builder, model, dataloader, pipeline, device
     ):
@@ -199,6 +200,7 @@ class TestTrainer:
             )
         )
 
+    @pytest.mark.slow
     def test_train_executes_the_specified_number_of_epochs(
         self, trainer_builder, dataloader, pipeline, device
     ):
@@ -279,6 +281,7 @@ class TestTrainer:
 
         assert trainer.state.current_epoch == max_epochs
 
+    @pytest.mark.slow
     def test_validation_scores_are_calculated_correctly(self):
         dataset = IdentityDataset(
             {
