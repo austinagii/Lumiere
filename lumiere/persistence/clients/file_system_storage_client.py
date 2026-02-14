@@ -31,9 +31,9 @@ from lumiere.persistence.storage_client import StorageClient
 
 
 DEFAULT_BASE_DIR = Path(".")
-RUN_CONFIG_PATH_TEMPLATE = "runs/{run_id}/config.yaml"
-RUN_ARTIFACT_PATH_TEMPLATE = "runs/{run_id}/artifacts/{key}"
-RUN_CHECKPOINT_PATH_TEMPLATE = "runs/{run_id}/checkpoints/{checkpoint_tag}.pt"
+RUN_CONFIG_PATH_TEMPLATE = "{run_id}/config.yaml"
+RUN_ARTIFACT_PATH_TEMPLATE = "{run_id}/artifacts/{key}"
+RUN_CHECKPOINT_PATH_TEMPLATE = "{run_id}/checkpoints/{checkpoint_tag}.pt"
 
 
 class FileSystemStorageClient(StorageClient):

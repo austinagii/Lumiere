@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from lumiere.training.run import generate_run_id
 from lumiere.persistence.clients import FileSystemStorageClient
 from lumiere.persistence.errors import StorageError
+from lumiere.training.run import generate_run_id
 
 
 # TODO: Add the following two fixtures to a test utils module.
@@ -60,7 +60,7 @@ class TestFileSystemStorageClient:
 
         fs_storage_client.init_run(run_id, train_config)
 
-        expected_config_path = tmp_path / f"runs/{run_id}/config.yaml"
+        expected_config_path = tmp_path / f"{run_id}/config.yaml"
 
         assert expected_config_path.exists()
         # Text written to disk should be the equivalent of a yaml dump of the config.
@@ -69,9 +69,7 @@ class TestFileSystemStorageClient:
     def test_save_checkpoint_creates_directory_if_it_does_not_exist(
         self, fs_storage_client, run_id
     ):
-        expected_checkpoint_dir = (
-            fs_storage_client.base_dir / f"runs/{run_id}/checkpoints/"
-        )
+        expected_checkpoint_dir = fs_storage_client.base_dir / f"{run_id}/checkpoints/"
 
         assert not expected_checkpoint_dir.exists()
 
@@ -89,7 +87,7 @@ class TestFileSystemStorageClient:
         )
 
         expected_checkpoint_path = (
-            fs_storage_client.base_dir / f"runs/{run_id}/checkpoints/best.pt"
+            fs_storage_client.base_dir / f"{run_id}/checkpoints/best.pt"
         )
 
         assert expected_checkpoint_path.exists()
@@ -99,7 +97,7 @@ class TestFileSystemStorageClient:
         self, fs_storage_client, run_id
     ):
         expected_checkpoint_path = (
-            fs_storage_client.base_dir / f"runs/{run_id}/checkpoints/best.pt"
+            fs_storage_client.base_dir / f"{run_id}/checkpoints/best.pt"
         )
 
         # Write some content to the checkpoint path. We expect this to be overridden.
@@ -116,7 +114,7 @@ class TestFileSystemStorageClient:
         self, fs_storage_client
     ):
         expected_checkpoint_path = (
-            fs_storage_client.base_dir / f"runs/{run_id}/checkpoints/best.pt"
+            fs_storage_client.base_dir / f"{run_id}/checkpoints/best.pt"
         )
 
         expected_checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
@@ -143,7 +141,7 @@ class TestFileSystemStorageClient:
         self, fs_storage_client, run_id, artifact_key, artifact
     ):
         expected_artifact_path = Path(
-            f"{fs_storage_client.base_dir}/runs/{run_id}/artifacts/{artifact_key}"
+            f"{fs_storage_client.base_dir}/{run_id}/artifacts/{artifact_key}"
         )
 
         fs_storage_client.save_artifact(run_id, artifact_key, artifact)
@@ -155,7 +153,7 @@ class TestFileSystemStorageClient:
     ):
         artifact = ("Sam Altman", "Ilya Sutskever", "Dario Amodei", "Mira Murati")
         expected_artifact_path = Path(
-            f"{fs_storage_client.base_dir}/runs/{run_id}/artifacts/{artifact_key}"
+            f"{fs_storage_client.base_dir}/{run_id}/artifacts/{artifact_key}"
         )
 
         assert not expected_artifact_path.exists()
@@ -181,7 +179,7 @@ class TestFileSystemStorageClient:
     ):
         artifact = ("Sam Altman", "Ilya Sutskever", "Dario Amodei", "Mira Murati")
         expected_artifact_path = Path(
-            f"{fs_storage_client.base_dir}/runs/{run_id}/artifacts/{artifact_key}"
+            f"{fs_storage_client.base_dir}/{run_id}/artifacts/{artifact_key}"
         )
 
         assert not expected_artifact_path.exists()
@@ -201,7 +199,7 @@ class TestFileSystemStorageClient:
     ):
         artifact = ("Sam Altman", "Ilya Sutskever", "Dario Amodei", "Mira Murati")
         expected_artifact_path = Path(
-            f"{fs_storage_client.base_dir}/runs/{run_id}/artifacts/{artifact_key}"
+            f"{fs_storage_client.base_dir}/{run_id}/artifacts/{artifact_key}"
         )
 
         assert not expected_artifact_path.exists()
@@ -238,7 +236,7 @@ class TestFileSystemStorageClient:
         self, fs_storage_client, run_id, artifact_key, artifact
     ):
         expected_artifact_path = Path(
-            f"{fs_storage_client.base_dir}/runs/{run_id}/artifacts/{artifact_key}"
+            f"{fs_storage_client.base_dir}/{run_id}/artifacts/{artifact_key}"
         )
 
         # Create the artifact file directly on the file system
@@ -261,7 +259,7 @@ class TestFileSystemStorageClient:
     ):
         artifact = {"test": "data"}
         expected_artifact_path = Path(
-            f"{fs_storage_client.base_dir}/runs/{run_id}/artifacts/{artifact_key}"
+            f"{fs_storage_client.base_dir}/{run_id}/artifacts/{artifact_key}"
         )
 
         # Create the artifact file so it exists
