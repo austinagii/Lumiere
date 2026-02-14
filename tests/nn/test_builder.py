@@ -1,188 +1,53 @@
-import tempfile
-from pathlib import Path
-
-import pytest
 from torch.nn import RMSNorm
 
-from lumiere.nn.builder import (
-    ModelBuilder,
-    ModelSpec,
-)
+from lumiere.nn.builder import ModelBuilder
 from lumiere.nn.components.feedforward import (
     LinearFeedForward,
 )
 
 
-class TestModelSpec:
-    def test_model_spec_can_be_initialized_from_argument_dict(self):
-        args = {
-            "context_size": 512,
-            "embedding_size": 1024,
-            "num_blocks": 6,
-            "block": {
-                "type": "standard",
-                "hidden_size": 768,
-                "dropout": 0.1,
-                "feedforward": {
-                    "type": "linear",
-                    "d_ff": 2048,
-                },
-            },
-        }
-        spec = ModelSpec(args)
-
-        assert spec.args == args
-        assert spec["context_size"] == 512
-        assert spec["embedding_size"] == 1024
-        assert spec["num_blocks"] == 6
-        assert spec["block"]["type"] == "standard"
-        assert spec["block"]["hidden_size"] == 768
-        assert spec["block.dropout"] == 0.1
-        assert spec["block.feedforward.type"] == "linear"
-        assert spec["block.feedforward.d_ff"] == 2048
-
-    def test_init_raises_an_error_if_args_is_none(self):
-        with pytest.raises(ValueError):
-            ModelSpec(None)
-
-    def test_from_yaml_correctly_builds_spec_from_yaml_file(self):
-        yaml_content = """
-        context_size: 512
-        embedding_size: 1024
-        num_layers: 6
-        block:
-            type: standard
-            hidden_size: 768
-            dropout: 0.1
-            feedforward:
-                type: linear
-                d_ff: 2048
-        """
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            yaml_path = f.name
-
-        try:
-            spec = ModelSpec.from_yaml(yaml_path)
-
-            assert spec["context_size"] == 512
-            assert spec["embedding_size"] == 1024
-            assert spec["num_layers"] == 6
-            assert spec["block.type"] == "standard"
-            assert spec["block.hidden_size"] == 768
-            assert spec["block.dropout"] == 0.1
-            assert spec["block.feedforward.type"] == "linear"
-            assert spec["block.feedforward.d_ff"] == 2048
-        finally:
-            Path(yaml_path).unlink()
-
-    def test_from_yaml_raises_error_if_file_path_is_invalid(self):
-        with pytest.raises(ValueError):
-            ModelSpec.from_yaml(123)
-
-    def test_from_yaml_raises_error_if_file_path_does_not_exist(self):
-        with pytest.raises(FileNotFoundError):
-            ModelSpec.from_yaml("/path/to/nonexistent/file.yaml")
-
-    def test_getitem_retrieves_argument_value(self):
-        spec = ModelSpec(
-            {
-                "context_size": 512,
-                "embedding_size": 1024,
-                "num_blocks": 6,
-            }
-        )
-
-        assert spec["context_size"] == 512
-        assert spec["embedding_size"] == 1024
-        assert spec["num_blocks"] == 6
-
-    def test_getitem_retrieves_component_arguments_using_dot_notation(self):
-        spec = ModelSpec(
-            {
-                "context_size": 512,
-                "embedding_size": 1024,
-                "num_blocks": 6,
-                "block": {"type": "standard", "hidden_size": 768, "dropout": 0.1},
-            }
-        )
-
-        assert spec["block.hidden_size"] == 768
-
-    def test_setitem_sets_argument_to_specified_value(self):
-        spec = ModelSpec(
-            {
-                "context_size": 512,
-                "embedding_size": 1024,
-                "num_blocks": 6,
-                "block": {"type": "standard", "hidden_size": 768, "dropout": 0.1},
-            }
-        )
-
-        spec["context_size"] = 2048
-        spec["block.hidden_size"] = 1024
-
-        assert spec["context_size"] == 2048
-        assert spec["block.hidden_size"] == 1024
-
-    def test_setitem_creates_ancestor_if_missing(self):
-        spec = ModelSpec(
-            {
-                "context_size": 512,
-                "embedding_size": 1024,
-                "num_blocks": 6,
-            }
-        )
-
-        spec["block.feedforward.type"] = "standard"
-
-        assert spec["block.feedforward"] == {"type": "standard"}
-
-
 class TestModelBuilder:
     def test_build_produces_a_transformer_that_matches_provided_spec(self):
-        spec = ModelSpec(
-            {
-                "type": "transformer",
+        spec = {
+            "type": "transformer",
+            "vocab_size": 1024,
+            "context_size": 64,
+            "num_blocks": 4,
+            "embedding": {
+                "type": "sinusoidal",
                 "vocab_size": 1024,
                 "context_size": 64,
-                "num_blocks": 4,
-                "embedding": {
-                    "type": "sinusoidal",
-                    "vocab_size": 1024,
-                    "context_size": 64,
+                "embedding_size": 128,
+                "padding_id": 0,
+            },
+            "block": {
+                "type": "standard",
+                "attention": {
+                    "type": "multihead",
+                    "num_heads": 4,
                     "embedding_size": 128,
-                    "padding_id": 0,
+                    "d_key": 32,
+                    "d_value": 32,
                 },
-                "block": {
-                    "type": "standard",
-                    "attention": {
-                        "type": "multihead",
-                        "num_heads": 4,
-                        "embedding_size": 128,
-                        "d_key": 32,
-                        "d_value": 32,
-                    },
-                    "feedforward": {
-                        "type": "linear",
-                        "embedding_size": 128,
-                        "d_ff": 256,
-                        "dropout": 0.1,
-                    },
-                    "normalization": {
-                        "type": "rms",
-                        "normalized_shape": 128,
-                    },
+                "feedforward": {
+                    "type": "linear",
+                    "embedding_size": 128,
+                    "d_ff": 256,
                     "dropout": 0.1,
-                    "pre_norm": True,
-                    "post_norm": True,
                 },
                 "normalization": {
                     "type": "rms",
                     "normalized_shape": 128,
                 },
-            }
-        )
+                "dropout": 0.1,
+                "pre_norm": True,
+                "post_norm": True,
+            },
+            "normalization": {
+                "type": "rms",
+                "normalized_shape": 128,
+            },
+        }
         transformer = ModelBuilder.build(spec)
 
         assert transformer.context_size == 64
@@ -214,43 +79,41 @@ class TestModelBuilder:
         assert isinstance(transformer.final_norm, RMSNorm)
 
     def test_build_inherits_ancestor_args_when_module_args_are_omitted(self):
-        spec = ModelSpec(
-            {
-                "type": "transformer",
-                "vocab_size": 1024,
-                "context_size": 64,
-                "embedding_size": 128,
-                "normalized_shape": 128,
-                "num_blocks": 4,
-                "num_heads": 4,
-                "d_key": 32,
-                "d_value": 32,
-                "embedding": {
-                    "type": "sinusoidal",
-                    "padding_id": 0,
+        spec = {
+            "type": "transformer",
+            "vocab_size": 1024,
+            "context_size": 64,
+            "embedding_size": 128,
+            "normalized_shape": 128,
+            "num_blocks": 4,
+            "num_heads": 4,
+            "d_key": 32,
+            "d_value": 32,
+            "embedding": {
+                "type": "sinusoidal",
+                "padding_id": 0,
+            },
+            "block": {
+                "type": "standard",
+                "attention": {
+                    "type": "multihead",
                 },
-                "block": {
-                    "type": "standard",
-                    "attention": {
-                        "type": "multihead",
-                    },
-                    "feedforward": {
-                        "type": "linear",
-                        "d_ff": 256,
-                        "dropout": 0.1,
-                    },
-                    "normalization": {
-                        "type": "rms",
-                    },
+                "feedforward": {
+                    "type": "linear",
+                    "d_ff": 256,
                     "dropout": 0.1,
-                    "pre_norm": True,
-                    "post_norm": True,
                 },
                 "normalization": {
                     "type": "rms",
                 },
-            }
-        )
+                "dropout": 0.1,
+                "pre_norm": True,
+                "post_norm": True,
+            },
+            "normalization": {
+                "type": "rms",
+            },
+        }
         transformer = ModelBuilder.build(spec)
 
         for block in transformer.blocks:
