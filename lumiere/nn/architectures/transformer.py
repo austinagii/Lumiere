@@ -4,7 +4,10 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from lumiere.internal.registry import discover
 
+
+@discover(nn.Module, "model.transformer")
 class Transformer(nn.Module):
     """A transformer model.
 

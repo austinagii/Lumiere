@@ -1,19 +1,16 @@
 """Classes for dynamically building a Transformer model from a specification."""
 
+import copy
 import inspect
 from collections.abc import Mapping
-from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 import yaml
 from torch import nn
-from torch.nn import LayerNorm, RMSNorm
 
-from lumiere.internal.di import DependencyContainer, resolve_value
+from lumiere.internal.di import DependencyContainer
 from lumiere.internal.registry import get_component
-from lumiere.nn.architectures.transformer import Transformer
-from lumiere.nn.components.component import create_factory
 
 
 def load(
@@ -44,31 +41,25 @@ def load(
             "vocab_size": 30000,
             "context_size": 512,
             "num_blocks": 12,
-            "embedding_factory": {
-                "type": "embedding",
+            "embedding": {
                 "name": "sinusoidal",
                 "padding_id": 0
             },
-            "block_factory": {
-                "type": "block",
+            "block": {
                 "name": "standard",
-                "attention_factory": {
-                    "type": "attention",
+                "attention": {
                     "name": "multihead",
                     "num_heads": 8
                 },
-                "feedforward_factory": {
-                    "type": "feedforward",
+                "feedforward": {
                     "name": "linear",
                     "d_ff": 2048
                 },
-                "normalization_factory": {
-                    "type": "normalization",
+                "normalization": {
                     "name": "rms"
                 }
             },
-            "normalization_factory": {
-                "type": "normalization",
+            "normalization": {
                 "name": "rms"
             }
         }
@@ -76,45 +67,11 @@ def load(
         ```
     """
     try:
-        # Resolve dependencies in the config
-        resolved_config = _resolve_nested_config(config, container)
-
         # Build the model using TransformerBuilder
-        spec = ModelSpec(resolved_config)
-        return TransformerBuilder.build(spec, container=container)
+        spec = ModelSpec(config)
+        return ModelBuilder.build(spec, container=container)
     except Exception as e:
         raise RuntimeError(f"Error building model from spec: {e}") from e
-
-
-def _resolve_nested_config(
-    config: Mapping[str, Any], container: DependencyContainer | None
-) -> dict[str, Any]:
-    """Recursively resolve dependencies in a nested configuration.
-
-    Args:
-        config: Configuration dictionary that may contain nested dicts.
-        container: Optional DependencyContainer for resolving dependencies.
-
-    Returns:
-        Configuration with all dependencies resolved.
-    """
-    resolved = {}
-    for key, value in config.items():
-        if isinstance(value, dict):
-            # Recursively resolve nested configs
-            resolved[key] = _resolve_nested_config(value, container)
-        elif isinstance(value, list):
-            # Resolve list items
-            resolved[key] = [
-                _resolve_nested_config(item, container)
-                if isinstance(item, dict)
-                else resolve_value(item, container)
-                for item in value
-            ]
-        else:
-            # Resolve single values
-            resolved[key] = resolve_value(value, container)
-    return resolved
 
 
 class ModelSpec:
@@ -156,7 +113,7 @@ class ModelSpec:
 
     """
 
-    def __init__(self, args: dict[str, Any]):
+    def __init__(self, args: Mapping[str, Any]):
         """Initialize a model specification.
 
         Args:
@@ -339,12 +296,30 @@ class ModelSpec:
         del obj[key_components[len(key_components) - 1]]
 
 
-class TransformerBuilder:
-    """A builder for constructing transformer models from a specification."""
+def _is_nested(value: Any) -> bool:
+    return isinstance(value, (dict, list))
+
+
+class ModelBuilder:
+    """A builder for constructing a model from a specification."""
 
     @staticmethod
     def build(spec: ModelSpec, container=None) -> nn.Module:
         """Create a model according to the provided specification.
+
+        Models are built by specifying a config. Configs are key->value mappings where keys
+        correspond to argument names from a model's initializer and the values are the
+        arguments. A config may not contain a key->value mapping for all possible args. If the
+        missing arg is optional, then the default value specified in the model's iniatilizer
+        will be used. If the arg is required, then a resolution process will take place. During
+        resolution, the missing argument will be taken from the closest ancestor which specifies
+        that argument. If no ancestors specify that argument, then the argument will be passed from
+        the dependency container. If no such dependency exists then an error will be raised.
+
+        A funky note on arg values. In cases where an arg value is itself a mapping or a container
+        of mappings describing a component, then the arg should be treated as a factory. The model
+        should be able to reference the factory multiple times to generate an unlimited number of
+        instances of the defined component.
 
         Args:
             spec: The specification of the desired transformer.
@@ -357,73 +332,62 @@ class TransformerBuilder:
                 parameter for a module is not found in the specification.
 
         """
-        transformer_args = deepcopy(spec.args)
 
-        def _resolve_nested_factories(label, spec, parent_params, container=container):
+        def _build_module_factory(module_type, module_args, container):
             """Perform a single-pass depth-first traversal of the spec tree.
 
             Replaces child specs with factory functions that produce modules
             according to that spec. Parameters are inherited from ancestors by
             passing accumulated context downward.
             """
-            # Merge parent params with current spec (current takes precedence)
-            available_params = {**parent_params, **spec}
+            if (variant := module_args.get("type")) is None:
+                raise ValueError(f"No 'type' defined for component {module_type}")
 
-            # Recursively resolve child specs
-            for key, value in spec.items():
-                if isinstance(value, dict):  # This value is a child spec
-                    resolved = _resolve_nested_factories(
-                        key,
-                        value,
-                        available_params,  # Pass down accumulated params
-                        container=container,  # Pass down container
-                    )
-                    spec[key] = resolved
-                    # Update available_params so siblings can access resolved factories
-                    available_params[key] = resolved
+            if (module_cls := get_component(module_type, variant)) is None:
+                # Exit early if the component could not be found.
+                raise ValueError(
+                    f"Variant '{variant}' for module type '{module_type}' could not be"
+                    + " found in the registry."
+                )
 
-            # If this spec defines a module type and name, create a factory for it
-            if "type" in spec and "name" in spec:
-                # Get the component class to check which params it accepts
-                component_type = spec.get("type")
-                component_name = spec.get("name")
-                component_cls = get_component(component_type, component_name)
-
-                if component_cls:
-                    # Get the component's __init__ signature
-                    sig = inspect.signature(component_cls.__init__)
-                    # Build factory config with only accepted params
-                    factory_config = {"type": component_type, "name": component_name}
-
-                    for param_name in sig.parameters:
-                        if param_name == "self":
-                            continue
-                        # Check spec first, then available_params
-                        if param_name in spec:
-                            factory_config[param_name] = spec[param_name]
-                        elif param_name in available_params:
-                            factory_config[param_name] = available_params[param_name]
-
-                    factory = create_factory(factory_config, container=container)
+            resolved_args = {}
+            nested_args = []
+            for arg_name, arg_value in module_args.items():
+                if _is_nested(arg_value):
+                    nested_args.append((arg_name, arg_value))
                 else:
-                    raise ValueError(f"Component '{component_type}.{component_name}' not found")
+                    resolved_args[arg_name] = arg_value
 
-                # Clean up type and name from spec
-                del spec["type"]
-                del spec["name"]
+            for arg_name, arg_value in nested_args:
+                resolved_args[arg_name] = _build_module_factory(
+                    arg_name,
+                    {**copy.deepcopy(resolved_args), **arg_value},
+                    container=container,
+                )
 
-                return factory
-            else:
-                return spec
+            factory_args = {}
+            for param_name, param in inspect.signature(
+                module_cls.__init__
+            ).parameters.items():
+                if param_name == "self":
+                    continue
 
-        _resolve_nested_factories("", transformer_args, {})
+                arg_value = resolved_args.get(param_name)
 
-        # Filter transformer_args to only include parameters accepted by Transformer
-        transformer_params = inspect.signature(Transformer).parameters
-        filtered_args = {
-            key: value
-            for key, value in transformer_args.items()
-            if key in transformer_params
-        }
+                if arg_value is None and param.default is inspect.Parameter.empty:
+                    if container is not None:
+                        arg_value = container.get(param_name)
 
-        return Transformer(**filtered_args)
+                    if arg_value is None:
+                        # Required parameter not found anywhere
+                        raise ValueError(
+                            f"Required parameter '{param_name}' not found for {module_type}.{variant}"
+                        )
+
+                factory_args[param_name] = arg_value
+
+            return lambda: module_cls(**factory_args)
+
+        return _build_module_factory(
+            "model", copy.deepcopy(spec.args), container=container
+        )()

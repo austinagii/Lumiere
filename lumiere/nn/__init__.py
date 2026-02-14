@@ -1,4 +1,4 @@
-from .builder import ModelSpec, TransformerBuilder, load
+from .builder import ModelBuilder, ModelSpec, load
 from .components.attention import MultiHeadAttention
 from .components.blocks import StandardTransformerBlock
 from .components.embedding import SinusoidalPositionalEmbedding
@@ -8,7 +8,7 @@ from .components.feedforward import LinearFeedForward, SwigluFeedForward
 __all__ = [
     # Builder
     "ModelSpec",
-    "TransformerBuilder",
+    "ModelBuilder",
     "load",
     # Components
     "StandardTransformerBlock",

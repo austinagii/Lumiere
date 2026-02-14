@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 from torch.nn import RMSNorm
 
+from lumiere.nn.builder import (
+    ModelBuilder,
+    ModelSpec,
+)
 from lumiere.nn.components.feedforward import (
     LinearFeedForward,
-)
-from lumiere.nn.builder import (
-    TransformerBuilder,
-    ModelSpec,
 )
 
 
@@ -139,42 +139,38 @@ class TestModelSpec:
         assert spec["block.feedforward"] == {"type": "standard"}
 
 
-class TestTransformerBuilder:
+class TestModelBuilder:
     def test_build_produces_a_transformer_that_matches_provided_spec(self):
         spec = ModelSpec(
             {
+                "type": "transformer",
                 "vocab_size": 1024,
                 "context_size": 64,
                 "num_blocks": 4,
                 "embedding": {
-                    "type": "embedding",
-                    "name": "sinusoidal",
+                    "type": "sinusoidal",
                     "vocab_size": 1024,
                     "context_size": 64,
                     "embedding_size": 128,
                     "padding_id": 0,
                 },
                 "block": {
-                    "type": "block",
-                    "name": "standard",
+                    "type": "standard",
                     "attention": {
-                        "type": "attention",
-                        "name": "multihead",
+                        "type": "multihead",
                         "num_heads": 4,
                         "embedding_size": 128,
                         "d_key": 32,
                         "d_value": 32,
                     },
                     "feedforward": {
-                        "type": "feedforward",
-                        "name": "linear",
+                        "type": "linear",
                         "embedding_size": 128,
                         "d_ff": 256,
                         "dropout": 0.1,
                     },
                     "normalization": {
-                        "type": "normalization",
-                        "name": "rms",
+                        "type": "rms",
                         "normalized_shape": 128,
                     },
                     "dropout": 0.1,
@@ -182,13 +178,12 @@ class TestTransformerBuilder:
                     "post_norm": True,
                 },
                 "normalization": {
-                    "type": "normalization",
-                    "name": "rms",
+                    "type": "rms",
                     "normalized_shape": 128,
                 },
             }
         )
-        transformer = TransformerBuilder.build(spec)
+        transformer = ModelBuilder.build(spec)
 
         assert transformer.context_size == 64
         assert transformer.num_blocks == 4
@@ -221,6 +216,7 @@ class TestTransformerBuilder:
     def test_build_inherits_ancestor_args_when_module_args_are_omitted(self):
         spec = ModelSpec(
             {
+                "type": "transformer",
                 "vocab_size": 1024,
                 "context_size": 64,
                 "embedding_size": 128,
@@ -230,38 +226,32 @@ class TestTransformerBuilder:
                 "d_key": 32,
                 "d_value": 32,
                 "embedding": {
-                    "type": "embedding",
-                    "name": "sinusoidal",
+                    "type": "sinusoidal",
                     "padding_id": 0,
                 },
                 "block": {
-                    "type": "block",
-                    "name": "standard",
+                    "type": "standard",
                     "attention": {
-                        "type": "attention",
-                        "name": "multihead",
+                        "type": "multihead",
                     },
                     "feedforward": {
-                        "type": "feedforward",
-                        "name": "linear",
+                        "type": "linear",
                         "d_ff": 256,
                         "dropout": 0.1,
                     },
                     "normalization": {
-                        "type": "normalization",
-                        "name": "rms",
+                        "type": "rms",
                     },
                     "dropout": 0.1,
                     "pre_norm": True,
                     "post_norm": True,
                 },
                 "normalization": {
-                    "type": "normalization",
-                    "name": "rms",
+                    "type": "rms",
                 },
             }
         )
-        transformer = TransformerBuilder.build(spec)
+        transformer = ModelBuilder.build(spec)
 
         for block in transformer.blocks:
             assert block.feedforward.embedding_size == 128

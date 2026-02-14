@@ -153,6 +153,13 @@ discovery_paths = ["."]
 [tool.lumiere.discovery.registries.component]
 type = "torch.nn.Module"
 name = "component"
-base_module = "lumiere.nn.components"
-discovery_paths = ["attention", "feedforward", "embedding", "blocks"]
+base_module = "lumiere.nn"
+discovery_paths = [
+  "architectures", 
+  "components.attention", 
+  "components.feedforward", 
+  "components.embedding", 
+  "components.blocks",
+  "components.normalization"
+]
 hierarchical = true

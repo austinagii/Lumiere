@@ -16,38 +16,30 @@ storage:
       basedir: ./runs
 
 model:
+  type: transformer
   vocab_size: 4096
   context_size: 64
   embedding_size: 128
   num_blocks: 4
+  normalization:
+    type: rms
+    normalized_shape: 128
   embedding:
-    type: embedding
-    name: sinusoidal
+    type: sinusoidal
     padding_id: 0
   block:
-    type: block
-    name: standard
+    type: standard
     attention:
-      type: attention
-      name: multihead
+      type: multihead
       num_heads: 4
       d_key: 32
       d_value: 32
     feedforward:
-      type: feedforward
-      name: linear
+      type: linear
       d_ff: 256
-    normalization:
-      type: normalization
-      name: rms
-      normalized_shape: 128
     dropout: 0.1
     pre_norm: True
     post_norm: False
-  normalization:
-    type: normalization
-    name: rms
-    normalized_shape: 128
 
 data:
   datasets:
