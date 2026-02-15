@@ -1,7 +1,7 @@
 """Simple discovery system for registering components.
 
 Components are registered using @discover(Type, "name") and stored in a simple
-nested dictionary. Autodiscovery happens on import by reading pyproject.toml.
+nested dictionary. Autodiscovery happens on import by reading lumiere.yaml.
 """
 
 import importlib
@@ -9,7 +9,7 @@ import pkgutil
 from pathlib import Path
 from typing import TypeVar
 
-import tomli
+import yaml
 
 
 T = TypeVar("T")
@@ -84,31 +84,31 @@ def get_component(component_type: str, component_name: str):
 
 
 def _autodiscover():
-    """Autodiscover modules from pyproject.toml configuration."""
-    # Find pyproject.toml
+    """Autodiscover modules from lumiere.yaml configuration."""
+    # Find lumiere.yaml
     current_path = Path.cwd()
-    pyproject_path = None
+    config_path = None
 
     for _ in range(5):
-        candidate = current_path / "pyproject.toml"
+        candidate = current_path / "lumiere.yaml"
         if candidate.exists():
-            pyproject_path = candidate
+            config_path = candidate
             break
         if current_path.parent == current_path:
             break
         current_path = current_path.parent
 
-    if not pyproject_path:
+    if not config_path:
         return
 
     try:
-        with open(pyproject_path, "rb") as f:
-            config = tomli.load(f)
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
     except Exception:
         return
 
     # Get discovery config
-    discovery_config = config.get("tool", {}).get("lumiere", {}).get("discovery", {})
+    discovery_config = config.get("discovery", {})
     registries_config = discovery_config.get("registries", {})
 
     # Import modules for each registry
