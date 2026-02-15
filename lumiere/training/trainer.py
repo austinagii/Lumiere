@@ -128,7 +128,7 @@ class Trainer:
             self.state.prev_loss = eval_metrics.avg_loss
             self._execute_hooks("post_eval", eval_metrics)
 
-            eval_perplexity = torch.exp(torch.tensor(eval_metrics.avg_loss))
+            eval_perplexity = torch.exp(eval_metrics.avg_loss)
             logger.info(
                 f"Epoch {self.state.current_epoch:04d} | "
                 f"Train Loss: {train_metrics.avg_loss:.4f} | "
@@ -143,8 +143,9 @@ class Trainer:
             else:
                 self.state.patience_counter += 1
 
-            logger.info("--------------------------------")
             self._execute_hooks("post_epoch")
+
+            logger.info("--------------------------------")
 
             if (
                 self.patience is not None
