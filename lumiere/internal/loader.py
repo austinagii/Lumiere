@@ -83,7 +83,9 @@ class Loader:
         return load(type_cls, config, container, **required_params)
 
     @staticmethod
-    def tokenizer(config: dict[str, Any], container: Any = None) -> Tokenizer:
+    def tokenizer(
+        config: dict[str, Any], container: Any = None, state: bytes = None
+    ) -> Tokenizer:
         """Load a tokenizer from configuration.
 
         Args:
@@ -105,7 +107,12 @@ class Loader:
             tokenizer = Loader.tokenizer({"name": "bpe", "vocab_size": "@vocab_size"})
             ```
         """
-        return load_tokenizer(config, container)
+        if state is None:
+            return load_tokenizer(config, container)
+        else:
+            tokenizer_cls = get(Tokenizer, config.get("name"))
+            del config["name"]
+            return tokenizer_cls.from_bytes(state, **config)
 
     @staticmethod
     def optimizer(
@@ -283,6 +290,7 @@ def load(
     # Use global container if none provided
     if container is None:
         from lumiere.internal.di import get_global_container
+
         container = get_global_container()
 
     # Get the implementation name
@@ -408,6 +416,7 @@ def load_data(config: dict[str, Any], container: Any = None) -> DataLoader:
     # Use global container if none provided
     if container is None:
         from lumiere.internal.di import get_global_container
+
         container = get_global_container()
 
     if (dataset_configs := config.get("datasets")) is None:
@@ -451,6 +460,7 @@ def load_pipeline(config: dict[str, Any], container: Any = None) -> Pipeline:
     # Use global container if none provided
     if container is None:
         from lumiere.internal.di import get_global_container
+
         container = get_global_container()
 
     # Handle nested preprocessors

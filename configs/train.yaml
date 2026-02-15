@@ -1,19 +1,5 @@
-# The argument tree, a hirearchy of initialization arguments for each component with the
-# top level name.
-
-runs:
-  checkpoints:
-    sources:
-      - filesystem
-      - azure-blob
-    destinations:
-      - filesystem
-      - azure-blob
-
-storage:
-  clients:
-    filesystem:
-      basedir: ./runs
+# Training configuration
+# Model, data, optimizer, and training hyperparameters
 
 model:
   type: transformer
@@ -37,6 +23,9 @@ model:
     feedforward:
       type: linear
       d_ff: 256
+    normalization:
+      type: rms
+      normalized_shape: 128
     dropout: 0.1
     pre_norm: True
     post_norm: False

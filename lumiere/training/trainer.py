@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from time import time
 
 import torch
@@ -34,6 +34,13 @@ class TrainingState:
     prev_loss: float = float("inf")
     best_loss: float = float("inf")
     patience_counter: int = 0
+
+    def as_dict(self):
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, dict):
+        return cls(**dict)
 
 
 class Trainer:
@@ -89,8 +96,7 @@ class Trainer:
         self.stopping_threshold = stopping_threshold
         self.patience = patience
         self.gradient_clip_norm = gradient_clip_norm
-        if state is None:
-            self.state = TrainingState()
+        self.state = TrainingState() if state is None else state
         self._hooks: dict[str, list[Callable]] = {
             "pre_epoch": [],
             "post_epoch": [],

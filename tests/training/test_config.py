@@ -33,7 +33,7 @@ def file(tmp_path):
 
 class TestConfig:
     def test_config_can_be_loaded_from_a_file(self, file):
-        config = Config.from_file(file, override=True)
+        config = Config.from_file(file)
         assert config["model.name"] == "gpt2"
         assert config["model.vocab_size"] == 50257
         assert config["model.n_layers"] == 12
@@ -56,7 +56,7 @@ class TestConfig:
             Config.from_file("non_existent_file.yaml")
 
     def test_delitem_deletes_top_level_key(self):
-        config = Config({"model": {"vocab_size": 1000}, "tokenizer": {"name": "gpt2"}}, override=True)
+        config = Config({"model": {"vocab_size": 1000}, "tokenizer": {"name": "gpt2"}})
 
         del config["tokenizer"]
 
@@ -64,7 +64,7 @@ class TestConfig:
         assert config["model.vocab_size"] == 1000
 
     def test_delitem_deletes_nested_key_with_dot_notation(self):
-        config = Config({"model": {"vocab_size": 1000, "layers": 12}}, override=True)
+        config = Config({"model": {"vocab_size": 1000, "layers": 12}})
 
         del config["model.vocab_size"]
 
@@ -82,8 +82,7 @@ class TestConfig:
                         }
                     }
                 }
-            },
-            override=True
+            }
         )
 
         del config["model.block.feedforward.type"]
@@ -92,13 +91,13 @@ class TestConfig:
         assert config["model.block.feedforward.d_ff"] == 2048
 
     def test_delitem_raises_error_for_missing_key(self):
-        config = Config({"model": {"vocab_size": 1000}}, override=True)
+        config = Config({"model": {"vocab_size": 1000}})
 
         with pytest.raises(KeyError, match="Field 'model.nonexistent' not found in config"):
             del config["model.nonexistent"]
 
     def test_delitem_raises_error_for_invalid_key_type(self):
-        config = Config({"model": {"vocab_size": 1000}}, override=True)
+        config = Config({"model": {"vocab_size": 1000}})
 
         with pytest.raises(TypeError, match="Key must be a non-empty string"):
             del config[123]
@@ -109,8 +108,7 @@ class TestConfig:
                 "context_size": 512,
                 "embedding_size": 1024,
                 "num_blocks": 6,
-            },
-            override=True
+            }
         )
 
         config["block.feedforward.type"] = "standard"

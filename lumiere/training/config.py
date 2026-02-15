@@ -8,14 +8,12 @@ SUBKEY_SEPARATOR = "."
 
 
 class Config:
-    """Configuration object with dot notation access and singleton pattern.
+    """Configuration object with dot notation access.
 
     Provides hierarchical configuration access using dot notation (e.g., `config["model.vocab_size"]`).
-    Implements the singleton pattern to ensure only one configuration instance exists.
 
     Args:
         data: Dictionary containing the configuration data.
-        override: Whether to override an existing singleton instance. Defaults to `False`.
 
     Example:
         ```python
@@ -26,37 +24,12 @@ class Config:
         ```
     """
 
-    _instance = None
-
     @classmethod
-    def is_initialized(cls) -> bool:
-        """Check whether the configuration singleton has been initialized.
-
-        Returns:
-            `True` if the singleton is initialized, `False` otherwise.
-        """
-        return (
-            cls._instance is not None
-            and hasattr(cls._instance, "_initialized")
-            and cls._instance._initialized
-        )
-
-    @classmethod
-    def get_instance(cls):
-        """Return the configuration singleton instance.
-
-        Returns:
-            The `Config` singleton instance, or `None` if not initialized.
-        """
-        return cls._instance
-
-    @classmethod
-    def from_yaml(cls, path: str | Path, override=False):
+    def from_yaml(cls, path: str | Path):
         """Create a `Config` instance from a YAML file.
 
         Args:
             path: Path to the YAML configuration file.
-            override: Whether to override an existing singleton instance. Defaults to `False`.
 
         Returns:
             Initialized `Config` instance.
@@ -77,17 +50,15 @@ class Config:
         with open(path) as f:
             config = yaml.safe_load(f)
 
-        return cls(config, override)
+        return cls(config)
 
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+    def __init__(self, data: dict[str, Any]):
+        """Initialize a Config instance with the given data.
 
-    def __init__(self, data: dict[str, Any], override=False):
-        if not hasattr(self, "_initialized") or override:  # Prevent re-initialization
-            self.data = data
-            self._initialized = True
+        Args:
+            data: Dictionary containing the configuration data.
+        """
+        self.data = data
 
     def get(self, key: str) -> Any:
         """Get a configuration value using dot notation, returning `None` if not found.
@@ -209,12 +180,11 @@ class Config:
         yield from self.data.items()
 
     @classmethod
-    def from_file(cls, config_path: str, override=False) -> "Config":
+    def from_file(cls, config_path: str) -> "Config":
         """Create a `Config` instance from a YAML file.
 
         Args:
             config_path: Path to the YAML configuration file.
-            override: Whether to override an existing singleton instance. Defaults to `False`.
 
         Returns:
             Initialized `Config` instance.
@@ -228,4 +198,4 @@ class Config:
         with open(config_path) as f:
             config = yaml.safe_load(f)
 
-        return cls(config, override)
+        return cls(config)
