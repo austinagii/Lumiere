@@ -13,7 +13,7 @@ Example:
         environ["AZURE_BLOB_CONNECTION_STRING"]
     )
     storage = AzureBlobStorageClient(blob_client, "my-container")
-    storage.init_run("run-123", {"max_epochs": 10})
+    storage.save_artifact("run-123", "config.yaml", {"max_epochs": 10})
     ```
 """
 
@@ -23,14 +23,12 @@ import pickle
 from contextlib import contextmanager
 from typing import Any
 
-import yaml
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.blob import BlobServiceClient
 
 from lumiere.persistence.errors import (
     ArtifactNotFoundError,
     CheckpointNotFoundError,
-    RunNotFoundError,
     StorageError,
 )
 from lumiere.persistence.storage_client import StorageClient
@@ -44,8 +42,7 @@ logging.getLogger("azure.core").setLevel(logging.WARNING)
 # templates. It's just that the storage browser in azure visualizes them like paths in a
 # filesyste.
 RUN_BASE_PATH_TEMPLATE = "runs/{run_id}"
-RUN_CONFIG_PATH_TEMPLATE = "runs/{run_id}/config.yaml"
-RUN_ARTIFACT_PATH_TEMPLATE = "runs/{run_id}/{key}"
+RUN_ARTIFACT_PATH_TEMPLATE = "runs/{run_id}/artifacts/{key}"
 RUN_CHECKPOINT_PATH_TEMPLATE = "runs/{run_id}/checkpoints/{checkpoint_tag}.pt"
 
 # Disable Azure blob storage logging
@@ -58,7 +55,7 @@ class AzureBlobStorageClient(StorageClient):
 
     Artifacts managed by this client are stored in Azure Blob Storage as blobs using
     this structure:
-        runs/{run_id}/config.yaml           - Training configuration (YAML)
+        runs/{run_id}/artifacts/{key}       - Arbitrary artifacts (pickled)
         runs/{run_id}/checkpoints/{tag}.pt  - Model checkpoints (binary)
 
     Attributes:
@@ -80,45 +77,6 @@ class AzureBlobStorageClient(StorageClient):
         # name not empty or None etc...
         self.blob_service_client = blob_service_client
         self.container_name = container_name
-
-    def init_run(self, run_id: str, train_config: dict[Any, Any]) -> None:
-        """An implementation of :meth:`StorageClient.init_run`."""
-        config_blob_path = RUN_CONFIG_PATH_TEMPLATE.format(run_id=run_id)
-
-        self._upload_blob(
-            self.blob_service_client,
-            self.container_name,
-            config_blob_path,
-            yaml.dump(train_config),
-        )
-
-    def resume_run(
-        self, run_id: str, checkpoint_tag: str
-    ) -> tuple[dict[Any, Any], bytes]:
-        """An implementation of :meth:`StorageClient.resume_run`."""
-        run_config_blob_name = RUN_CONFIG_PATH_TEMPLATE.format(run_id=run_id)
-        try:
-            run_config_data = self._download_blob(
-                self.blob_service_client, self.container_name, run_config_blob_name
-            )
-        except ArtifactNotFoundError:
-            raise RunNotFoundError("The run config could not be found in Azure Blob.")
-
-        run_config = yaml.safe_load(run_config_data)
-
-        checkpoint_blob_name = RUN_CHECKPOINT_PATH_TEMPLATE.format(
-            run_id=run_id, checkpoint_tag=checkpoint_tag
-        )
-        try:
-            checkpoint = self._download_blob(
-                self.blob_service_client, self.container_name, checkpoint_blob_name
-            )
-        except ArtifactNotFoundError:
-            raise CheckpointNotFoundError(
-                "The checkpoint could not be found in Azure Blob."
-            )
-
-        return run_config, checkpoint
 
     def save_checkpoint(
         self, run_id: str, checkpoint_tag: str, checkpoint: bytes

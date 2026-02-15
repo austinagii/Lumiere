@@ -4,7 +4,6 @@ import string
 from pathlib import Path
 
 import pytest
-import yaml
 
 from lumiere.persistence.clients import FileSystemStorageClient
 from lumiere.persistence.errors import StorageError
@@ -46,25 +45,6 @@ class TestFileSystemStorageClient:
         client = FileSystemStorageClient(tmp_path)
 
         assert client.base_dir == tmp_path
-
-    def test_init_run_creates_a_new_directory_containing_the_train_config(
-        self, tmp_path, fs_storage_client, run_id
-    ):
-        train_config_yaml = """
-        name: gpt2
-        model:
-            num_heads: 10
-            num_blocks: 3
-        """
-        train_config = yaml.safe_load(train_config_yaml)
-
-        fs_storage_client.init_run(run_id, train_config)
-
-        expected_config_path = tmp_path / f"{run_id}/config.yaml"
-
-        assert expected_config_path.exists()
-        # Text written to disk should be the equivalent of a yaml dump of the config.
-        assert expected_config_path.read_text() == yaml.dump(train_config)
 
     def test_save_checkpoint_creates_directory_if_it_does_not_exist(
         self, fs_storage_client, run_id

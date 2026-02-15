@@ -5,7 +5,6 @@ import string
 from collections import namedtuple
 
 import pytest
-import yaml
 from azure.core.exceptions import AzureError, ResourceNotFoundError
 from azure.storage.blob import BlobServiceClient
 
@@ -92,33 +91,6 @@ def _add_target_checkpoint(container_client):
 
 class TestAzureBlobStorageClient:
     @pytest.mark.slow
-    def test_init_run_stores_run_config_as_blob(self, az_storage_client, container):
-        # Define the training config.
-        train_config_yaml = """
-        name: gpt2
-        model:
-            num_heads: 10
-            num_blocks: 3
-        """
-        train_config = yaml.safe_load(train_config_yaml)
-        run_id = generate_run_id()
-
-        expected_config_path = f"runs/{run_id}/config.yaml"
-
-        # Verify the run is clean.
-        blob_client = container.client.get_blob_client(expected_config_path)
-        assert not blob_client.exists()
-
-        # Initialize the run.
-        az_storage_client.init_run(run_id=run_id, train_config=train_config)
-
-        # Verify that the run config is saved correctly.
-        assert blob_client.exists()
-        assert yaml.safe_load(blob_client.download_blob().readall()) == train_config
-
-    # TODO: Add test to verify behavior when run config upload fails.
-
-    @pytest.mark.slow
     def test_save_checkpoint_successfully_uploads_artifact(
         self, az_storage_client, container
     ):
@@ -199,7 +171,7 @@ class TestAzureBlobStorageClient:
     ):
         run_id = generate_run_id()
         key = "testkey"
-        expected_blob_name = f"runs/{run_id}/{key}"
+        expected_blob_name = f"runs/{run_id}/artifacts/{key}"
         _, container_client = container
         blob_client = container_client.get_blob_client(expected_blob_name)
 
@@ -218,7 +190,7 @@ class TestAzureBlobStorageClient:
     ):
         run_id = generate_run_id()
         key = "testkey"
-        expected_blob_name = f"runs/{run_id}/{key}"
+        expected_blob_name = f"runs/{run_id}/artifacts/{key}"
         _, container_client = container
         blob_client = container_client.get_blob_client(expected_blob_name)
 
@@ -244,7 +216,7 @@ class TestAzureBlobStorageClient:
     def test_save_artifact_raises_error_if_existing_key_and_overwrite_is_false(
         self, az_storage_client, container_client, run_id, artifact_key
     ):
-        blob_client = container_client.get_blob_client(f"runs/{run_id}/{artifact_key}")
+        blob_client = container_client.get_blob_client(f"runs/{run_id}/artifacts/{artifact_key}")
 
         # Verify the artifact doesn't already exist.
         assert not blob_client.exists()
@@ -266,7 +238,7 @@ class TestAzureBlobStorageClient:
     def test_save_artifact_does_not_overwite_existing_artifacts_by_default(
         self, az_storage_client, container_client, run_id, artifact_key
     ):
-        blob_client = container_client.get_blob_client(f"runs/{run_id}/{artifact_key}")
+        blob_client = container_client.get_blob_client(f"runs/{run_id}/artifacts/{artifact_key}")
 
         assert not blob_client.exists() 
 

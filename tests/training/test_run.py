@@ -70,7 +70,7 @@ class TestRunManager:
     def test_run_manager_can_be_initialized_from_yaml_config(
         self, dsconfig_file_path: Path
     ) -> None:
-        config = Config.from_yaml(dsconfig_file_path, override=True)
+        config = Config.from_yaml(dsconfig_file_path)
         run_manager = RunManager.from_config(config)
 
         assert isinstance(run_manager.storage_clients[0], FileSystemStorageClient)
@@ -87,13 +87,13 @@ class TestRunManager:
         )
 
         for client in run_manager.storage_clients:
-            mocker.patch.object(client, "init_run")
+            mocker.patch.object(client, "save_artifact")
 
         run_manager.init_run(run_config)
 
         for client in run_manager.storage_clients:
-            client.init_run.assert_called_once_with(
-                run_manager.run.id, run_manager.run.config
+            client.save_artifact.assert_called_once_with(
+                run_manager.run.id, "config.yaml", run_manager.run.config.data, False
             )
 
     def test_init_run_raises_error_if_any_storage_client_fails(
@@ -105,16 +105,16 @@ class TestRunManager:
         )
 
         for client in run_manager.storage_clients:
-            mocker.patch.object(client, "init_run")
+            mocker.patch.object(client, "save_artifact")
 
         # Configure one storage client to fail
-        run_manager.storage_clients[1].init_run.side_effect = StorageError()
+        run_manager.storage_clients[1].save_artifact.side_effect = StorageError()
 
         with pytest.raises(StorageError):
             run_manager.init_run(run_config)
 
         for client in run_manager.storage_clients:
-            client.init_run.assert_called_once()
+            client.save_artifact.assert_called_once()
 
     def test_save_checkpoint_cascades_to_storage_clients(
         self, mocker, run_manager, checkpoint

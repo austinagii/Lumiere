@@ -12,20 +12,19 @@ from typing import Any
 import torch
 from azure.storage.blob import BlobServiceClient
 
-from lumiere.training.config import Config
 from lumiere.persistence.clients import (
     AzureBlobStorageClient,
     FileSystemStorageClient,
 )
-from lumiere.persistence.storage_client import StorageClient
 from lumiere.persistence.errors import (
     ArtifactNotFoundError,
     CheckpointNotFoundError,
     RunNotFoundError,
     StorageError,
 )
-
+from lumiere.persistence.storage_client import StorageClient
 from lumiere.training.checkpoint import Checkpoint, CheckpointType
+from lumiere.training.config import Config
 
 
 LOGGER = logging.getLogger(__name__)
@@ -42,10 +41,10 @@ class Run:
     """
 
     _id: str
-    _config: dict[Any, Any]
+    _config: Config
 
     @classmethod
-    def from_config(cls, config: dict[Any, Any]) -> None:
+    def from_config(cls, config: Config) -> None:
         """Create a new run with a generated ID from a configuration.
 
         Args:
@@ -183,7 +182,7 @@ class RunManager:
 
         return RunManager.from_config(config)
 
-    def init_run(self, run_config: dict[Any, Any]) -> str:
+    def init_run(self, run_config: Config | dict[str, Any]) -> str:
         """Initialize a new training run with the specified configuration.
 
         Creates a new run with a unique identifier and stores the configuration
@@ -191,7 +190,7 @@ class RunManager:
         parallel across all destinations using a thread pool.
 
         Args:
-            run_config: Dictionary containing the training configuration.
+            run_config: Configuration object or dictionary containing the training configuration.
 
         Returns:
             The unique identifier of the newly initialized run.
@@ -199,13 +198,23 @@ class RunManager:
         Raises:
             Exception: If initialization fails in any destination.
         """
+        # Ensure run_config is a Config object
+        if isinstance(run_config, dict):
+            run_config = Config(run_config)
+
         self.run = Run.from_config(run_config)
 
         with futures.ThreadPoolExecutor(
             max_workers=max(len(self.storage_clients), MAX_THREAD_POOL_SIZE)
         ) as executor:
             jobs = [
-                executor.submit(client.init_run, self.run.id, self.run.config)
+                executor.submit(
+                    client.save_artifact,
+                    self.run.id,
+                    "config.yaml",
+                    self.run.config,
+                    False,
+                )
                 for client in self.storage_clients
             ]
 
@@ -248,16 +257,35 @@ class RunManager:
         """
         run_config, checkpoint_bytes = None, None
 
+        # Load the run config from the first available source
         for client in self.retrieval_clients:
             try:
-                run_config, checkpoint_bytes = client.resume_run(run_id, checkpoint_tag)
-                break
+                run_config = client.load_artifact(run_id, "config.yaml")
+                if run_config is not None:
+                    break
             except Exception as e:
-                print(e)
+                LOGGER.info(f"Could not load config from source: {e}")
                 continue
 
-        if run_config is None or checkpoint_bytes is None:
-            raise CheckpointNotFoundError("Checkpoint could not be found")
+        if run_config is None:
+            raise RunNotFoundError(
+                f"Run config for run '{run_id}' could not be found in any source"
+            )
+
+        # Load the checkpoint from the first available source
+        for client in self.retrieval_clients:
+            try:
+                checkpoint_bytes = client.load_checkpoint(run_id, checkpoint_tag)
+                if checkpoint_bytes is not None:
+                    break
+            except Exception as e:
+                LOGGER.info(f"Could not load checkpoint from source: {e}")
+                continue
+
+        if checkpoint_bytes is None:
+            raise CheckpointNotFoundError(
+                f"Checkpoint '{checkpoint_tag}' for run '{run_id}' could not be found"
+            )
 
         self.run = Run(run_id, run_config)
         checkpoint = Checkpoint.from_bytes(checkpoint_bytes, device=device)
@@ -267,6 +295,7 @@ class RunManager:
         self,
         checkpoint_type: CheckpointType,
         checkpoint: Checkpoint,
+        epoch_no: int = None,
     ) -> None:
         """Save a checkpoint for the current training run.
 
@@ -278,7 +307,7 @@ class RunManager:
             checkpoint_type: Type of checkpoint (EPOCH, BEST, or FINAL).
             checkpoint: The checkpoint object to save.
         """
-        checkpoint_tag = self._create_checkpoint_tag(checkpoint_type, checkpoint)
+        checkpoint_tag = self._create_checkpoint_tag(checkpoint_type, epoch_no)
 
         with futures.ThreadPoolExecutor(
             max_workers=max(len(self.storage_clients), MAX_THREAD_POOL_SIZE)
@@ -426,9 +455,9 @@ class RunManager:
 
     @staticmethod
     def _create_checkpoint_tag(
-        checkpoint_type: CheckpointType, checkpoint: Checkpoint
+        checkpoint_type: CheckpointType, epoch_no: int = None
     ) -> str:
         if checkpoint_type == CheckpointType.EPOCH:
-            return f"{checkpoint_type.value}:{checkpoint.epoch:04d}"
+            return f"{checkpoint_type.value}:{epoch_no:04d}"
         else:
             return str(checkpoint_type)

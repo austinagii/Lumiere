@@ -9,9 +9,9 @@ Example:
     from lumiere.training.checkpoint import Checkpoint
 
     fs_storage_client = FileSystemStorageClient("./")
-    fs_storage_client.init_run("run-123", {"max_epochs": 10})
+    fs_storage_client.save_artifact("run-123", "config.yaml", {"max_epochs": 10})
     fs_storage_client.save_checkpoint(
-        "run-123", "best", Checkpoint(avg_loss=0.15324)
+        "run-123", "best", Checkpoint(avg_loss=0.15324).to_bytes()
     )
     ```
 """
@@ -19,8 +19,6 @@ Example:
 import pickle
 from pathlib import Path
 from typing import Any
-
-import yaml
 
 from lumiere.persistence.errors import (
     CheckpointNotFoundError,
@@ -31,7 +29,6 @@ from lumiere.persistence.storage_client import StorageClient
 
 
 DEFAULT_BASE_DIR = Path(".")
-RUN_CONFIG_PATH_TEMPLATE = "{run_id}/config.yaml"
 RUN_ARTIFACT_PATH_TEMPLATE = "{run_id}/artifacts/{key}"
 RUN_CHECKPOINT_PATH_TEMPLATE = "{run_id}/checkpoints/{checkpoint_tag}.pt"
 
@@ -41,7 +38,7 @@ class FileSystemStorageClient(StorageClient):
 
     Artifacts managed by this client are stored on the local file system according to
     the following structure:
-        {base_dir}/runs/{run_id}/config.yaml            - Training configuration (YAML)
+        {base_dir}/runs/{run_id}/artifacts/{key}        - Arbitrary artifacts (pickled)
         {base_dir}/runs/{run_id}/checkpoints/{tag}.pt   - Model checkpoints (binary)
 
     """
@@ -61,33 +58,6 @@ class FileSystemStorageClient(StorageClient):
 
         # TODO: Raise error if base_diir is invalid type.
         self._base_dir = base_dir
-
-    def init_run(self, run_id: str, run_config: dict[Any, Any]) -> None:
-        """Implements :meth:`StorageClient.init_run`."""
-        run_config_file_path = self.base_dir / RUN_CONFIG_PATH_TEMPLATE.format(
-            run_id=run_id
-        )
-
-        # TODO: Add proper exception handling. What happens if we cant write to
-        # the specified base directory.
-        run_config_file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        run_config_file_path.write_text(yaml.dump(run_config))
-
-    def resume_run(
-        self, run_id: str, checkpoint_tag: str
-    ) -> tuple[dict[Any, Any], bytes]:
-        """Implements :meth:`StorageClient.resume_run`."""
-        run_config_path = self.base_dir / RUN_CONFIG_PATH_TEMPLATE.format(run_id=run_id)
-
-        if not run_config_path.exists():
-            raise RunNotFoundError(f"No run with id '{run_id}' could be found.")
-
-        run_config = yaml.safe_load(run_config_path.read_text())
-
-        checkpoint = self.load_checkpoint(run_id, checkpoint_tag)
-
-        return run_config, checkpoint
 
     def save_checkpoint(
         self, run_id: str, checkpoint_tag: str, checkpoint: bytes
