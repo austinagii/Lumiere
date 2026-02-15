@@ -128,6 +128,14 @@ class Trainer:
             self.state.prev_loss = eval_metrics.avg_loss
             self._execute_hooks("post_eval", eval_metrics)
 
+            eval_perplexity = torch.exp(torch.tensor(eval_metrics.avg_loss))
+            logger.info(
+                f"Epoch {self.state.current_epoch:04d} | "
+                f"Train Loss: {train_metrics.avg_loss:.4f} | "
+                f"Val Loss: {eval_metrics.avg_loss:.4f} | "
+                f"Val Perplexity: {eval_perplexity:.4f}"
+            )
+
             if self.state.prev_loss < self.state.best_loss - self.stopping_threshold:
                 self.state.best_loss = self.state.prev_loss
                 self.state.patience_counter = 0
@@ -203,14 +211,16 @@ class Trainer:
                 total_loss += batch_loss
                 num_batches += 1
                 num_steps += 1
-                # TODO: If no scheduler then we need to pull LR from somewhere else.
                 current_lr = self.scheduler.get_last_lr()[0] if self.scheduler else 0
+                avg_loss = total_loss / num_batches
+                avg_perplexity = torch.exp(avg_loss)
 
                 pbar.set_postfix(
                     {
                         "batch_no": f"{num_batches:>05d}",
-                        "loss": f"{batch_loss:>07.4f}",
-                        "perplexity": f"{torch.exp(batch_loss):>09.4f}",
+                        "batch_loss": f"{batch_loss:>07.4f}",
+                        "avg_loss": f"{avg_loss:>07.4f}",
+                        "avg_ppl": f"{avg_perplexity:>09.4f}",
                         "lr": f"{current_lr:.4f}",
                         "grad_norm": f"{grad_norm:.4f}",
                     }
@@ -259,17 +269,18 @@ class Trainer:
                     outputs = self.model(samples)
 
                 batch_loss = self.loss_fn(outputs, targets)
-
-                # Update the progress bar.
-                pbar.set_postfix(
-                    {
-                        "loss": f"{batch_loss:.4f}",
-                        "perplexity": f"{torch.exp(batch_loss):.4f}",
-                    }
-                )
-
                 total_loss += batch_loss
                 num_batches += 1
+                avg_loss = total_loss / num_batches
+                avg_perplexity = torch.exp(avg_loss)
+
+                pbar.set_postfix(
+                    {
+                        "batch_loss": f"{batch_loss:.4f}",
+                        "avg_loss": f"{avg_loss:.4f}",
+                        "avg_ppl": f"{avg_perplexity:.4f}",
+                    }
+                )
 
         return EvalMetrics(
             avg_loss=total_loss / num_batches,
