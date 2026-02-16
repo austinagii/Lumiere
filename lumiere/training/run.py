@@ -182,7 +182,7 @@ class RunManager:
 
         return RunManager.from_config(config)
 
-    def init_run(self, run_config: Config | dict[str, Any]) -> str:
+    def init_run(self, run_config: Config) -> str:
         """Initialize a new training run with the specified configuration.
 
         Creates a new run with a unique identifier and stores the configuration
@@ -198,10 +198,6 @@ class RunManager:
         Raises:
             Exception: If initialization fails in any destination.
         """
-        # Ensure run_config is a Config object
-        if isinstance(run_config, dict):
-            run_config = Config(run_config)
-
         self.run = Run.from_config(run_config)
 
         with futures.ThreadPoolExecutor(
@@ -227,7 +223,7 @@ class RunManager:
 
     def resume_run(
         self, run_id: str, checkpoint_tag: str | None = None, device=None
-    ) -> tuple[dict[Any, Any], Checkpoint]:
+    ) -> tuple[Config, Checkpoint]:
         """Resume the specified training run.
 
         This method sequentially iterates over this run manager's configured sources in
