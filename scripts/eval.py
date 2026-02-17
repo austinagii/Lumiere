@@ -1,4 +1,4 @@
-"""Test script for evaluating Lumière model checkpoints on test data."""
+"""Evaluation script for Lumiére models."""
 
 import argparse
 import logging
@@ -8,7 +8,7 @@ import torch
 from tqdm import tqdm
 
 from lumiere import Loader, register_dependency
-from lumiere.training import RunManager
+from lumiere.training import Checkpoint, RunManager, TrainingState
 from lumiere.training.config import Config
 from lumiere.training.loss import cross_entropy_loss
 from lumiere.utils import get_device, register_signal_handlers
@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 RUN_CONFIG_PATH = "lumiere.yaml"
 
 
-def load_test_components(config: Config, device: torch.device, checkpoint: dict):
-    """Load model components from a checkpoint for testing.
+def load_test_components(config: Config, checkpoint: Checkpoint, device: torch.device):
+    """Load components for evaluation.
 
     Args:
-        config: Training configuration from the run.
-        device: Device to use for testing.
-        checkpoint: Checkpoint containing model and tokenizer state.
+        config: The configuration for the training run.
+        checkpoint: The checkpoint to be loaded.
+        device: The device to use for testing.
 
     Returns:
         Tuple of (model, dataloader, pipeline, tokenizer)
@@ -74,7 +74,7 @@ def load_test_components(config: Config, device: torch.device, checkpoint: dict)
     return model, dataloader, pipeline, tokenizer
 
 
-def evaluate_on_test(model, dataloader, pipeline, device):
+def evaluate(model, dataloader, pipeline, device):
     """Evaluate the model on the test split.
 
     Args:
@@ -101,12 +101,7 @@ def evaluate_on_test(model, dataloader, pipeline, device):
         ) as pbar,
     ):
         for samples, targets in pbar:
-            # Process the batch and calculate the loss.
-            if isinstance(samples, tuple):
-                outputs = model(*samples)
-            else:
-                outputs = model(samples)
-
+            outputs = model(*samples) if isinstance(samples, tuple) else model(samples)
             batch_loss = cross_entropy_loss(outputs, targets)
             total_loss += batch_loss
             num_batches += 1
@@ -122,35 +117,32 @@ def evaluate_on_test(model, dataloader, pipeline, device):
             )
 
     avg_loss = total_loss / num_batches
-    perplexity = torch.exp(avg_loss)
+    avg_perplexity = torch.exp(avg_loss)
 
     return {
         "avg_loss": avg_loss.item(),
-        "perplexity": perplexity.item(),
+        "avg_perplexity": avg_perplexity.item(),
         "num_batches": num_batches,
     }
 
 
 def test(
     run_id: str,
-    checkpoint_tag: str = None,
+    checkpoint_tag: str,
 ):
     """Evaluate a model checkpoint on the test split.
 
     Args:
-        run_id: Run ID to load the checkpoint from.
-        checkpoint_tag: Checkpoint tag to evaluate (e.g., 'best', 'final', 'epoch:0001').
+        run_id: The ID of the training run which produced the checkpoint.
+        checkpoint_tag: The tag of the checkpoint to evaluate (e.g., 'best', 'final', 'epoch:0001').
     """
-    # Get device
     device = get_device()
     logger.info(f"Using device: {device}")
 
-    # Initialize RunManager from run config
     logger.info(f"Initializing RunManager from {RUN_CONFIG_PATH}...")
     run_manager = RunManager.from_config_file(RUN_CONFIG_PATH)
     logger.info("RunManager initialized")
 
-    # Load checkpoint
     if checkpoint_tag is None:
         checkpoint_tag = "best"
         logger.info(f"No checkpoint tag specified, defaulting to '{checkpoint_tag}'")
@@ -159,34 +151,27 @@ def test(
     config, checkpoint = run_manager.resume_run(run_id, checkpoint_tag, device=device)
     logger.info("Checkpoint loaded successfully")
 
-    # Load test components
     model, dataloader, pipeline, tokenizer = load_test_components(
-        config, device, checkpoint
+        config, checkpoint, device
     )
 
-    # Get training state info for context
-    if "training_state" in checkpoint:
-        from lumiere.training import TrainingState
+    training_state = TrainingState.from_dict(checkpoint["training_state"])
+    logger.info(
+        f"Checkpoint is from epoch {training_state.current_epoch} "
+        f"(global step {training_state.global_step})"
+    )
 
-        training_state = TrainingState.from_dict(checkpoint["training_state"])
-        logger.info(
-            f"Checkpoint is from epoch {training_state.current_epoch} "
-            f"(global step {training_state.global_step})"
-        )
-
-    # Evaluate on test split
     logger.info("=" * 60)
     logger.info(f"Evaluating run: {run_id}")
     logger.info(f"Checkpoint: {checkpoint_tag}")
     logger.info("=" * 60)
 
-    metrics = evaluate_on_test(model, dataloader, pipeline, device)
+    metrics = evaluate(model, dataloader, pipeline, device)
 
-    # Log results
     logger.info("=" * 60)
     logger.info("Test Evaluation Results:")
     logger.info(f"  Average Loss: {metrics['avg_loss']:.4f}")
-    logger.info(f"  Perplexity: {metrics['perplexity']:.4f}")
+    logger.info(f"  Perplexity: {metrics['avg_perplexity']:.4f}")
     logger.info(f"  Batches Processed: {metrics['num_batches']}")
     logger.info("=" * 60)
 
