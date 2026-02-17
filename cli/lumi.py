@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Lumiére CLI - Machine Learning Training and Evaluation Interface
+"""Lumiére CLI - Machine Learning Training and Evaluation Interface.
 
-This script provides easy access to the Lumiére toolkit for training and evaluating models.
+This script provides easy access to the Lumiére toolkit for training and evaluating
+models.
 """
 
 import argparse
@@ -9,7 +10,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import NoReturn, Optional
+from typing import NoReturn
 
 
 # ANSI color codes
@@ -65,6 +66,7 @@ def run_with_python_env(script_path: Path, args: list[str]) -> int:
 
     # Set PYTHONPATH to include the project root
     import os
+
     env = os.environ.copy()
     pythonpath = str(base_dir)
     if "PYTHONPATH" in env:
@@ -123,7 +125,7 @@ def command_test(args: list[str]) -> int:
         Exit code from the evaluation script
     """
     base_dir = get_base_dir()
-    script_path = base_dir / "scripts" / "test.py"
+    script_path = base_dir / "scripts" / "eval.py"
 
     if not script_path.exists():
         log_error(f"Evaluation script not found at {script_path}")
@@ -148,12 +150,11 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  lumi train --config configs/transformer.yaml
-  lumi train --run-id <run_id> --checkpoint-name best.pth
-  lumi test --run-id <run_id> --checkpoint-name best.pth
-  lumi train --disable-wandb-logging
+  lumi train --config-path configs/transformer.yaml
+  lumi train --run-id <run_id> --checkpoint-tag best
+  lumi eval --run-id <run_id> --checkpoint-tag best
+  lumi eval --run-id <run_id> --checkpoint-tag epoch:0001
 
-For more information, visit: https://github.com/yourusername/lumiere
         """,
     )
 
@@ -169,34 +170,12 @@ For more information, visit: https://github.com/yourusername/lumiere
         help="Train a machine learning model",
         description="Train a Lumiére transformer model with the specified configuration",
     )
-    train_parser.add_argument(
-        "train_args",
-        nargs=argparse.REMAINDER,
-        help="Arguments to pass to the training script",
-    )
 
-    # Test/Eval command
-    test_parser = subparsers.add_parser(
-        "test",
-        help="Evaluate a trained model",
-        description="Evaluate a trained Lumiére model on test data",
-    )
-    test_parser.add_argument(
-        "test_args",
-        nargs=argparse.REMAINDER,
-        help="Arguments to pass to the evaluation script",
-    )
-
-    # Alias 'eval' to 'test' for backwards compatibility
+    # Eval command
     eval_parser = subparsers.add_parser(
         "eval",
-        help="Evaluate a trained model (alias for 'test')",
-        description="Evaluate a trained Lumiére model on test data (alias for 'test')",
-    )
-    eval_parser.add_argument(
-        "eval_args",
-        nargs=argparse.REMAINDER,
-        help="Arguments to pass to the evaluation script",
+        help="Evaluate a trained model",
+        description="Evaluate a trained Lumiére model on test data",
     )
 
     return parser
@@ -211,7 +190,22 @@ def main() -> NoReturn:
         parser.print_help()
         sys.exit(0)
 
-    args = parser.parse_args()
+    # Parse only the command, then manually get the rest
+    # Find the command position
+    command_idx = None
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg in ["train", "eval"]:
+            command_idx = i
+            break
+
+    if command_idx is None:
+        # No valid command found, let argparse handle it
+        args = parser.parse_args()
+    else:
+        # Parse up to and including the command
+        args = parser.parse_args(sys.argv[1:command_idx + 1])
+        # Everything after the command goes to the script
+        script_args = sys.argv[command_idx + 1:]
 
     # Handle help command
     if args.command is None:
@@ -222,11 +216,9 @@ def main() -> NoReturn:
     exit_code = 0
 
     if args.command == "train":
-        exit_code = command_train(args.train_args)
-    elif args.command in ("test", "eval"):
-        # Handle both 'test' and 'eval' commands
-        command_args = args.test_args if args.command == "test" else args.eval_args
-        exit_code = command_test(command_args)
+        exit_code = command_train(script_args)
+    elif args.command == "eval":
+        exit_code = command_test(script_args)
     else:
         log_error(f"Unknown command: {args.command}")
         parser.print_help()

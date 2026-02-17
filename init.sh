@@ -5,7 +5,7 @@
 
 readonly PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CMD_NAME="lumi"
-readonly SCRIPT_PATH="${PROJECT_DIR}/cli/${CMD_NAME}.sh"
+readonly SCRIPT_PATH="${PROJECT_DIR}/cli/${CMD_NAME}.py"
 readonly CMD_BASE_DIR="/usr/local/bin"
 readonly CMD_PATH="${CMD_BASE_DIR}/${CMD_NAME}"
 
@@ -51,10 +51,10 @@ cleanup() {
         log_success "The '${CMD_NAME}' has been installed successfully!"
         echo
         echo "You can now use the following commands:"
-        echo -e "  ${GREEN}${CMD_NAME} train <model>${NC}   - Train a machine learning model"
-        echo -e "  ${GREEN}${CMD_NAME} chat <model>${NC}    - Start interactive chat session"
+        echo -e "  ${GREEN}${CMD_NAME} train --config-path <config>${NC}  - Train a machine learning model"
+        echo -e "  ${GREEN}${CMD_NAME} test --run-id <id>${NC}             - Evaluate a trained model"
         echo
-        echo -e "See ${GREEN}${CMD_NAME} help${NC} for more information and additional commands"
+        echo -e "See ${GREEN}${CMD_NAME} --help${NC} for more information and additional commands"
         echo
         echo "=================================================="
         echo "          Lumiére Installation Complete!          "

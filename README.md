@@ -30,14 +30,14 @@ pipenv install
 ### Training a Model
 
 ```bash
-# Train a new model with default settings
-python scripts/train.py
+# Train a new model
+lumi train --config-path configs/transformer.yaml
 
 # Resume training from a checkpoint
-python scripts/train.py --run-id <run_id> --checkpoint-name best.pth
+lumi train --run-id <run_id> --checkpoint-tag best
 
-# Train without logging to wandb
-python scripts/train.py --disable-wandb-logging
+# Evaluate a trained model
+lumi test --run-id <run_id> --checkpoint-tag best
 ```
 
 The model will be trained on WikiText-2 dataset and checkpoints will be saved to `artifacts/checkpoints/`.
