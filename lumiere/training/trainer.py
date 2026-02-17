@@ -330,6 +330,14 @@ class Trainer:
         """
         self._hooks["eval_improvement"].append(fn)
 
+    def state_dict(self) -> dict:
+        """Return the current training state as a dictionary.
+
+        Returns:
+            Dictionary representation of the current training state.
+        """
+        return self.state.as_dict()
+
     def _execute_hooks(self, event, /, *args):
         hooks = self._hooks[event]
         for hook in hooks:

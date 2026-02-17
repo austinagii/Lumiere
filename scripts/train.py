@@ -31,11 +31,11 @@ RUN_CONFIG_PATH = "lumiere.yaml"
 
 
 def init_training_run(config: Config, device: torch.device):
-    """Initialize training components for a new run.
+    """Initialize components for a new training run.
 
     Args:
-        config: Training configuration.
-        device: Device to use for training.
+        config: The configuration for the training run.
+        device: The device to use for training.
 
     Returns:
         Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer)
@@ -90,13 +90,13 @@ def init_training_run(config: Config, device: torch.device):
     return model, dataloader, pipeline, optimizer, scheduler, tokenizer
 
 
-def resume_training_run(config: Config, device: torch.device, checkpoint: Checkpoint):
-    """Resume training from a checkpoint.
+def resume_training_run(config: Config, checkpoint: Checkpoint, device: torch.device):
+    """Load components from a previous training run.
 
     Args:
-        config: Training configuration (from checkpoint).
-        device: Device to use for training.
-        checkpoint: Checkpoint to resume from.
+        config: The configuration from the previous training run.
+        checkpoint: The checkpoint to resume from.
+        device: The device to use for training.
 
     Returns:
         Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer)
@@ -145,14 +145,12 @@ def resume_training_run(config: Config, device: torch.device, checkpoint: Checkp
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     logger.info(f"Optimizer loaded: {type(optimizer).__name__}")
 
-    # Load scheduler and state
     scheduler = None
     scheduler_config = config.get("scheduler")
     if scheduler_config is not None:
         logger.info("Loading scheduler...")
         scheduler = Loader.scheduler(scheduler_config, optimizer)
 
-        # Load scheduler state from checkpoint
         assert "scheduler_state_dict" in checkpoint, (
             "Optimizer state could not be found in checkpoint"
         )
@@ -165,13 +163,10 @@ def resume_training_run(config: Config, device: torch.device, checkpoint: Checkp
 
 
 def create_checkpoint_saver(run_manager: RunManager):
-    """Create a checkpoint saving hook for the trainer.
+    """Create a hook to save checkpoints at the end of each epoch.
 
     Args:
-        run_manager: RunManager instance for saving checkpoints.
-        run_id: ID of the current run.
-        model: The model being trained.
-        config: Training configuration dictionary.
+        run_manager: The `RunManager` instance for saving checkpoints.
 
     Returns:
         Hook function to save checkpoints.
@@ -181,7 +176,7 @@ def create_checkpoint_saver(run_manager: RunManager):
         """Save checkpoint at the end of each epoch."""
         checkpoint = Checkpoint(
             run_id=run_manager.run.id,
-            training_state=trainer.state.as_dict(),
+            training_state=trainer.state_dict(),
             tokenizer=bytes(trainer.pipeline.tokenizer),
             model_state_dict=trainer.model.state_dict(),
             optimizer_state_dict=trainer.optimizer.state_dict(),
@@ -198,41 +193,36 @@ def create_checkpoint_saver(run_manager: RunManager):
         logger.info("Checkpoint saved successfully")
 
         # Save best checkpoint if this is the best epoch
-        if hasattr(trainer.state, "best_loss") and hasattr(trainer.state, "prev_loss"):
-            if trainer.state.prev_loss == trainer.state.best_loss:
-                logger.info("Saving 'best' checkpoint...")
-                run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
-                logger.info("Best checkpoint saved successfully")
+        if trainer.state.prev_loss == trainer.state.best_loss:
+            logger.info("Saving 'best' checkpoint...")
+            run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
+            logger.info("Checkpoint saved successfully")
 
     return save_checkpoint_hook
 
 
 def train(
-    config_path: str,
-    run_id: str = None,
-    checkpoint_tag: str = None,
+    config_path: str | None = None,
+    run_id: str | None = None,
+    checkpoint_tag: str | None = None,
 ):
-    """Run training from a configuration file with checkpointing support.
+    """Execute a training run.
 
     Args:
         config_path: Path to the training configuration YAML file.
         run_id: Optional run ID to resume from.
         checkpoint_tag: Optional checkpoint tag to resume from (requires run_id).
     """
-    # Get device
     device = get_device()
     logger.info(f"Using device: {device}")
 
-    # Initialize RunManager from run config
     logger.info(f"Initializing RunManager from {RUN_CONFIG_PATH}...")
     run_manager = RunManager.from_config_file(RUN_CONFIG_PATH)
     logger.info("RunManager initialized")
 
-    # Initialize or resume run
     if run_id is None:
         logger.info("Starting new training run...")
         config = Config.from_yaml(config_path)
-
         run_id = run_manager.init_run(config)
         logger.info(f"Initialized new training run with ID: {run_id}")
 
@@ -240,43 +230,29 @@ def train(
             init_training_run(config, device)
         )
 
+        # TODO: Move this into the initialization function.
         logger.info("Saving tokenizer artifact...")
         run_manager.save_artifact("tokenizer", tokenizer)
         logger.info("Tokenizer artifact saved successfully")
 
         training_state = None
     else:
-        # Resume from checkpoint - load training config from checkpoint
         logger.info(
             f"Resuming training run '{run_id}' from checkpoint '{checkpoint_tag}'..."
         )
-
-        if checkpoint_tag is None:
-            checkpoint_tag = "latest"
 
         config, checkpoint = run_manager.resume_run(
             run_id, checkpoint_tag, device=device
         )
         logger.info("Checkpoint loaded successfully")
 
-        # Get config from checkpoint
-        # config = checkpoint.get("config")
-        # if config is None:
-        #     raise ValueError("Checkpoint does not contain training configuration")
-        # config = Config(config)
-
-        # Resume training components
         model, dataloader, pipeline, optimizer, scheduler, tokenizer = (
-            resume_training_run(Config(config), device, checkpoint)
+            resume_training_run(config, checkpoint, device)
         )
 
         training_state = TrainingState.from_dict(checkpoint["training_state"])
         logger.info(f"Resuming from epoch {training_state.current_epoch}")
 
-    # Get training parameters
-    training_config = config["training"]
-
-    # Initialize trainer
     logger.info("Initializing trainer...")
     trainer = Trainer(
         model=model,
@@ -287,27 +263,21 @@ def train(
         scheduler=scheduler,
         device=device,
         state=training_state,
-        **training_config,
+        **config["training"],
     )
-
-    # Register checkpoint saving hook
-    checkpoint_saver = create_checkpoint_saver(run_manager)
-    trainer.register_post_epoch_hook(checkpoint_saver)
-
+    trainer.register_post_epoch_hook(create_checkpoint_saver(run_manager))
     logger.info("Trainer initialized successfully")
 
-    # Start training
     logger.info("=" * 60)
     logger.info(f"Starting training run: {run_id}")
     logger.info("=" * 60)
 
-    metrics = trainer.train()
+    trainer.train()
 
-    # Save final checkpoint
     logger.info("Saving final checkpoint...")
     final_checkpoint = Checkpoint(
         run_id=run_id,
-        training_state=trainer.state,
+        training_state=trainer.state_dict(),
         model_state_dict=model.state_dict(),
         optimizer_state_dict=trainer.optimizer.state_dict(),
     )
@@ -325,7 +295,7 @@ def main():
     register_signal_handlers()
 
     parser = argparse.ArgumentParser(
-        description="Train a Lumière transformer model with checkpointing",
+        description="Train a Lumiére model.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -334,21 +304,21 @@ def main():
         dest="config_path",
         type=str,
         default=None,
-        help="Path to the training configuration YAML file",
+        help="The path to the training configuration file",
     )
 
     parser.add_argument(
         "--run-id",
         dest="run_id",
         default=None,
-        help="The run ID to resume (required when loading from checkpoint)",
+        help="The ID of the training run to be resumed",
     )
 
     parser.add_argument(
         "--checkpoint-tag",
         dest="checkpoint_tag",
-        default=None,
-        help="The checkpoint tag to resume from (e.g., 'epoch:0001', 'best', 'final')",
+        default="best",
+        help="The tag of the checkpoint to resume from (e.g., 'epoch:0001', 'best', 'final')",
     )
 
     args = parser.parse_args()
