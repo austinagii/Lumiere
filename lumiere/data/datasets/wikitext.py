@@ -56,7 +56,7 @@ class WikiText2Dataset:
 
     def __init__(
         self,
-        split: str | None = None,
+        split: str = "100:100:100",
     ):
         """Initialize a WikiText2 dataset.
 
