@@ -3,13 +3,13 @@ from typing import Any
 
 import pytest
 
-from lumiere.training.config import Config
-from lumiere.training import Checkpoint, CheckpointType, Run, RunManager
 from lumiere.persistence.clients import (
     AzureBlobStorageClient,
     FileSystemStorageClient,
 )
 from lumiere.persistence.errors import ArtifactNotFoundError, StorageError
+from lumiere.training import Checkpoint, CheckpointType, Run, RunManager
+from lumiere.training.config import Config
 
 
 @pytest.fixture
@@ -93,7 +93,7 @@ class TestRunManager:
 
         for client in run_manager.storage_clients:
             client.save_artifact.assert_called_once_with(
-                run_manager.run.id, "config.yaml", run_manager.run.config.data, False
+                run_manager.run.id, "config.yaml", run_manager.run.config, False
             )
 
     def test_init_run_raises_error_if_any_storage_client_fails(
@@ -122,7 +122,7 @@ class TestRunManager:
         for client in run_manager.storage_clients:
             mocker.patch.object(client, "save_checkpoint")
 
-        run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint)
+        run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint, epoch_no=checkpoint['epoch'])
 
         for client in run_manager.storage_clients:
             client.save_checkpoint.assert_called_once_with(
@@ -143,7 +143,10 @@ class TestRunManager:
         for client in run_manager.storage_clients:
             mocker.patch.object(client, "save_checkpoint")
 
-        run_manager.save_checkpoint(checkpoint_type, checkpoint)
+        if checkpoint_type == CheckpointType.EPOCH:
+            run_manager.save_checkpoint(checkpoint_type, checkpoint, epoch_no=checkpoint['epoch'])
+        else:
+            run_manager.save_checkpoint(checkpoint_type, checkpoint)
 
         for client in run_manager.storage_clients:
             client.save_checkpoint.assert_called_once_with(
@@ -159,7 +162,7 @@ class TestRunManager:
         # Configure one storage client to fail
         run_manager.storage_clients[1].save_checkpoint.side_effect = StorageError()
 
-        run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint)
+        run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint, epoch_no=checkpoint['epoch'])
 
         for client in run_manager.storage_clients:
             client.save_checkpoint.assert_called_once()
@@ -177,9 +180,9 @@ class TestRunManager:
 
         run_manager.save_artifact(key, artifact)
 
-        # Since RunManager doesn't actually save the artifacts, but instead delegates 
-        # the actual work to the storage client configured for each location, we just 
-        # verify that the necessary calls have been dispatched correctly. 
+        # Since RunManager doesn't actually save the artifacts, but instead delegates
+        # the actual work to the storage client configured for each location, we just
+        # verify that the necessary calls have been dispatched correctly.
         for client in run_manager.storage_clients:
             actual_args = client.save_artifact.call_args.args
             assert actual_args[0] == run_manager.run.id
@@ -197,8 +200,8 @@ class TestRunManager:
 
         run_manager.save_artifact(key, artifact)
 
-        # Same as the other tests for this method, just verify that the method call 
-        # is dispatched specifying that the storage client should not overwrite the 
+        # Same as the other tests for this method, just verify that the method call
+        # is dispatched specifying that the storage client should not overwrite the
         # previous document.
         for client in run_manager.storage_clients:
             assert not client.save_artifact.call_args.kwargs["overwrite"]
@@ -212,7 +215,7 @@ class TestRunManager:
         key = "test"
         artifact = {"testdata": 10}
 
-        # Verify that the method call is dispatched to each storage client specifying 
+        # Verify that the method call is dispatched to each storage client specifying
         # that artifacts should be overwritten.
         run_manager.save_artifact(key, artifact, overwrite=True)
 
@@ -228,7 +231,7 @@ class TestRunManager:
         key = "test"
         artifact = {"testdata": 10}
 
-        # Verify that the method call is dispatched to each storage client specifying 
+        # Verify that the method call is dispatched to each storage client specifying
         # that artifacts should not be overwritten.
         run_manager.save_artifact(key, artifact, overwrite=False)
 
@@ -263,14 +266,14 @@ class TestRunManager:
             "test", ["some", "test", "data"], raise_exception=False
         )
 
-        # Double check to make sure that all clients (including the one that errored) 
+        # Double check to make sure that all clients (including the one that errored)
         # were callled.
         for client in run_manager.storage_clients:
             client.save_artifact.assert_called_once()
 
     # ------------------------------------
     # ------- LOAD_ARTIFACT TESTS --------
-    #-------------------------------------
+    # -------------------------------------
 
     def test_load_artifact_loads_from_storage_locations_in_configured_order(
         self, mocker, run_manager
@@ -287,16 +290,16 @@ class TestRunManager:
         )
 
         # Since our run_manager fixture defines a run manager configured with sources
-        # "azure-blob" and "filesystem" in that order. We should expect artifacts are 
-        # looked up from these sources in the same order. 
+        # "azure-blob" and "filesystem" in that order. We should expect artifacts are
+        # looked up from these sources in the same order.
 
         # Since azure blob comes first, we should find artifact1 on lookup.
         artifact = run_manager.load_artifact("test")
         assert artifact == artifact1
         assert artifact != artifact2  # Not necessary but for extra safety.
 
-        # If azure blob does not contain the object, then we expect the object should be 
-        # loaded from the filesystem. 
+        # If azure blob does not contain the object, then we expect the object should be
+        # loaded from the filesystem.
         run_manager.retrieval_clients[0].load_artifact.return_value = None
         artifact = run_manager.load_artifact("test")
         assert artifact == artifact2
@@ -308,7 +311,9 @@ class TestRunManager:
             mocker.patch.object(client, "load_artifact", side_effect=Exception())
 
         mocker.patch.object(
-            run_manager.retrieval_clients[-1], "load_artifact", return_value={"test": "data"}
+            run_manager.retrieval_clients[-1],
+            "load_artifact",
+            return_value={"test": "data"},
         )
 
         run_manager.load_artifact("test")
