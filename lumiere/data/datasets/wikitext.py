@@ -29,26 +29,28 @@ _ARTICLE_HEADER_PATTERN: Final[re.Pattern] = re.compile(
 
 @discover(Dataset, "wikitext")
 class WikiText2Dataset:
-    """Loads the WikiText-2 dataset.
+    """The WikiText-2 dataset.
+
+    This class provides access to complete Wikipedia articles from the WikiText2 dataset
+    across the train, validation and test splits. For each article, the title and
+    headers are removed, and the article is wrapped in start and end of sequence tokens.
 
     By default, all splits will be accessible in full. However, splits can be partially
     loaded or omitted by specifying percentages during initialization using a colon-
     separated format (e.g., "50:100:30" for 50% train, 100% validation, 30% test).
 
-    Once initialized, samples from a given split can be iterated over using bracket
-    notation (e.g., data['train']). Preprocessing is applied to all splits such that
-    each sample is a complete Wikipedia article.
+    ```python
+    dataset = WikiText2Dataset("50:100:30")
+    ```
 
-    Raises:
-        ValueError: If all splits are specified to be empty.
+    This class implements the `Dataset` protocol, allowing the use of subscript notation
+    to access an iterator over samples from a specified training split.
 
-    Example:
-        ```python
-        wikitext = WikiText2Dataset("20:30:50")
-        for sample in wikitext["train"]:
-            # process the sample
-            pass
-        ```
+    ```python
+    wikitext = WikiText2Dataset("50:100:30")
+    for article in wikitext["train"]:
+        print(article)
+    ```
 
     """
 
@@ -59,16 +61,16 @@ class WikiText2Dataset:
         """Initialize a WikiText2 dataset.
 
         Args:
-            split: Percentages for each split as a colon-separated string in the format
-                "train:validation:test" (e.g., "50:100:30"). Omitted values default to
-                100% (e.g., "50::30" loads 50% train, 100% validation, 30% test).
-                Defaults to "100:100:100".
+            split: Percentages for each training split specified as a colon-separated
+                string in the format "train:validation:test" (e.g., "50:100:30").
+                Omitted values default to 100% (e.g., "50::30" loads 50% train, 100%
+                validation, 30% test). Defaults to "100:100:100".
 
         Raises:
-            ValueError: If all splits are specified to be empty.
+            ValueError: If all splits are specified to be empty (0%).
 
         """
-        split_percentages = self._get_split_percentages(split)
+        split_percentages = parse_split_percentages(split)
         if not split_percentages:
             raise ValueError("At least one split must contain data.")
 
@@ -86,99 +88,93 @@ class WikiText2Dataset:
             for split_ix, split_name in enumerate(split_percentages.keys())
         }
 
-    @staticmethod
-    def _get_split_percentages(split: str | None) -> dict[str, int]:
-        """Parse split specification string into split percentages.
-
-        Args:
-            split: Split specification in format `"train:validation:test"` (e.g., `"50:100:30"`).
-                Empty or `None` defaults to `"100:100:100"`.
-
-        Returns:
-            Dictionary mapping split names to their percentages. Splits with 0% are excluded.
-
-        Raises:
-            ValueError: If the split string format is invalid.
-        """
-        split_percentages = {"train": 100, "validation": 100, "test": 100}
-
-        if split is not None:
-            if (match := _SPLIT_PATTERN.match(split)) is None:
-                raise ValueError(f"Split '{split}' is incorrectly formatted.")
-
-            # Override default split percentages with those specified. If zero, the
-            # split is removed entirely.
-            for split_name, percentage in match.groupdict().items():
-                if percentage is not None:
-                    percentage_value = int(percentage)
-
-                    if percentage_value == 0:
-                        del split_percentages[split_name]
-                    else:
-                        split_percentages[split_name] = percentage_value
-
-        return split_percentages
-
     def __getitem__(self, split_name: str) -> Generator[str, None, None]:
         """Return an iterator over samples in the specified split.
 
         Args:
-            split_name: Name of the split to access (`"train"`, `"validation"`, or `"test"`).
+            split_name: Name of the split to access. Must be one of "train",
+                "validation" or "test".
 
         Returns:
-            Generator yielding complete Wikipedia articles as strings.
+            Generator yielding complete aticles from the specified split.
 
         Raises:
             KeyError: If the specified split is not available.
         """
         if self._splits.get(split_name) is None:
-            raise KeyError(f"Invalid split '{split_name}'.")
+            raise KeyError(
+                f"Invalid split '{split_name}'. Avaliable splits are: "
+                + f"[{'.'.join(self._splits.keys())}]"
+            )
 
-        def _get_split():
-            yield from self._iter_articles(self._splits[split_name]["text"])
+        # Wrap in function to allow exception to be raised on calling __getitem__
+        # with invalid split, instead of on access to first element from iterator.
+        def _get_split() -> Generator[str, None, None]:
+            yield from _iter_articles(self._splits[split_name]["text"])
 
         return _get_split()
 
-    def _iter_articles(self, dataset: Iterable[str]) -> Generator[str, None, None]:
-        """Return an iterator over full articles in the specified dataset.
 
-        The dataset is preprocessed such that article titles and headers are
-        removed, text samples belonging to the same Wikipedia article are
-        concatenated into a single text sequence and each article is wrapped in start
-        and end of sequence tokens.
-        """
-        text_buffer: list[str] = []
+def parse_split_percentages(split: str | None) -> dict[str, int]:
+    """Parse split specification string.
 
-        for text in dataset:
-            # Ignore empty text.
-            if len(text.strip()) == 0:
-                continue
+    Args:
+        split: Split specification in format `"train:validation:test"`.
 
-            # Prevent samples containing header formatting details.
-            if _ARTICLE_HEADER_PATTERN.match(text):
-                continue
+    Returns:
+        Dictionary mapping split names to their percentages. Splits with 0% are
+            excluded.
 
-            # Prevent grouping unrelated text (where text crosses article boundaries).
-            if _ARTICLE_TITLE_PATTERN.match(text):
-                if len(text_buffer) > 0:
-                    yield self._concat_article(text_buffer)
-                    text_buffer = []
-                continue  # Also prevent samples containing title formatting details.
+    Raises:
+        ValueError: If the split string format is invalid.
+    """
+    split_percentages = {"train": 100, "validation": 100, "test": 100}
 
-            text_buffer.append(text)
+    if split is not None:
+        if (match := _SPLIT_PATTERN.match(split)) is None:
+            raise ValueError(f"Split '{split}' is incorrectly formatted.")
 
-        # Flush buffer to get last article since loop only yields at article boundaries.
-        if text_buffer:
-            yield self._concat_article(text_buffer)
+        # Override default split percentages with those specified. If zero, the
+        # split is removed entirely.
+        for split_name, percentage in match.groupdict().items():
+            if percentage is not None:
+                percentage_value = int(percentage)
 
-    @staticmethod
-    def _concat_article(text: list[str]) -> str:
-        """Concatenate text segments into a single article with special tokens.
+                if percentage_value == 0:
+                    del split_percentages[split_name]
+                else:
+                    split_percentages[split_name] = percentage_value
 
-        Args:
-            text: List of text segments belonging to the same article.
+    return split_percentages
 
-        Returns:
-            Concatenated article text wrapped in start-of-text and end-of-text tokens.
-        """
-        return f"<|sot|>{''.join(text)}<|eot|>"
+
+def _iter_articles(dataset: Iterable[str]) -> Generator[str, None, None]:
+    """Return an iterator over full articles in the specified dataset."""
+    text_buffer: list[str] = []
+
+    for text in dataset:
+        # Ignore empty text.
+        if len(text.strip()) == 0:
+            continue
+
+        # Prevent samples containing header formatting details.
+        if _ARTICLE_HEADER_PATTERN.match(text):
+            continue
+
+        # Prevent grouping unrelated text (where text crosses article boundaries).
+        if _ARTICLE_TITLE_PATTERN.match(text):
+            if len(text_buffer) > 0:
+                yield _concat_article(text_buffer)
+                text_buffer = []
+            continue  # Also prevent samples containing title formatting details.
+
+        text_buffer.append(text)
+
+    # Flush buffer to get last article since loop only yields at article boundaries.
+    if text_buffer:
+        yield _concat_article(text_buffer)
+
+
+def _concat_article(text: list[str]) -> str:
+    """Concatenate text segments into a single article with special tokens."""
+    return f"<|sot|>{''.join(text)}<|eot|>"
