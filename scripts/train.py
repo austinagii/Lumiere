@@ -28,6 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 RUN_CONFIG_PATH = "lumiere.yaml"
+CHECKPOINT_INTERVAL = 5
 
 
 def init_training_run(config: Config, device: torch.device):
@@ -174,6 +175,13 @@ def create_checkpoint_saver(run_manager: RunManager):
 
     def save_checkpoint_hook(trainer):
         """Save checkpoint at the end of each epoch."""
+        # Save best checkpoint if this is the best epoch
+        if (
+            trainer.state.current_epoch % CHECKPOINT_INTERVAL != 0
+            and trainer.state.prev_loss != trainer.state.best_loss
+        ):
+            return
+
         checkpoint = Checkpoint(
             run_id=run_manager.run.id,
             training_state=trainer.state_dict(),
@@ -185,12 +193,13 @@ def create_checkpoint_saver(run_manager: RunManager):
         if trainer.scheduler is not None:
             checkpoint["scheduler_state_dict"] = trainer.scheduler.state_dict()
 
-        # Save epoch checkpoint
-        logger.info(f"Saving checkpoint for epoch {trainer.state.current_epoch}...")
-        run_manager.save_checkpoint(
-            CheckpointType.EPOCH, checkpoint, epoch_no=trainer.state.current_epoch
-        )
-        logger.info("Checkpoint saved successfully")
+        # Save epoch checkpoint if its the correct epoch.
+        if trainer.state.current_epoch % CHECKPOINT_INTERVAL == 0:
+            logger.info(f"Saving checkpoint for epoch {trainer.state.current_epoch}...")
+            run_manager.save_checkpoint(
+                CheckpointType.EPOCH, checkpoint, epoch_no=trainer.state.current_epoch
+            )
+            logger.info("Checkpoint saved successfully")
 
         # Save best checkpoint if this is the best epoch
         if trainer.state.prev_loss == trainer.state.best_loss:
@@ -272,7 +281,7 @@ def train(
     logger.info(f"Starting training run: {run_id}")
     logger.info("=" * 60)
 
-    trainer.train()
+    train_metrics = trainer.train()
 
     logger.info("Saving final checkpoint...")
     final_checkpoint = Checkpoint(
@@ -287,7 +296,16 @@ def train(
 
     run_manager.save_checkpoint(CheckpointType.FINAL, final_checkpoint)
     logger.info("Final checkpoint saved successfully")
-    logger.info("Training completed successfully!")
+    logger.info(
+        f"Training completed in {_format_hours(train_metrics.total_time_taken)}!"
+    )
+
+
+def _format_hours(time: float) -> str:
+    seconds = int(time)
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}H {minutes}m {seconds}s"
 
 
 def main():
