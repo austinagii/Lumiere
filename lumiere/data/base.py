@@ -16,6 +16,15 @@ T = TypeVar("T")
 class Dataset(Protocol):
     """Protocol defining the interface for dataset implementations.
 
+    By default, all splits will be accessible in full. However, splits can be partially
+    loaded or omitted by specifying percentages during initialization using a colon-
+    separated format (e.g., "50:100:30" for 50% train, 100% validation, 30% test).
+
+    Once initialized, samples from a given split can be iterated over using bracket
+    notation (e.g., data['train']). Preprocessing is applied to all splits such that
+    each sample is a complete Wikipedia article.
+
+
     All dataset classes must implement the __getitem__ method to provide
     access to different data splits (e.g., train, validation, test).
 

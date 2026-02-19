@@ -1,3 +1,9 @@
+"""Text data pipeline for tokenizing and batching text corpora.
+
+Provides :class:`TextPipeline`, a :class:`~lumiere.data.Pipeline` implementation
+that tokenizes raw text sequences, packs them into fixed-length context windows,
+and produces padded token batches suitable for language model training or inference.
+"""
 import functools
 from collections.abc import Iterable
 
@@ -29,6 +35,29 @@ class TextPipeline:
         sliding_window_size: int,
         preprocessors: Iterable[Preprocessor] | None = None,
     ):
+        """Initialise the text pipeline.
+
+        Args:
+            tokenizer: Tokenizer used to convert raw text strings into token id
+                sequences.
+            batch_size: Number of context windows packed into each batch.
+            context_size: Number of tokens per context window (sequence length).
+                Must be at least 1.
+            pad_id: Token id used to pad context windows that are shorter than
+                ``context_size``.
+            sliding_window_size: Number of tokens carried over from the end of one
+                fully-filled context window into the start of the next window within
+                the same sequence. Must be 0 (no overlap) or a positive integer
+                strictly less than ``context_size``.
+            preprocessors: Optional ordered sequence of :class:`~lumiere.data.Preprocessor`
+                callables applied to every raw ``(tokens, is_pad_mask)`` batch before
+                it is yielded. Defaults to no preprocessing.
+
+        Raises:
+            ValueError: If ``context_size`` or ``batch_size`` is less than 1, if
+                ``sliding_window_size`` is negative, or if ``sliding_window_size``
+                is greater than or equal to ``context_size``.
+        """
         validate_integer(context_size, "context_size", min_value=1)
         validate_integer(batch_size, "batch_size", min_value=1)
         validate_integer(sliding_window_size, "sliding_window_size", min_value=0)
