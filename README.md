@@ -1,21 +1,14 @@
-# Lumiére: Text-Based Transformer for Interpretability
+# Lumiére: A machine learning workspace built for hands-on experimentation.
+
 ![Lumiére Logo](assets/logo.png)
 
-Lumiére is a text-based transformer built for interpretability research and easy experimentation. 
-
-The project aims to provide a lightweight canvas for exploring and interpreting the internals of transformer models. It provides a beginner friendly, modular implementation of a modern transformer architecture along with many of the common building blocks.
-
-**⚠️ Under Active Development**: This project is currently under active development. APIs and interfaces may change.
-
-## Features
-- **Text-Only Focus**: Streamlined for text-based language modeling without multimodal complexity
-- **PyTorch-Based**: Built on top of PyTorch for efficient tensor operations and GPU acceleration  
-- **Modular Architecture**: Each component is implemented as a separate module for clarity and reusability
-- **Interpretability-First**: Returns attention weights and intermediate representations for analysis
-- **Modern Architecture**: Implements RMSNorm, SwiGLU, and other contemporary improvements
-- **Comprehensive Tooling**: Complete training pipeline with checkpointing, evaluation, and monitoring
+Lumiére is an extensible deep learning workspace built for rapid, reproducible experimentation. It provides highly configurable, modular implementations of modern neural network components and architectures, alongside wrappers for datasets, tokenizers, and preprocessing pipelines, that compose seamlessly via a declarative YAML specification. A built-in component registry and dependency injection system allow new architectures and data sources to be plugged in with minimal boilerplate. Training runs are launched from a single config file, making ablations as simple as changing a value, while automatic checkpointing and
 
 ## Installation
+
+For Linux based systems, the `init.sh` script can be used to quickly initialize the repository, determing whether the required components are installed, and symlinking the main `lumi` script for managing training runs.
+
+Dependencies must still be installed manually, using either the `pip install` or `pipenv install` commands, depending on what's available in your current environment.
 
 ```bash
 # Using pip
@@ -29,6 +22,10 @@ pipenv install
 
 ### Training a Model
 
+Training runs can be managed using the `lumi` command (see `lumi --help` for the full list of available options).
+
+Runs can be initiated by specifying a configuration file which defines the training parameters, while existing training runs can be resumed by specifying the training run along with the specific checkpoint to resume training from.
+
 ```bash
 # Train a new model
 lumi train --config-path configs/transformer.yaml
@@ -40,26 +37,9 @@ lumi train --run-id <run_id> --checkpoint-tag best
 lumi test --run-id <run_id> --checkpoint-tag best
 ```
 
-The model will be trained on WikiText-2 dataset and checkpoints will be saved to `artifacts/checkpoints/`.
-
-## Architecture
-
-The transformer implementation includes:
-
-- **Transformer Blocks**: Multi-head attention with RMSNorm and SwiGLU feed-forward networks
-- **Embedding Layer**: Token and positional embeddings
-- **BPE Tokenizer**: Byte-pair encoding for text preprocessing
-- **Attention Visualization**: Full attention weight extraction for interpretability analysis
-
-## Model Configuration
-
-Models are configured via `configs/transformer.yaml`. Key parameters:
-- `embedding_size`: Dimensionality of token embeddings (default: 128)
-- `context_size`: Maximum sequence length (default: 64)  
-- `num_layers`: Number of transformer blocks (default: 4)
-- `num_heads`: Number of attention heads per block (default: 4)
-
 ## Development
+
+Tests will be executed on commit and push to ensure that changes do not break existing functionality. To execute tests manually, you can execute the following.
 
 ```bash
 # Run tests
@@ -69,6 +49,13 @@ pytest tests/
 pytest tests/ --cov=lumiere --cov-report=html
 ```
 
+To see documenation, you can spin up the documentation server using `pipenv run docs` or `mkdocs serve --watch lumiere/`.
+
+## Contributions
+
+All contributions are welcome!
+
 ## License
 
 [MIT License](LICENSE)
+
