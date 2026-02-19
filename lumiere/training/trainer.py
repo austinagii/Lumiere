@@ -132,6 +132,7 @@ class Trainer:
             logger.info(
                 f"Epoch {self.state.current_epoch:04d} | "
                 f"Train Loss: {train_metrics.avg_loss:.4f} | "
+                f"Learning rate: {self.scheduler.get_last_lr()[0]:.4e} | "
                 f"Val Loss: {eval_metrics.avg_loss:.4f} | "
                 f"Val Perplexity: {eval_perplexity:.4f}"
             )
