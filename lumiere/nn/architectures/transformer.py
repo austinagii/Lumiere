@@ -68,7 +68,6 @@ class Transformer(nn.Module):
         assert x.shape[-1] <= self.context_size
 
         x = self.embedding(x, padding_mask)
-
         attention_weights = []
         for block in self.blocks:
             x, block_attention_weights = block(x, padding_mask)
@@ -78,6 +77,3 @@ class Transformer(nn.Module):
         x = self.final_norm(x)
         x = F.linear(x, self.embedding._embedding.weight)
         return x, attention_weights
-
-    def fit(self, tokens, padding_mask) -> None:
-        pass

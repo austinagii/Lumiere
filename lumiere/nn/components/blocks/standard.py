@@ -107,20 +107,22 @@ class StandardTransformerBlock(nn.Module):
 
         """
         # Compute the attention values and weights.
+        residual = x
         if hasattr(self, "normalization_1"):
             x = self.normalization_1(x)
 
         attention_values, attention_weights = self.attention(
             x, padding_mask=padding_mask
         )
-        x = x + self.dropout(attention_values)
+        x = residual + self.dropout(attention_values)
 
         # Compute the feed-forward output.
+        residual = x
         if hasattr(self, "normalization_2"):
             x = self.normalization_2(x)
 
         feedforward_out = self.feedforward(x)
-        x = x + self.dropout(feedforward_out)
+        x = residual + self.dropout(feedforward_out)
 
         if hasattr(self, "normalization_3"):
             x = self.normalization_3(x)

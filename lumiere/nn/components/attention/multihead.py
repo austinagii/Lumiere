@@ -220,4 +220,7 @@ def stable_softmax(x: torch.Tensor) -> torch.Tensor:
     Returns:
         Tensor of the same shape as the input tensor
     """
-    return torch.exp(x) / (torch.sum(torch.exp(x), dim=-1, keepdim=True) + 1e-9)
+    x_max = x.amax(dim=-1, keepdim=True)
+    x_max = torch.clamp(x_max, min=0)
+    exp_x = torch.exp(x - x_max)
+    return exp_x / (exp_x.sum(dim=-1, keepdim=True) + 1e-9)

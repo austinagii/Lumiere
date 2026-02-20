@@ -12,7 +12,7 @@ model:
     normalized_shape: 128
   embedding:
     type: sinusoidal
-    padding_id: 0
+    padding_id: 2
   block:
     type: standard
     attention:
@@ -53,16 +53,15 @@ pipeline:
 optimizer:
   name: adamw
   lr: 0.0003
-  weight_decay: 0.01
 
 scheduler:
   name: cosine-annealing
-  warmup_steps: 500
-  max_epochs: 250
-  epoch_steps: 2000
+  max_epochs: 1000
+  epoch_steps: 1700
+  warmup_steps: 1700
 
 training:
-  max_epochs: 250
+  max_epochs: 1000
   stopping_threshold: 0.0001
   patience: 5
   gradient_clip_norm: 1.0

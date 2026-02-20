@@ -302,7 +302,6 @@ class MultiHeadAttention(nn.Module):
             weights have shape `(batch_size, num_heads, context_size, context_size)`.
 
         """
-
         queries = self._q_proj(x)
         keys = self._k_proj(x)
         values = self._v_proj(x)

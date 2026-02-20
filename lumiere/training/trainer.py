@@ -188,18 +188,12 @@ class Trainer:
         ) as pbar:
             for batch in pbar:
                 samples, targets = batch
-                # What if samples is just a single tensor rather than a tuple of things?
                 if isinstance(samples, tuple):
                     outputs = self.model(*samples)
                 else:
-                    # Running into issues in flexibility, pipeline is intended to be flexible
-                    # for various models and outputs, but it's hardcoded to only work with models
-                    # that produce multiple outputs here. What's the expectation? Account for this
-                    # in the loss function?
                     outputs = self.model(samples)
 
                 batch_loss = self.loss_fn(outputs, targets)
-
                 batch_loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(), self.gradient_clip_norm
