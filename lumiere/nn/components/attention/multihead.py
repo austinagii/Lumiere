@@ -1,3 +1,22 @@
+"""Provides the `MultiHeadAttention` module for performing The multi head attention operation.
+
+Example:
+    ```python
+    from lumiere.nn.components.attention import MultiHeadAttention
+
+    x = torch.randn(1, 3, 128)
+    attention = MultiHeadAttention(12, 128, 64, 64)
+
+    output, attention_weights = attention(x)
+    print(output.shape)
+    # Output: torch.Size([1, 3, 128])
+
+    print(attention_weights.shape)
+    # Output: torch.Size([1, 12, 3, 3])
+    ```
+
+"""
+
 import torch
 from torch import nn
 
@@ -9,43 +28,15 @@ from lumiere.utils import validation
 class MultiHeadAttention(nn.Module):
     """Performs the multi-head self attention operation on a batch of token embeddings.
 
-    This layer implements the operation as described in the paper:
-    https://arxiv.org/abs/1706.03762
+    This class implements the multi-head operation as described in the paper `Attention
+    Is All You Need <https://arxiv.org/abs/1706.03762>`.
 
-    Args:
-        num_heads (int): The number of attention heads.
-        embedding_size (int): The dimensionality of the token embeddings.
+    Attributes:
         d_key (int): The dimensionality of the key vectors.
         d_value (int): The dimensionality of the value vectors.
-        dropout (float): The dropout probability for the attention weights.
-            Defaults to 0.0.
+        num_heads (int): The number of attention heads.
+        embedding_size (int): The dimensionality of the token embeddings.
 
-    Shape:
-        - Input: `(batch_size, context_size, embedding_size)`
-        - Outputs: Tuple[torch.Tensor, torch.Tensor]
-            1. `(batch_size, context_size, embedding_size)`
-            2. `(batch_size, num_heads, context_size, context_size)`
-
-    Raises:
-        ValueError: If any of the following are not positive integers: number of heads,
-            embedding size, key dimensionality, or value dimensionality.
-        ValueError: If the dropout probability is not a positive float or zero.
-        ValueError: If the input tensor is not of shape (batch_size, context_size,
-            embedding_size).
-
-    Example:
-        ```python
-        import torch
-        from lumiere.nn.components.attention import MultiHeadAttention
-
-        x = torch.randn(1, 3, 128)
-        attention = MultiHeadAttention(12, 128, 64, 64)
-        output, attention_weights = attention(x)
-        print(output.shape)
-        # Output: torch.Size([1, 3, 128])
-        print(attention_weights.shape)
-        # Output: torch.Size([1, 12, 3, 3])
-        ```
     """
 
     def __init__(
@@ -54,7 +45,23 @@ class MultiHeadAttention(nn.Module):
         embedding_size: int,
         d_key: int,
         d_value: int,
-    ) -> None:
+    ):
+        """Initialize a multi-head attention module.
+
+        Args:
+            num_heads: The number of attention heads.
+            embedding_size: The dimensionality of the token embeddings.
+            d_key: The dimensionality of the key vectors.
+            d_value: The dimensionality of the value vectors.
+
+        Raises:
+            ValueError: If any of the following are not positive integers:
+                - `num_heads`
+                - `embedding_size`
+                - `d_key`
+                - `d_value`
+
+        """
         super().__init__()
 
         validation.validate_integer(num_heads, "num_heads", min_value=1)
@@ -75,6 +82,26 @@ class MultiHeadAttention(nn.Module):
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
     ) -> torch.Tensor:
+        """Perform the multi-head self attention operation on a batch of tokens.
+
+        Args:
+            x: A batch of token embeddings of shape
+                `(batch_size, context_size, embedding_size)`
+            padding_mask: A boolean mask of shape `(batch_size, context_size)`
+                indicating which of the tokens in the batch are padding tokens, with
+                `True` indicating the presence of a padding token and `False` for
+                non-padding tokens.
+
+        Returns:
+            A tuple of output embeddings and attention weights. The output
+            embeddings have shape `(batch_size, context_size, embedding_size)` and
+            the attention weights have shape
+            `(batch_size, num_heads, context_size, context_size)`.
+
+        Raises:
+            ValueError: If the specified token embeddings have the incorrect shape.
+
+        """
         if x.dim() != 3:
             raise ValueError(
                 "The input tensor must have the shape (batch_size, context_size, "
@@ -121,8 +148,10 @@ def create_causal_mask(
     and padding tokens (if a padding mask is provided).
 
     Args:
-        context_size: The size of the context.
-        padding_mask: A mask indicating which tokens are padding.
+        context_size: The maximum number of tokens in a sequence.
+        padding_mask: A boolean mask indicating which of the tokens are padding
+            tokens, with `True` indicating a padding token and `False` for
+            non-padding tokens.
 
     Returns:
         A mask of shape (1, 1, context_size, context_size).
@@ -155,16 +184,13 @@ def split_heads(
     """Splits the concatenated multi-head features into separate heads.
 
     Args:
-        tensor: Tensor to split
-        num_heads: Number of attention heads
-        num_features: Number of features per attention head
-
-    Shape:
-        - Input: `(batch_size, context_size, num_heads * num_dimensions)`
-        - Output: `(batch_size, num_heads, context_size, num_dimensions)`
+        tensor: The tensor to split of shape
+            `(batch_size, context_size, num_heads * num_dimensions)`.
+        num_heads: The number of attention heads.
+        num_features: The number of features per attention head.
 
     Returns:
-        Tensor of shape (batch_size, num_heads, context_size, num_dimensions)
+        A tensor of shape `(batch_size, num_heads, context_size, num_dimensions)`.
 
     Example:
         ```python
@@ -182,17 +208,14 @@ def split_heads(
 
 
 def concat_heads(tensor: torch.Tensor) -> torch.Tensor:
-    """Concatenates the tensor from multiple attention heads.
+    """Concatenate the tensor from multiple attention heads.
 
     Args:
-        tensor: Tensor to concatenate
-
-    Shape:
-        - Input: `(batch_size, num_heads, context_size, num_dimensions)`
-        - Output: `(batch_size, context_size, num_heads * num_dimensions)`
+        tensor: The tensor to concatenate of shape
+            `(batch_size, num_heads, context_size, num_dimensions)`.
 
     Returns:
-        Tensor of shape (batch_size, context_size, num_heads * num_dimensions)
+        A tensor of shape `(batch_size, context_size, num_heads * num_dimensions)`.
 
     Example:
         ```python

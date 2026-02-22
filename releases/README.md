@@ -26,3 +26,26 @@ present in a production codebase (logging, validation, exception handling etc...
 included. The code in each release isn't intended to be deployed as-is. The main goal is
 to provide a clean canvas for understanding the model and getting hands on with
 experimenting.
+
+## Using A Released Model
+
+Using a released model is pretty straightforward and can be broken down into a few steps.
+
+```python
+from tokenizer import BPE
+from model import Lumiere1M
+
+tokenizer = BPE()
+tokenizer_state = lumiere.load_tokenizer("tokenizer", state=tokenizer_state)
+tokenizer.load_state(tokenizer_state)
+
+model = Lumiere1M(tokenizer.padding_id)
+model_state = lumiere.load_checkpoint("checkpoint.pt")
+model.load_state(model_state)
+
+text = "abcd"
+next_token = model(text)
+
+print(f"After 'abcd' comes '{tokenizer.decode(next_token)}'")
+
+```

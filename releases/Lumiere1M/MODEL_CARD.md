@@ -2,17 +2,16 @@
 
 ## Model Overview
 
-**Model Name:** Lumiére
+**Model Name:** Lumiére-1M
 **Model Type:** Autoregressive Language Model  
 **Architecture:** Transformer (Decoder Only)
-**Framework:** PyTorch  
-**Purpose:** Text generation and language modeling with interpretability focus
+**Purpose:** Text generation and language modeling
 
 ## Model Architecture
 
 ### Core Architecture
 
-- **Base Architecture:** Transformer decoder with modern improvements
+- **Base Architecture:** Decode only Transformer
 - **Layers:** 4 transformer blocks
 - **Attention Heads:** 4 per layer
 - **Embedding Dimension:** 128
@@ -30,7 +29,7 @@
 ### Parameter Count
 
 - **Vocabulary Size:** 4096 tokens
-- **Total Parameters:** Approximately 1180800 parameters
+- **Total Parameters:** Approximately 1.05M parameters
 
 ## Training Details
 
@@ -45,10 +44,10 @@
 
 ## Performance Metrics
 
-### Validation Results
+### Evaluation Results
 
-- **Test Loss:** 4.235
-- **Test Perplexity:** 71.806
+- **Test Loss:** 4.3741
+- **Test Perplexity:** 77.2527
 
 ## Model Capabilities
 
@@ -86,4 +85,3 @@ This model card was generated on Oct 17, 2025 using model checkpoint 'best' from
 ---
 
 _This model is designed for research and educational purposes, with a focus on interpretability and understanding transformer architectures._
-

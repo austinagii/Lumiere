@@ -1,3 +1,19 @@
+"""Provides the `SinusoidalPositionalEmbedding` module for generating token embeddings.
+
+Example:
+    ```python
+    import torch
+    from lumiere.nn.components import SinusoidalPositionalEmbedding
+
+    x = torch.tensor([[1, 2, 3], [4, 5, 6]])
+    embedding = SinusoidalPositionalEmbedding(10, 3, 10)
+    output = embedding(x)
+    print(output.shape)
+    # Output: torch.Size([2, 3, 10])
+    ```
+
+"""
+
 import torch
 from torch import nn
 
@@ -12,36 +28,9 @@ class SinusoidalPositionalEmbedding(nn.Module):
     Takes a tensor of token IDs and returns the corresponding token embeddings
     with sinusoidal positional encodings added.
 
-    Args:
-        vocab_size (int): The number of unique tokens in the vocabulary.
-        context_size (int): The number of tokens in the context.
-        embedding_size (int): The dimensionality of the token embeddings.
-
-    Shape:
-        - Input: `(..., context_size)`
-        - Output: `(..., context_size, embedding_size)`
-
     Attributes:
-        vocab_size (int): The number of unique tokens in the vocabulary.
         embedding_size (int): The dimensionality of the token embeddings.
 
-    Raises:
-        ValueError: If the vocabulary size or embedding size is not a positive
-            integer.
-        IndexError: If any of the token ids in the input tensor are outside of
-            the range [0, vocab_size).
-
-    Example:
-        ```python
-        import torch
-        from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
-
-        x = torch.tensor([[1, 2, 3], [4, 5, 6]])
-        embedding = Embedding(10, 3, 10)
-        output = embedding(x)
-        print(output.shape)
-        # Output: torch.Size([2, 3, 10])
-        ```
     """
 
     def __init__(
@@ -51,6 +40,21 @@ class SinusoidalPositionalEmbedding(nn.Module):
         embedding_size: int,
         padding_id: int | None = None,
     ) -> None:
+        """Initialize a sinusoidal positional embedding layer.
+
+        Args:
+            vocab_size: The number of unique tokens in the vocabulary.
+            context_size: The maximum number of tokens in a sequence.
+            embedding_size: The dimensionality of the token embeddings.
+            padding_id: The ID of the padding token.
+
+        Raises:
+            ValueError: If any of the following is not a positive integer:
+                - `vocab_size`
+                - `context_size`
+                - `embedding_size`
+
+        """
         super().__init__()
         validation.validate_integer(vocab_size, "vocab_size", min_value=1)
         validation.validate_integer(context_size, "context_size", min_value=1)
@@ -73,11 +77,25 @@ class SinusoidalPositionalEmbedding(nn.Module):
     def forward(
         self, x: torch.Tensor, padding_mask: torch.Tensor = None
     ) -> torch.Tensor:
+        """Convert a batch of token IDs to sinusoidal position-encoded token embeddings.
+
+        Args:
+            x: A batch of token embeddings of shape
+                `(batch_size, context_size, embedding_size)`
+            padding_mask: A boolean mask of shape `(batch_size, context_size)`
+                indicating which of the tokens in the batch are padding tokens, with
+                `True` indicating the presence of a padding token and `False` for
+                non-padding tokens.
+
+        Raises:
+            IndexError: If any of the token ids in the input tensor are outside of
+                the range [0, vocab_size).
+
+        """
         if torch.any(x < 0) or torch.any(x >= self.vocab_size):
             raise IndexError("Token ids are outside of the range [0, vocab_size).")
 
         token_embeddings = self._embedding(x)
-
         position_encoding = self._positional_encoding[: x.shape[-1], :]
 
         # Ensure that padding tokens do not receive positional encoding.
@@ -95,10 +113,9 @@ class SinusoidalPositionalEmbedding(nn.Module):
 
 
 def sinusoidal_positional_encoding(
-    context_size: int, embedding_size: int, padding_mask: torch.Tensor = None
+    context_size: int, embedding_size: int
 ) -> torch.Tensor:
-    """Computes sinusoidal positional encodings for a given context size and embedding
-    size.
+    """Computes sinusoidal positional encodings for a given context and embedding size.
 
     The positional encoding matrix is computed using the following formula:
         PE(pos, 2i)   = sin(pos / 10000^(2i/embedding_size))
@@ -127,6 +144,4 @@ def sinusoidal_positional_encoding(
     pos_encoding = torch.zeros((context_size, embedding_size), dtype=torch.float32)
     pos_encoding[:, 0::2] = torch.sin(angles)
     pos_encoding[:, 1::2] = torch.cos(angles)
-    return pos_encoding
-
     return pos_encoding

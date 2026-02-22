@@ -1,3 +1,21 @@
+"""Provides `StandardTransformerBlock`.
+
+Example:
+    ```python
+    import torch
+    from lumiere.nn.components import StandardTransformerBlock as TransformerBlock
+
+    x = torch.randn(1, 10, 128)
+    block = TransformerBlock(128, 12, 64, 64, 256)
+    output, attention_weights = block(x)
+    print(output.shape)
+    # Output: torch.Size([1, 10, 128])
+    print(attention_weights.shape)
+    # Output: torch.Size([1, 12, 10, 10])
+    ```
+
+"""
+
 from collections.abc import Callable
 
 import torch
@@ -15,20 +33,6 @@ class StandardTransformerBlock(nn.Module):
     You Need" paper (https://arxiv.org/pdf/1706.03762). Like the paper, this
     transformer block is made up of two main sub-layers: a masked multi-head
     attention layer, followed by a position-wise feed-forward layer.
-
-    Example:
-        ```python
-        import torch
-        from lumiere.nn.components import StandardTransformerBlock as TransformerBlock
-
-        x = torch.randn(1, 10, 128)
-        block = TransformerBlock(128, 12, 64, 64, 256)
-        output, attention_weights = block(x)
-        print(output.shape)
-        # Output: torch.Size([1, 10, 128])
-        print(attention_weights.shape)
-        # Output: torch.Size([1, 12, 10, 10])
-        ```
 
     """
 
