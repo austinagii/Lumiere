@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from collections.abc import Generator, Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 
@@ -111,6 +112,17 @@ class Tokenizer(Protocol):
 
         Returns:
             Self for method chaining.
+        """
+        ...
+
+    def load_state(self, path: str | Path) -> None:
+        """Load the tokenizer's state from the specified path.
+
+        Args:
+            path: The path to artifact(s) containing the tokenizer state.
+
+        Raises:
+            FileNotFoundError: If the specified artifact could not be found.
         """
         ...
 

@@ -145,6 +145,8 @@ class RunManager:
             StorageSources.AZURE_BLOB: init_azure_blob_storage_client(),
             StorageSources.FILESYSTEM: FileSystemStorageClient(fs_base_path),
         }
+        # TODO: Fix this initializer, just pass storage clients directly. Current
+        # iteration is clunky.
         self.storage_clients = [client_by_location[source] for source in sources]
         self.retrieval_clients = [
             client_by_location[destination] for destination in destinations

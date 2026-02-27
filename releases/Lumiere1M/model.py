@@ -1,10 +1,21 @@
 """Lumiére-1M: A 1-million parameter transformer language model."""
 
+import logging
 from collections import OrderedDict
+from pathlib import Path
 
 import torch
 from torch import nn
 from torch.nn import functional as F
+from tqdm import tqdm
+
+from lumiere import Loader
+from lumiere.internal import register_dependency
+from lumiere.tokenizers.base import SPECIAL_TOKENS
+from lumiere.training import Checkpoint
+from lumiere.training.config import Config
+from lumiere.training.loss import cross_entropy_loss
+from lumiere.utils import get_device, register_signal_handlers
 
 
 class Lumiere1M(nn.Module):
@@ -17,9 +28,10 @@ class Lumiere1M(nn.Module):
     num_heads: int = 4
     d_key: int = 32
     d_value: int = 32
-    d_ff: int = 32
+    d_ff: int = 256
+    padding_id = SPECIAL_TOKENS["padding"].id
 
-    def __init__(self, padding_id: int):
+    def __init__(self):
         """Initialize a Lumiére-1M transformer model.
 
         Args:
@@ -27,7 +39,6 @@ class Lumiere1M(nn.Module):
 
         """
         super().__init__()
-        self.padding_id = padding_id
 
         self.embedding = Embedding(
             self.vocab_size,
@@ -47,7 +58,7 @@ class Lumiere1M(nn.Module):
                 for _ in range(self.num_blocks)
             ]
         )
-        self.norm = nn.RMSNorm(self.embedding_size)
+        self.final_norm = nn.RMSNorm(self.embedding_size)
 
     @torch.inference_mode()
     def forward(
@@ -76,7 +87,7 @@ class Lumiere1M(nn.Module):
             attention_weights.append(block_attention_weights)
         attention_weights = torch.stack(attention_weights, dim=1)
 
-        x = self.norm(x)
+        x = self.final_norm(x)
         x = F.linear(x, self.embedding._embedding.weight)
         return x, attention_weights
 
@@ -321,13 +332,13 @@ class MultiHeadAttention(nn.Module):
         keys = self._k_proj(x)
         values = self._v_proj(x)
 
-        queries = _split_heads(queries, self._num_heads, self._d_key)
-        keys = _split_heads(keys, self._num_heads, self._d_key)
-        values = _split_heads(values, self._num_heads, self._d_value)
+        queries = _split_heads(queries, self.num_heads, self.d_key)
+        keys = _split_heads(keys, self.num_heads, self.d_key)
+        values = _split_heads(values, self.num_heads, self.d_value)
 
         attention_scores = torch.matmul(queries, torch.transpose(keys, -2, -1))
         scaled_attention_scores = attention_scores / torch.sqrt(
-            torch.tensor(self._d_key, dtype=queries.dtype, device=queries.device)
+            torch.tensor(self.d_key, dtype=queries.dtype, device=queries.device)
         )
 
         mask = _create_causal_mask(queries.shape[2], padding_mask)
@@ -479,3 +490,70 @@ class FeedForward(nn.Module):
         assert x.size(-1) == self.embedding_size
 
         return self._layers(x)
+
+
+if __name__ == "__main__":
+    register_signal_handlers()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[logging.FileHandler("testing.log"), logging.StreamHandler()],
+    )
+    logger = logging.getLogger(__name__)
+
+    device = get_device()
+    logger.info(f"Evaluating Lumiere1M on '{device}' device.")
+
+    base_path = Path(__file__).parent
+    config = Config.from_yaml(base_path / "train.yaml")
+    checkpoint = Checkpoint.from_bytes(
+        (base_path / "checkpoint.pt").read_bytes(), device=device
+    )
+    tokenizer = Loader.tokenizer(config["tokenizer"], state=checkpoint["tokenizer"])
+    register_dependency("tokenizer", tokenizer)
+    dataloader = Loader.data(config["data"])
+    pipeline = Loader.pipeline(config["pipeline"])
+
+    logger.info("Loading model...")
+    model = Lumiere1M().to(device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    logger.info(f"Model loaded successfully. Total params: {total_params:,}")
+
+    model.eval()
+    total_loss = 0.0
+    num_batches = 0
+
+    with (
+        torch.no_grad(),
+        tqdm(
+            pipeline.batches(dataloader["test"]),
+            desc="Evaluating model...",
+        ) as pbar,
+    ):
+        for samples, targets in pbar:
+            outputs = model(*samples) if isinstance(samples, tuple) else model(samples)
+            batch_loss = cross_entropy_loss(outputs, targets)
+            total_loss += batch_loss
+            num_batches += 1
+            avg_loss = total_loss / num_batches
+            avg_perplexity = torch.exp(avg_loss)
+
+            pbar.set_postfix(
+                {
+                    "batch_loss": f"{batch_loss:.4f}",
+                    "avg_loss": f"{avg_loss:.4f}",
+                    "avg_ppl": f"{avg_perplexity:.4f}",
+                }
+            )
+
+    avg_loss = total_loss / num_batches
+    avg_perplexity = torch.exp(avg_loss)
+
+    logger.info("=" * 60)
+    logger.info("Lumiere1M Evaluation Results:")
+    logger.info(f"  Avg Loss: {avg_loss:.4f}")
+    logger.info(f"  Avg PPL: {avg_perplexity:.4f}")
+    logger.info("=" * 60)

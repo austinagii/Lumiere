@@ -21,19 +21,20 @@ class ModelBuilder:
     def build(spec: Mapping[str, Any], container=None) -> nn.Module:
         """Create a model according to the provided specification.
 
-        Models are built by specifying a config. Configs are key->value mappings where keys
-        correspond to argument names from a model's initializer and the values are the
-        arguments. A config may not contain a key->value mapping for all possible args. If the
-        missing arg is optional, then the default value specified in the model's iniatilizer
-        will be used. If the arg is required, then a resolution process will take place. During
-        resolution, the missing argument will be taken from the closest ancestor which specifies
-        that argument. If no ancestors specify that argument, then the argument will be passed from
-        the dependency container. If no such dependency exists then an error will be raised.
+        Models are built by specifying a config. Configs are key->value mappings where
+        keys correspond to argument names from a model's initializer and the values are
+        the arguments. A config may not contain a key->value mapping for all possible
+        args. If the missing arg is optional, then the default value specified in the
+        model's iniatilizer will be used. If the arg is required, then a resolution
+        process will take place. During resolution, the missing argument will be taken
+        from the closest ancestor which specifies that argument. If no ancestors specify
+        that argument, then the argument will be passed from the dependency container.
+        If no such dependency exists then an error will be raised.
 
-        A funky note on arg values. In cases where an arg value is itself a mapping or a container
-        of mappings describing a component, then the arg should be treated as a factory. The model
-        should be able to reference the factory multiple times to generate an unlimited number of
-        instances of the defined component.
+        A funky note on arg values. In cases where an arg value is itself a mapping or
+        a container of mappings describing a component, then the arg should be treated
+        as a factory. The model should be able to reference the factory multiple times
+        to generate an unlimited number of instances of the defined component.
 
         Args:
             spec: The specification of the desired transformer.
@@ -51,6 +52,7 @@ class ModelBuilder:
         # Use global container if none provided
         if container is None:
             from lumiere.internal.di import get_global_container
+
             container = get_global_container()
 
         def _build_module_factory(module_type, module_args, container):
@@ -92,17 +94,18 @@ class ModelBuilder:
                 if param_name == "self":
                     continue
 
+                # Pull arg value from the specified config for this module or
+                # from a parent config.
                 arg_value = resolved_args.get(param_name)
 
-                if arg_value is None and param.default is inspect.Parameter.empty:
-                    if container is not None:
-                        arg_value = container.get(param_name)
+                # Pull arg value from dependency container if not specified in
+                # either config.
+                if arg_value is None and container is not None:
+                    arg_value = container.get(param_name)
 
-                    if arg_value is None:
-                        # Required parameter not found anywhere
-                        raise ValueError(
-                            f"Required parameter '{param_name}' not found for {module_type}.{variant}"
-                        )
+                # Use the default value if one is specified.
+                if arg_value is None and param.default is not inspect.Parameter.empty:
+                    arg_value = param.default
 
                 factory_args[param_name] = arg_value
 
