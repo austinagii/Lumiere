@@ -156,13 +156,11 @@ def create_causal_mask(
     Returns:
         A mask of shape (1, 1, context_size, context_size).
     """
+    device = padding_mask.device if padding_mask is not None else torch.device("cpu")
+
     # Create a mask that prevents each token from attending to itself and future tokens.
     mask = torch.triu(
-        torch.ones(
-            context_size,
-            context_size,
-            dtype=torch.bool,
-        ),
+        torch.ones(context_size, context_size, dtype=torch.bool, device=device),
     )
     mask = mask.unsqueeze(0).unsqueeze(0)
 
@@ -171,9 +169,7 @@ def create_causal_mask(
         # TODO: Make this more explicit, unsqueeze is obfuscating the intent.
         padding_mask_cols = padding_mask.unsqueeze(1).unsqueeze(1)
         padding_mask_rows = padding_mask.unsqueeze(1).unsqueeze(3)
-        padding_mask_combined = padding_mask_cols | padding_mask_rows
-
-        mask = mask.to(padding_mask.device) | padding_mask_combined
+        mask = mask | padding_mask_cols | padding_mask_rows
 
     return mask
 

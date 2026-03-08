@@ -1,5 +1,7 @@
 """Cosine annealing learning rate scheduler with warmup."""
 
+import math
+
 import torch
 
 from lumiere.internal.registry import discover
@@ -39,6 +41,6 @@ class CosineAnnealingScheduler(torch.optim.lr_scheduler.LRScheduler):
             progress = (step - self.warmup_steps) / (
                 self.max_epochs * self.epoch_steps - self.warmup_steps
             )
-            scale = 0.5 * (1 + torch.cos(torch.tensor(progress * 3.14159)))
+            scale = 0.5 * (1 + math.cos(progress * math.pi))
 
         return [base_lr * scale for base_lr in self.base_lrs]
