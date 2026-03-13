@@ -8,16 +8,15 @@ import pytest
 from azure.core.exceptions import AzureError, ResourceNotFoundError
 from azure.storage.blob import BlobServiceClient
 
-from lumiere.training import generate_run_id
 from lumiere.persistence.clients import AzureBlobStorageClient
 from lumiere.persistence.clients.azure_blob_storage_client import (
     disable_tokenizer_parallelism,
 )
 from lumiere.persistence.errors import (
-    ArtifactNotFoundError,
     CheckpointNotFoundError,
     StorageError,
 )
+from lumiere.utils import randomizer
 
 
 @pytest.fixture(scope="module")
@@ -49,15 +48,15 @@ def container(blob_service_client):
 
 @pytest.fixture
 def container_client(container):
-    """Return a client for an ephemeral test container"""
+    """Return a client for an ephemeral test container."""
     _, container_client = container
     return container_client
 
 
 @pytest.fixture
 def run_id():
-    """Return a randomly generated run id using :meth:`run.generate_run_id`."""
-    return generate_run_id()
+    """Return a randomly generated run id using :meth:`randomizer.random_id`."""
+    return randomizer.random_id()
 
 
 @pytest.fixture
@@ -74,7 +73,7 @@ def az_storage_client(blob_service_client, container):
 
 
 def _add_target_checkpoint(container_client):
-    run_id = generate_run_id()
+    run_id = randomizer.random_id()
     checkpoint_tags = ["epoch_0001", "epoch_0002", "epoch_0003", "best", "final"]
     target_checkpoint_tag = random.choice(checkpoint_tags)
 
@@ -90,11 +89,13 @@ def _add_target_checkpoint(container_client):
 
 
 class TestAzureBlobStorageClient:
+    """Test suite for :class:`lumiere.persistence.clients.AzureBlobStorageClient`."""
+
     @pytest.mark.slow
     def test_save_checkpoint_successfully_uploads_artifact(
         self, az_storage_client, container
     ):
-        run_id = generate_run_id(n=8)
+        run_id = randomizer.random_id(n=8)
         checkpoint_tag = "test"
         checkpoint_data = b"test"
 
@@ -158,18 +159,13 @@ class TestAzureBlobStorageClient:
     # -----------------------------------
     # ------- SAVE_ARTIFACT TESTS -------
     # -----------------------------------
-    
+
     @pytest.mark.slow
-    @pytest.mark.parametrize(
-        "artifact", [
-            [1, 2, 3],
-            {"test": "data"}
-        ]
-    )
+    @pytest.mark.parametrize("artifact", [[1, 2, 3], {"test": "data"}])
     def test_save_artifact_uploads_object_to_blob_storage(
         self, az_storage_client, container, artifact
     ):
-        run_id = generate_run_id()
+        run_id = randomizer.random_id()
         key = "testkey"
         expected_blob_name = f"runs/{run_id}/artifacts/{key}"
         _, container_client = container
@@ -188,7 +184,7 @@ class TestAzureBlobStorageClient:
     def test_save_artifact_overwrites_existing_artifact_is_overwrite_is_true(
         self, az_storage_client, container
     ):
-        run_id = generate_run_id()
+        run_id = randomizer.random_id()
         key = "testkey"
         expected_blob_name = f"runs/{run_id}/artifacts/{key}"
         _, container_client = container
@@ -205,7 +201,7 @@ class TestAzureBlobStorageClient:
         reconstructed_original = pickle.loads(blob_client.download_blob().readall())
         assert original_artifact == reconstructed_original
 
-        # Store the second version of the artifact and verify it overwrites the previous.
+        # Store another version of the artifact and verify it overwrites the previous.
         new_artifact = {"data": "new"}
         az_storage_client.save_artifact(run_id, key, new_artifact, overwrite=True)
 
@@ -216,7 +212,9 @@ class TestAzureBlobStorageClient:
     def test_save_artifact_raises_error_if_existing_key_and_overwrite_is_false(
         self, az_storage_client, container_client, run_id, artifact_key
     ):
-        blob_client = container_client.get_blob_client(f"runs/{run_id}/artifacts/{artifact_key}")
+        blob_client = container_client.get_blob_client(
+            f"runs/{run_id}/artifacts/{artifact_key}"
+        )
 
         # Verify the artifact doesn't already exist.
         assert not blob_client.exists()
@@ -230,7 +228,9 @@ class TestAzureBlobStorageClient:
         # Attempt to overwrite the previous artifact.
         new_artifact = {"secret_formula": "e=mc^(1/2)"}
         with pytest.raises(KeyError):
-            az_storage_client.save_artifact(run_id, artifact_key, new_artifact, overwrite=False)
+            az_storage_client.save_artifact(
+                run_id, artifact_key, new_artifact, overwrite=False
+            )
 
         assert pickle.loads(blob_client.download_blob().readall()) == artifact
 
@@ -238,13 +238,15 @@ class TestAzureBlobStorageClient:
     def test_save_artifact_does_not_overwite_existing_artifacts_by_default(
         self, az_storage_client, container_client, run_id, artifact_key
     ):
-        blob_client = container_client.get_blob_client(f"runs/{run_id}/artifacts/{artifact_key}")
+        blob_client = container_client.get_blob_client(
+            f"runs/{run_id}/artifacts/{artifact_key}"
+        )
 
-        assert not blob_client.exists() 
+        assert not blob_client.exists()
 
         az_storage_client.save_artifact(run_id, artifact_key, ["launch", "codes"])
-        assert blob_client.exists() 
-        
+        assert blob_client.exists()
+
         with pytest.raises(KeyError):
             az_storage_client.save_artifact(run_id, artifact_key, ["<redacted>"])
 
@@ -252,30 +254,24 @@ class TestAzureBlobStorageClient:
         self, mocker, az_storage_client, run_id, artifact_key
     ):
         mocker.patch(
-            "azure.storage.blob.BlobClient.upload_blob", 
-            side_effect=Exception()
+            "azure.storage.blob.BlobClient.upload_blob", side_effect=Exception()
         )
 
         with pytest.raises(StorageError):
-            az_storage_client.save_artifact(run_id, artifact_key, tuple(["apple", 42]))
+            az_storage_client.save_artifact(run_id, artifact_key, ("apple", 42))
 
     # -----------------------------------
     # ------- LOAD_ARTIFACT TESTS -------
     # -----------------------------------
-    
+
     @pytest.mark.slow
-    @pytest.mark.parametrize(
-        "artifact", [
-            [1, 2, 3],
-            {"test": "data"}
-        ]
-    )
+    @pytest.mark.parametrize("artifact", [[1, 2, 3], {"test": "data"}])
     def test_load_artifact_downloads_object_from_blob_storage(
         self, az_storage_client, run_id, artifact_key, artifact
     ):
         az_storage_client.save_artifact(run_id, artifact_key, artifact, overwrite=True)
         assert az_storage_client.load_artifact(run_id, artifact_key) == artifact
-         
+
     @pytest.mark.slow
     def test_load_artifact_returns_none_if_object_not_found(
         self, az_storage_client, run_id, artifact_key
@@ -295,6 +291,8 @@ class TestAzureBlobStorageClient:
 
 @pytest.mark.slow
 class TestDisableTokenizerParallelism:
+    """Test suite for :func:`lumiere.persistence.clients.AzureBlobStorageClient.disable_tokenizer_parallelism`."""  # noqa: E501
+
     def setup_method(self):
         # Ensure clean state
         if "TOKENIZERS_PARALLELISM" in os.environ:
@@ -325,10 +323,9 @@ class TestDisableTokenizerParallelism:
         original_value = "true"
         os.environ["TOKENIZERS_PARALLELISM"] = original_value
 
-        with pytest.raises(ValueError):
-            with disable_tokenizer_parallelism():
-                assert os.getenv("TOKENIZERS_PARALLELISM") == "false"
-                raise ValueError("Test exception")
+        with pytest.raises(ValueError), disable_tokenizer_parallelism():
+            assert os.getenv("TOKENIZERS_PARALLELISM") == "false"
+            raise ValueError("Test exception")
 
         assert os.getenv("TOKENIZERS_PARALLELISM") == original_value
 
@@ -336,10 +333,9 @@ class TestDisableTokenizerParallelism:
         if "TOKENIZERS_PARALLELISM" in os.environ:
             del os.environ["TOKENIZERS_PARALLELISM"]
 
-        with pytest.raises(ValueError):
-            with disable_tokenizer_parallelism():
-                assert os.getenv("TOKENIZERS_PARALLELISM") == "false"
-                raise ValueError("Test exception")
+        with pytest.raises(ValueError), disable_tokenizer_parallelism():
+            assert os.getenv("TOKENIZERS_PARALLELISM") == "false"
+            raise ValueError("Test exception")
 
         assert os.getenv("TOKENIZERS_PARALLELISM") is None
 
@@ -360,4 +356,3 @@ class TestDisableTokenizerParallelism:
             assert os.getenv("TOKENIZERS_PARALLELISM") == "false"
 
         assert os.getenv("TOKENIZERS_PARALLELISM") is None
-

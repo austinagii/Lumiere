@@ -1,6 +1,6 @@
 from .checkpoint import Checkpoint, CheckpointType
 from .config import Config
-from .run import Run, RunManager, generate_run_id
+from .run import Run, RunManager
 from .trainer import Trainer, TrainingState
 
 
@@ -12,5 +12,4 @@ __all__ = [
     "RunManager",
     "Trainer",
     "TrainingState",
-    "generate_run_id",
 ]

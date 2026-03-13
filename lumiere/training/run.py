@@ -1,7 +1,6 @@
 import logging
 import os
-import secrets
-import string
+import time
 from collections.abc import Iterable
 from concurrent import futures
 from dataclasses import dataclass
@@ -25,66 +24,59 @@ from lumiere.persistence.errors import (
 from lumiere.persistence.storage_client import StorageClient
 from lumiere.training.checkpoint import Checkpoint, CheckpointType
 from lumiere.training.config import Config
+from lumiere.utils import randomizer
 
 
 LOGGER = logging.getLogger(__name__)
 MAX_THREAD_POOL_SIZE: int = 5
 
 
+class RunStatus(StrEnum):
+    """The current status of a training run."""
+
+    PENDING = auto()
+    RUNNING = auto()
+    COMPLETED = auto()
+    FAILED = auto()
+
+
 @dataclass
 class Run:
-    """A training run with a unique identifier and configuration.
+    """A training run for a given model.
 
     Attributes:
-        _id: The unique identifier for this run.
-        _config: The training configuration for this run.
+        id: The unique identifier for this run.
+        name: The unique name for this run.
+        config: The configuration used for this run.
+        created_at: The instant this run was created (in nano since epoch)
+        updated_at: The instant this run was last updated (in nano since epoch)
+        current_epoch: The current epoch of this run.
+        current_step: The current step of the training run.
+        current_loss: The current validation loss.
+
     """
 
-    _id: str
-    _config: Config
+    id: str
+    name: str
+    status: RunStatus
+    config: Config
+    created_at: int
+    updated_at: int
+    current_epoch: int = 0
+    current_step: int = 0
+    current_loss: float = 0.0
 
-    @classmethod
-    def from_config(cls, config: Config) -> None:
-        """Create a new run with a generated ID from a configuration.
+    def __init__(self, config: Config, name: str | None = None):
+        run_id = randomizer.random_id()
+        run_name = randomizer.random_name() if name is None else name
+        current_time = time.time_ns()
 
-        Args:
-            config: The training configuration dictionary.
-
-        Returns:
-            A new `Run` instance with a randomly generated ID.
-        """
-        return cls(generate_run_id(), config)
-
-    @property
-    def id(self):
-        """The unique identifier for this training run.
-
-        Returns:
-            The run ID as a string.
-        """
-        return self._id
-
-    @property
-    def config(self):
-        """The training configuration for this run.
-
-        Returns:
-            Configuration dictionary containing training parameters.
-        """
-        return self._config
-
-
-def generate_run_id(n: int = 8):
-    """Generate a random alphanumeric run identifier.
-
-    Args:
-        n: The length of the identifier. Defaults to `8`.
-
-    Returns:
-        A random string of length `n` containing letters and digits.
-    """
-    alphabet = string.ascii_letters + string.digits
-    return "".join([secrets.choice(alphabet) for _ in range(n)])
+        self.id = run_id
+        self.name = run_name
+        self.status = RunStatus.PENDING
+        self.config = config
+        self.created_at = current_time
+        self.updated_at = current_time
 
 
 class StorageSources(StrEnum):
@@ -200,7 +192,7 @@ class RunManager:
         Raises:
             Exception: If initialization fails in any destination.
         """
-        self.run = Run.from_config(run_config)
+        self.run = Run(run_config)
 
         with futures.ThreadPoolExecutor(
             max_workers=max(len(self.storage_clients), MAX_THREAD_POOL_SIZE)

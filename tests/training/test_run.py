@@ -50,7 +50,7 @@ def run_manager(run_config):
         destinations=["azure-blob", "filesystem"],
     )
 
-    run_manager.run = Run.from_config(run_config)
+    run_manager.run = Run(run_config)
 
     return run_manager
 
@@ -122,7 +122,9 @@ class TestRunManager:
         for client in run_manager.storage_clients:
             mocker.patch.object(client, "save_checkpoint")
 
-        run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint, epoch_no=checkpoint['epoch'])
+        run_manager.save_checkpoint(
+            CheckpointType.EPOCH, checkpoint, epoch_no=checkpoint["epoch"]
+        )
 
         for client in run_manager.storage_clients:
             client.save_checkpoint.assert_called_once_with(
@@ -144,7 +146,9 @@ class TestRunManager:
             mocker.patch.object(client, "save_checkpoint")
 
         if checkpoint_type == CheckpointType.EPOCH:
-            run_manager.save_checkpoint(checkpoint_type, checkpoint, epoch_no=checkpoint['epoch'])
+            run_manager.save_checkpoint(
+                checkpoint_type, checkpoint, epoch_no=checkpoint["epoch"]
+            )
         else:
             run_manager.save_checkpoint(checkpoint_type, checkpoint)
 
@@ -162,7 +166,9 @@ class TestRunManager:
         # Configure one storage client to fail
         run_manager.storage_clients[1].save_checkpoint.side_effect = StorageError()
 
-        run_manager.save_checkpoint(CheckpointType.EPOCH, checkpoint, epoch_no=checkpoint['epoch'])
+        run_manager.save_checkpoint(
+            CheckpointType.EPOCH, checkpoint, epoch_no=checkpoint["epoch"]
+        )
 
         for client in run_manager.storage_clients:
             client.save_checkpoint.assert_called_once()

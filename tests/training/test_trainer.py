@@ -7,24 +7,24 @@ import torch.nn.functional as F  # noqa: N812
 from torch.nn import RMSNorm
 from torch.optim import SGD
 
-from lumiere.nn.components.attention import MultiHeadAttention
-from lumiere.nn.components.blocks import StandardTransformerBlock
-from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
-from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.data import DataLoader
 from lumiere.data.datasets import WikiText2Dataset
 from lumiere.data.pipelines.text import TextPipeline
 from lumiere.data.preprocessors import (
     AutoregressiveLanguageModellingPreprocessor,
 )
-from lumiere.tokenizers import SPECIAL_TOKENS, BPETokenizer
 from lumiere.nn.architectures.transformer import Transformer
-from lumiere.training import Trainer
+from lumiere.nn.components.attention import MultiHeadAttention
+from lumiere.nn.components.blocks import StandardTransformerBlock
+from lumiere.nn.components.embedding import SinusoidalPositionalEmbedding as Embedding
+from lumiere.nn.components.feedforward import LinearFeedForward
 from lumiere.nn.schedulers.cosine_annealing import CosineAnnealingScheduler
-from lumiere.utils.device import get_device
 from lumiere.testing.datasets import IdentityDataset
 from lumiere.testing.models import IdentityModel
 from lumiere.testing.pipelines import IdentityPipeline
+from lumiere.tokenizers import SPECIAL_TOKENS, BPETokenizer
+from lumiere.training import Trainer
+from lumiere.utils.device import get_device
 
 
 VOCAB_SIZE = 512

@@ -7,14 +7,14 @@ import pytest
 
 from lumiere.persistence.clients import FileSystemStorageClient
 from lumiere.persistence.errors import StorageError
-from lumiere.training import generate_run_id
+from lumiere.utils import randomizer
 
 
 # TODO: Add the following two fixtures to a test utils module.
 @pytest.fixture
 def run_id():
     """Generate a random run id."""
-    return generate_run_id()
+    return randomizer.random_id()
 
 
 @pytest.fixture
@@ -34,6 +34,8 @@ def fs_storage_client(tmp_path):
 
 
 class TestFileSystemStorageClient:
+    """Test suite for :class:`lumiere.persistence.clients.FileSystemStorageClient`."""
+
     def test_can_be_initialized_with_str(self, tmp_path):
         pathstr = str(tmp_path)
 
@@ -269,7 +271,7 @@ class TestFileSystemStorageClient:
 
         # Verify complete reconstruction
         assert loaded_artifact == original_artifact
-        assert type(loaded_artifact) == type(original_artifact)
+        assert type(loaded_artifact) is type(original_artifact)
         assert loaded_artifact["model_params"] == original_artifact["model_params"]
         assert loaded_artifact["metrics"] == original_artifact["metrics"]
         assert loaded_artifact["metadata"] == original_artifact["metadata"]
