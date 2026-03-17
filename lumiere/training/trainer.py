@@ -122,7 +122,7 @@ class Trainer:
             train_metrics = self._fit()
             self.state.total_time_taken += train_metrics.time_taken
             self.state.global_step += train_metrics.num_steps
-            self.current_lr = (
+            self.state.current_lr = (
                 self.scheduler.get_last_lr()[0] if self.scheduler else None
             )
             self._execute_hooks("post_fit", train_metrics)
