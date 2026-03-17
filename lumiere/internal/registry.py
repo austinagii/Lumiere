@@ -86,23 +86,9 @@ def get_component(component_type: str, component_name: str):
 def _autodiscover():
     """Autodiscover modules from lumiere.yaml configuration."""
     # Find lumiere.yaml
-    current_path = Path.cwd()
-    config_path = None
-
-    for _ in range(5):
-        candidate = current_path / "lumiere.yaml"
-        if candidate.exists():
-            config_path = candidate
-            break
-        if current_path.parent == current_path:
-            break
-        current_path = current_path.parent
-
-    if not config_path:
-        return
-
+    config_path = Path(__file__).parent.parent.parent / "lumiere.yaml"
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = yaml.safe_load(f)
     except Exception:
         return
