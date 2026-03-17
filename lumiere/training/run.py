@@ -36,6 +36,7 @@ class RunStatus(StrEnum):
 
     PENDING = auto()
     RUNNING = auto()
+    STOPPED = auto()
     COMPLETED = auto()
     FAILED = auto()
 
