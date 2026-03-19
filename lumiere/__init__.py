@@ -15,17 +15,15 @@ from .internal.loader import (
     load_scheduler,
     load_tokenizer,
 )
+from .utils.signals import register_signal_handlers
 
 
 __all__ = [
-    # Dependency Injection
     "DependencyContainer",
     "get_global_container",
     "register_dependency",
     "clear_global_dependencies",
-    # Component Loader (class interface)
     "Loader",
-    # Component Loader (functional interface - backwards compatibility)
     "load_data",
     "load_model",
     "load_optimizer",
@@ -33,3 +31,5 @@ __all__ = [
     "load_scheduler",
     "load_tokenizer",
 ]
+
+register_signal_handlers()
