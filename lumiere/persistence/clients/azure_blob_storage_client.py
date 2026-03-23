@@ -32,8 +32,6 @@ from lumiere.persistence.errors import (
     StorageError,
 )
 
-from .base import StorageClient
-
 
 # Disable Azure blob storage logging
 logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
@@ -51,7 +49,7 @@ logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
 logging.getLogger("azure.core").setLevel(logging.WARNING)
 
 
-class AzureBlobStorageClient(StorageClient):
+class AzureBlobStorageClient:
     """Azure Blob Storage implementation of StorageClient.
 
     Artifacts managed by this client are stored in Azure Blob Storage as blobs using

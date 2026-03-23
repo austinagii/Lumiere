@@ -25,15 +25,13 @@ from lumiere.persistence.errors import (
     StorageError,
 )
 
-from .base import StorageClient
-
 
 DEFAULT_BASE_DIR = Path(".")
 RUN_ARTIFACT_PATH_TEMPLATE = "{run_id}/artifacts/{key}"
 RUN_CHECKPOINT_PATH_TEMPLATE = "{run_id}/checkpoints/{checkpoint_tag}.pt"
 
 
-class FileSystemStorageClient(StorageClient):
+class FileSystemStorageClient:
     """File system implementation of StorageClient.
 
     Artifacts managed by this client are stored on the local file system according to
