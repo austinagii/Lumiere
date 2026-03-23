@@ -14,6 +14,7 @@ from azure.storage.blob import BlobServiceClient
 from lumiere.persistence.clients import (
     AzureBlobStorageClient,
     FileSystemStorageClient,
+    StorageClient,
 )
 from lumiere.persistence.errors import (
     ArtifactNotFoundError,
@@ -21,7 +22,6 @@ from lumiere.persistence.errors import (
     RunNotFoundError,
     StorageError,
 )
-from lumiere.persistence.storage_client import StorageClient
 from lumiere.training.checkpoint import Checkpoint, CheckpointType
 from lumiere.training.config import Config
 from lumiere.utils import randomizer

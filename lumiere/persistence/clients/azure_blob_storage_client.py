@@ -31,7 +31,8 @@ from lumiere.persistence.errors import (
     CheckpointNotFoundError,
     StorageError,
 )
-from lumiere.persistence.storage_client import StorageClient
+
+from .base import StorageClient
 
 
 # Disable Azure blob storage logging

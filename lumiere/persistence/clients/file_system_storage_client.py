@@ -22,10 +22,10 @@ from typing import Any
 
 from lumiere.persistence.errors import (
     CheckpointNotFoundError,
-    RunNotFoundError,
     StorageError,
 )
-from lumiere.persistence.storage_client import StorageClient
+
+from .base import StorageClient
 
 
 DEFAULT_BASE_DIR = Path(".")

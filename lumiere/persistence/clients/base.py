@@ -70,8 +70,8 @@ class StorageClient(Protocol):
     def load_artifact(self, run_id: str, key: str) -> Any | None:
         """Load an artifact for the specified training run.
 
-        The object returned will be equivalent but not identical to the original object 
-        stored. i.e. the values of the properties of both objects will be the same but 
+        The object returned will be equivalent but not identical to the original object
+        stored. i.e. the values of the properties of both objects will be the same but
         the ids of the objects and their properties may not be.
 
         Args:
@@ -83,4 +83,3 @@ class StorageClient(Protocol):
                 artifact could be found.
         """
         ...
-
