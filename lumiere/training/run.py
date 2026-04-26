@@ -79,6 +79,9 @@ class Run:
         self.created_at = current_time
         self.updated_at = current_time
 
+    def __iter__(self) -> Iterable[tuple[str, Any]]:
+        return ((key, value) for key, value in self.__dict__.items() if key != "config")
+
 
 class StorageSources(StrEnum):
     AZURE_BLOB = "azure-blob"
@@ -192,24 +195,49 @@ class RunManager:
 
         Raises:
             Exception: If initialization fails in any destination.
+
+        Assume run name is "catatonic-disaster", on initialization we'll create a run directory in
+        the specified storage locations.
+
+        runs/
+          catatonic-disaster/
+            meta.json  # Contains metadata about the run and its current status.
+            config.yaml  # The training configuration used for this run.
+            events.json  # A log of all events generated during the run.
+            checkpoints/
+              index.json  # An sorted index of all training checkpoints.
+              epoch_001.pt
+              epoch_002.pt
+              ...
         """
         self.run = Run(run_config)
 
+        self._execute_async(
+            "save_artifact", self.run.id, "config.yaml", self.run.config, False
+        )
+
+        return self.run.id
+
+    def _execute_async(self, fname: str, *args, **kwargs):
+        """Execute the specified method in asynchronously across all storage clients."""
         with futures.ThreadPoolExecutor(
             max_workers=max(len(self.storage_clients), MAX_THREAD_POOL_SIZE)
         ) as executor:
-            jobs = [
-                executor.submit(
-                    client.save_artifact,
-                    self.run.id,
-                    "config.yaml",
-                    self.run.config,
-                    False,
-                )
-                for client in self.storage_clients
-            ]
+            jobs = []
 
-            # Raise any exceptions that occur.
+            for client in self.storage_clients:
+                try:
+                    fn = getattr(client, fname)
+                except AttributeError as e:
+                    raise AssertionError(
+                        f"Client '{type(client).__name__!r}' has no method '{fname}'."
+                    ) from e
+                assert callable(fn), (
+                    f"Attribute '{type(client).__name__}.{fname}' is not callable."
+                )
+
+                jobs.append(executor.submit(fn, *args, **kwargs))
+
             for job in futures.as_completed(jobs):
                 if (exception := job.exception()) is not None:
                     raise exception

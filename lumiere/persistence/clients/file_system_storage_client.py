@@ -1,48 +1,30 @@
-"""File System storage client for training artifact management.
-
-This module provides the FileSystemStorageClient class which implements the storage
-client interface for storing and retrieving training artifacts using the local file
-system.
+"""A client for storing and retrieving data from the local file system.
 
 Example:
     ```python
     from lumiere.training.checkpoint import Checkpoint
 
-    fs_storage_client = FileSystemStorageClient("./")
-    fs_storage_client.save_artifact("run-123", "config.yaml", {"max_epochs": 10})
-    fs_storage_client.save_checkpoint(
-        "run-123", "best", Checkpoint(avg_loss=0.15324).to_bytes()
-    )
+    checkpoint = Checkpoint(epoch=10, train_loss=0.015, weights=torch.randn(1, 5, 10))
+    checkpoint_bytes = bytes(checkpoint)
+
+    fs_client = FileSystemStorageClient("/tmp/runs/umvc3")
+    fs_client.save("checkpoints/epoch_001.pt", checkpoint_bytes)
     ```
 """
 
-import pickle
 from pathlib import Path
-from typing import Any
 
-from lumiere.persistence.errors import (
-    CheckpointNotFoundError,
-    StorageError,
-)
+from lumiere.persistence.errors import StorageError
 
 
 DEFAULT_BASE_DIR = Path(".")
-RUN_ARTIFACT_PATH_TEMPLATE = "{run_id}/artifacts/{key}"
-RUN_CHECKPOINT_PATH_TEMPLATE = "{run_id}/checkpoints/{checkpoint_tag}.pt"
 
 
 class FileSystemStorageClient:
-    """File system implementation of StorageClient.
+    """Client for storing and retrieving data from the local file system."""
 
-    Artifacts managed by this client are stored on the local file system according to
-    the following structure:
-        {base_dir}/runs/{run_id}/artifacts/{key}        - Arbitrary artifacts (pickled)
-        {base_dir}/runs/{run_id}/checkpoints/{tag}.pt   - Model checkpoints (binary)
-
-    """
-
-    def __init__(self, base_dir: str | Path = None) -> None:
-        """Initializes a new FileSystemStorageClient.
+    def __init__(self, base_dir: str | Path | None = None) -> None:
+        """Initializes a new `FileSystemStorageClient`.
 
         Args:
             base_dir: The directory where artifacts managed by this client are to be
@@ -57,89 +39,80 @@ class FileSystemStorageClient:
         # TODO: Raise error if base_diir is invalid type.
         self._base_dir = base_dir
 
-    def save_checkpoint(
-        self, run_id: str, checkpoint_tag: str, checkpoint: bytes
-    ) -> None:
-        """Implements :meth:`StorageClient.save_checkpoint`."""
-        checkpoint_path = self.base_dir / RUN_CHECKPOINT_PATH_TEMPLATE.format(
-            run_id=run_id, checkpoint_tag=checkpoint_tag
-        )
-        # Create the checkpoint directory if it does not already exist.
-        if not checkpoint_path.parent.exists():
+    def save(self, path: str | Path, data: bytes, overwrite: bool = False):
+        """Write data to a file.
+
+        If a file does not exist at the specified path, then one will be created. If one
+        does exist, then an error will be raised to prevent overwriting the contents of
+        that file. This behaviour can be disabled by setting the `overwrite` flag to
+        `True`.
+
+        Args:
+            path: The destination file path.
+            data: The data to be written to the file.
+            overwrite: Whether to overwrite the contents of an existing file at `path`.
+
+        Raises:
+            StorageError: If any of the following occur:
+                - A file exists at the specified path and `overwrite` is `False`.
+                - All bytes of the data could not be written to the file system.
+                - An error occurred while writing the data to the file system.
+        """
+        if not isinstance(path, Path):
             try:
-                checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+                path = Path(path)
             except Exception as e:
-                raise StorageError(
-                    f"Failed to create artifact directory '{checkpoint_path.parent}'",
-                    e,
-                )
+                raise ValueError(f"Invalid path: '{path}'") from e
 
-        mode = "w" if checkpoint_path.exists() else "x"
-        try:
-            with open(checkpoint_path, f"{mode}b") as f:
-                f.write(checkpoint)
-        except Exception as e:
-            raise StorageError(
-                f"An error occurred while saving the artifact to '{checkpoint_path}'",
-                e,
-            )
+        assert len(data) > 0, "No data provided to be written"
 
-    def load_checkpoint(self, run_id: str, checkpoint_tag: str) -> bytes:
-        """Implements :meth:`StorageClient.load_checkpoint`."""
-        checkpoint_path = self.base_dir / RUN_CHECKPOINT_PATH_TEMPLATE.format(
-            run_id=run_id, checkpoint_tag=checkpoint_tag
-        )
-
-        if not checkpoint_path.exists():
-            raise CheckpointNotFoundError(
-                f"No checkpoint with name '{checkpoint_tag}' could be found."
-            )
-
-        return checkpoint_path.read_bytes()
-
-    def save_artifact(
-        self, run_id: str, key: str, artifact: Any, overwrite: bool = False
-    ) -> None:
-        """Save an artifact for the specified training run to the local file system.
-
-        The artifact can be any arbitrary Python object. It will be serialized usiing the
-        `pickle` module and stored as a file on the local file system at:
-            "{base_dir}/runs/{run_id}/artifacts/{key}"
-
-        Implements :meth:`StorageClient.save_artifact`.
-        """
-        artifact_path = self.base_dir / RUN_ARTIFACT_PATH_TEMPLATE.format(
-            run_id=run_id, key=key
-        )
-
-        if not overwrite and artifact_path.exists():
-            raise KeyError(f"An artifact with key '{key}' already exists.")
+        fullpath = self._base_dir / path
+        if not overwrite and fullpath.exists():
+            raise StorageError(f"Attempting overwrite data at '{path}'.")
 
         try:
-            artifact_path.parent.mkdir(parents=True, exist_ok=True)
-            artifact_path.write_bytes(pickle.dumps(artifact))
+            fullpath.parent.mkdir(parents=True, exist_ok=True)
+            return fullpath.write_bytes(data)
         except Exception as e:
-            raise StorageError("An error occurred while saving the artifact", e)
+            raise StorageError("An error occurred while saving the data", e) from e
 
-    def load_artifact(self, run_id: str, key: str) -> Any | None:
-        """Load an artifact for the specified training run from the local file system.
+    def load(self, path: str | Path) -> bytes | None:
+        """Read data from a file.
 
-        The artifact will be loaded from the file system and reconstructed to its
-        original type using the `pickle` module.
+        Args:
+            path: The path to the file to be read.
 
-        Implements :meth:`StorageClient.load_artifact`.
+        Returns:
+            The data read from the file (as bytes) or `None` if no file could be found
+            at the specified path.
+
+        Raises:
+            TypeError: If `path` is not a string or path-like object.
+            StorageError: If an error occurred while reading data from the file.
+
         """
-        artifact_path = self.base_dir / RUN_ARTIFACT_PATH_TEMPLATE.format(
-            run_id=run_id, key=key
-        )
+        if isinstance(path, str):
+            try:
+                path = Path(path)
+            except Exception as e:
+                raise ValueError(f"Invalid path: '{path}'") from e
 
-        if not artifact_path.exists():
+        if not isinstance(path, Path):
+            raise TypeError(
+                "Expected 'path' to be either a string or path-like object, "
+                + f"got '{type(path).__name__}'"
+            )
+
+        path = self.base_dir / path
+        if not path.exists():
             return None
 
         try:
-            return pickle.loads(artifact_path.read_bytes())
+            return path.read_bytes()
         except Exception as e:
-            raise StorageError("An error occurred while loading the artifact", e)
+            raise StorageError(
+                f"An error occurred while reading file '{path}'.", e
+            ) from e
 
     @property
     def base_dir(self):
