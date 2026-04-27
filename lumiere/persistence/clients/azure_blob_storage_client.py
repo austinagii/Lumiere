@@ -21,6 +21,7 @@ import logging
 import os
 import pickle
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
@@ -37,16 +38,7 @@ from lumiere.persistence.errors import (
 logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
 logging.getLogger("azure.core").setLevel(logging.WARNING)
 
-# TODO: Rename these constants. These arent really 'path' templates but instead blob name
-# templates. It's just that the storage browser in azure visualizes them like paths in a
-# filesyste.
-RUN_BASE_PATH_TEMPLATE = "runs/{run_id}"
-RUN_ARTIFACT_PATH_TEMPLATE = "runs/{run_id}/artifacts/{key}"
-RUN_CHECKPOINT_PATH_TEMPLATE = "runs/{run_id}/checkpoints/{checkpoint_tag}.pt"
-
-# Disable Azure blob storage logging
-logging.getLogger("azure.storage.blob").setLevel(logging.WARNING)
-logging.getLogger("azure.core").setLevel(logging.WARNING)
+logger = logging.getLogger(__file__)
 
 
 class AzureBlobStorageClient:
@@ -76,6 +68,8 @@ class AzureBlobStorageClient:
         # name not empty or None etc...
         self.blob_service_client = blob_service_client
         self.container_name = container_name
+
+    def save(): ...
 
     def save_checkpoint(
         self, run_id: str, checkpoint_tag: str, checkpoint: bytes
@@ -124,26 +118,37 @@ class AzureBlobStorageClient:
         except ResourceExistsError as e:
             raise KeyError("An artifact with the specified key already exists.", e)
 
-    def load_artifact(self, run_id: str, key: str) -> Any:
-        """Load an artifact for the given run from Azure Blob Storage.
+    def load(self, path: str | Path) -> bytes | None:
+        """Load data from a blob.
 
-        Implements :meth:`StorageClient.load_artifact`.
+        Args:
+            path: The path to the blob to be loaded.
+
+        Returns:
+            The data contained in the blob as bytes.
+
+        Raises:
+            StorageError: If an error occurred while reading data from the blob.
+
         """
-        artifact = None
+        data = None
 
-        try:
-            artifact_data = self._download_blob(
-                self.blob_service_client,
-                self.container_name,
-                RUN_ARTIFACT_PATH_TEMPLATE.format(run_id=run_id, key=key),
-            )
-            artifact = pickle.loads(artifact_data)
-        except ArtifactNotFoundError:
-            pass
-            # Do nothing if the artifact isnt found.
-            # TODO: Consider just logging an info message.
+        with (
+            disable_tokenizer_parallelism()
+            and self.blob_service_client.get_blob_client(
+                container=self.container_name, blob=path
+            ) as blob_client
+        ):
+            try:
+                data = blob_client.download_blob().readall()
+            except ResourceNotFoundError:
+                logger.exception(f"Blob could not be found at '{path}'")
+            except Exception as e:
+                raise StorageError(
+                    "An error occurred while downloading the blob from blob storage"
+                ) from e
 
-        return artifact
+        return data
 
     @staticmethod
     def _upload_blob(
@@ -163,25 +168,6 @@ class AzureBlobStorageClient:
             except Exception as e:
                 raise StorageError(
                     "An error occurred while uploading the blob to blob storage",
-                    e,
-                )
-
-    @staticmethod
-    def _download_blob(
-        blob_service_client: BlobServiceClient, container_name: str, blob_name: str
-    ) -> bytes:
-        with blob_service_client.get_blob_client(
-            container=container_name, blob=blob_name
-        ) as blob_client:
-            try:
-                return blob_client.download_blob().readall()
-            except ResourceNotFoundError:
-                raise ArtifactNotFoundError(
-                    "Artifact could not be found in blob storage."
-                )
-            except Exception as e:
-                raise StorageError(
-                    "An error occurred while downloading the blob from blob storage",
                     e,
                 )
 

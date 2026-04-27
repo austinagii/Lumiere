@@ -5,7 +5,7 @@ import string
 from collections import namedtuple
 
 import pytest
-from azure.core.exceptions import AzureError, ResourceNotFoundError
+from azure.core.exceptions import AzureError
 from azure.storage.blob import BlobServiceClient
 
 from lumiere.persistence.clients import AzureBlobStorageClient
@@ -13,10 +13,13 @@ from lumiere.persistence.clients.azure_blob_storage_client import (
     disable_tokenizer_parallelism,
 )
 from lumiere.persistence.errors import (
-    CheckpointNotFoundError,
     StorageError,
 )
 from lumiere.utils import randomizer
+
+
+def random_bytes() -> bytes:
+    return b"somerandombytes"
 
 
 @pytest.fixture(scope="module")
@@ -44,6 +47,13 @@ def container(blob_service_client):
     yield Container(name=container_name, client=container_client)
 
     container_client.delete_container()
+
+
+@pytest.fixture
+def client(blob_service_client, container) -> AzureBlobStorageClient:
+    container_name, _ = container
+
+    return AzureBlobStorageClient(blob_service_client, container_name)
 
 
 @pytest.fixture
@@ -119,42 +129,6 @@ class TestAzureBlobStorageClient:
 
         with pytest.raises(StorageError):
             az_storage_client.save_checkpoint("abc", "best", b"test")
-
-    @pytest.mark.slow
-    def test_load_checkpoint_successfully_downloads_artifact(
-        self, az_storage_client, container
-    ):
-        target_checkpoint = _add_target_checkpoint(container.client)
-
-        result = az_storage_client.load_checkpoint(
-            target_checkpoint.run_id, target_checkpoint.name
-        )
-
-        assert result == b"target"
-
-    # TODO: Split this test to verify behavior when checkpoint not found and run not
-    # found.
-    def test_load_checkpoint_raises_error_when_artifact_not_found(
-        self, mocker, az_storage_client
-    ):
-        mocker.patch(
-            "azure.storage.blob.BlobClient.download_blob",
-            side_effect=ResourceNotFoundError("Test"),
-        )
-
-        with pytest.raises(CheckpointNotFoundError):
-            az_storage_client.load_checkpoint("testing123", "testing123")
-
-    def test_load_checkpoint_raises_error_when_download_fails(
-        self, mocker, az_storage_client
-    ):
-        mocker.patch(
-            "azure.storage.blob.BlobClient.download_blob",
-            side_effect=AzureError("A random error occurred."),
-        )
-
-        with pytest.raises(StorageError):
-            az_storage_client.load_checkpoint("testrun", "testcheckpoint")
 
     # -----------------------------------
     # ------- SAVE_ARTIFACT TESTS -------
@@ -261,32 +235,43 @@ class TestAzureBlobStorageClient:
             az_storage_client.save_artifact(run_id, artifact_key, ("apple", 42))
 
     # -----------------------------------
-    # ------- LOAD_ARTIFACT TESTS -------
+    # ---------- `LOAD` TESTS -----------
     # -----------------------------------
+    @pytest.mark.slow
+    @pytest.mark.parametrize(
+        "path", ["anthropic", "companies/anthropic", "companies/ai/labs/anthropic"]
+    )
+    def test_load_retrieves_data_from_blob(self, client, container_client, path):
+        expected_data = random_bytes()
+        container_client.upload_blob(path, expected_data)
+
+        actual_data = client.load(path)
+
+        assert actual_data == expected_data
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("artifact", [[1, 2, 3], {"test": "data"}])
-    def test_load_artifact_downloads_object_from_blob_storage(
-        self, az_storage_client, run_id, artifact_key, artifact
-    ):
-        az_storage_client.save_artifact(run_id, artifact_key, artifact, overwrite=True)
-        assert az_storage_client.load_artifact(run_id, artifact_key) == artifact
+    def test_load_returns_none_if_blob_could_not_be_found(self, client):
+        assert client.load("viltrum") is None
 
     @pytest.mark.slow
-    def test_load_artifact_returns_none_if_object_not_found(
-        self, az_storage_client, run_id, artifact_key
+    def test_load_raises_error_if_blob_container_does_not_exist(
+        self, blob_service_client
     ):
-        assert az_storage_client.load_artifact(run_id, artifact_key) is None
+        client = AzureBlobStorageClient(blob_service_client, "planet vegeta")
 
-    def test_load_artifact_raises_error_if_download_fails(
-        self, mocker, az_storage_client, run_id, artifact_key
+        with pytest.raises(StorageError):
+            client.load("Bardock")
+
+    def test_load_raises_error_if_error_occurs_while_retrieving_blob(
+        self, mocker, client
     ):
         mocker.patch(
-            "azure.storage.blob.BlobClient.download_blob", side_effect=Exception()
+            "azure.storage.blob.BlobClient.download_blob",
+            side_effect=AzureError("A random error occurred."),
         )
 
         with pytest.raises(StorageError):
-            az_storage_client.load_artifact(run_id, artifact_key)
+            client.load("randomblob")
 
 
 @pytest.mark.slow
