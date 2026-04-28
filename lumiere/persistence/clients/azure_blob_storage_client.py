@@ -12,24 +12,20 @@ Example:
     blob_client = BlobServiceClient.from_connection_string(
         environ["AZURE_BLOB_CONNECTION_STRING"]
     )
-    storage = AzureBlobStorageClient(blob_client, "my-container")
-    storage.save_artifact("run-123", "config.yaml", {"max_epochs": 10})
+    storage_client = AzureBlobStorageClient(blob_client, "my-container")
+    storage_client.save("desired/path/to/artifact", b"some byte data")
     ```
 """
 
 import logging
 import os
-import pickle
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.storage.blob import BlobServiceClient
 
 from lumiere.persistence.errors import (
-    ArtifactNotFoundError,
-    CheckpointNotFoundError,
     StorageError,
 )
 
@@ -69,57 +65,45 @@ class AzureBlobStorageClient:
         self.blob_service_client = blob_service_client
         self.container_name = container_name
 
-    def save(): ...
+    def save(self, path: str | Path, data: bytes, overwrite: bool = False) -> int:
+        """Save data as an Azure blob.
 
-    def save_checkpoint(
-        self, run_id: str, checkpoint_tag: str, checkpoint: bytes
-    ) -> None:
-        """An implementation of :meth:`StorageClient.save_checkpoint`."""
-        checkpoint_path = RUN_CHECKPOINT_PATH_TEMPLATE.format(
-            run_id=run_id, checkpoint_tag=checkpoint_tag
-        )
+        Args:
+            path: The desired path of the blob to be created.
+            data: The data to be contained within the blob.
+            overwrite: Whether to overwrite an existing blob at the specified path.
 
-        self._upload_blob(
-            self.blob_service_client, self.container_name, checkpoint_path, checkpoint
-        )
+        Returns:
+            int: The number of bytes successfully written to the blob.
 
-    def load_checkpoint(self, run_id: str, checkpoint_tag: str) -> bytes:
-        """An implementation of :meth:`StorageClient.load_checkpoint`."""
-        checkpoint_path = RUN_CHECKPOINT_PATH_TEMPLATE.format(
-            run_id=run_id, checkpoint_tag=checkpoint_tag
-        )
-
-        try:
-            checkpoint = self._download_blob(
-                self.blob_service_client, self.container_name, checkpoint_path
-            )
-        except ArtifactNotFoundError:
-            raise CheckpointNotFoundError("Checkpoint could not be found in blob")
-        return checkpoint
-
-    def save_artifact(
-        self, run_id: str, key: str, artifact: Any, overwrite: bool = False
-    ) -> None:
-        """Save an artifact for the given run to Azure Blob Storage.
-
-        `artifact` can be any arbitrary Python object. It will be serialized using
-        the pickle module and stored in azure blob.
-
-        Implements :meth:`StorageClient.save_artifact`.
+        Raise:
+            StorageError: If any of the following occur:
+                - The specified path corresponds to an existing blob but the overwrite
+                  flag is set to `False`
+                - An error occurred while uploading the data to blob storage.
         """
-        try:
-            self._upload_blob(
-                self.blob_service_client,
-                self.container_name,
-                RUN_ARTIFACT_PATH_TEMPLATE.format(run_id=run_id, key=key),
-                pickle.dumps(artifact),
-                overwrite=overwrite,
-            )
-        except ResourceExistsError as e:
-            raise KeyError("An artifact with the specified key already exists.", e)
+        with (
+            disable_tokenizer_parallelism()
+            and self.blob_service_client.get_blob_client(
+                container=self.container_name, blob=path
+            ) as blob_client
+        ):
+            try:
+                blob_client.upload_blob(data, overwrite=overwrite)
+            except ResourceExistsError as e:
+                raise StorageError(
+                    f"Attempting to overwrite blob at '{path}' but overwrite flag is"
+                    + " not set."
+                ) from e
+            except Exception as e:
+                raise StorageError(
+                    "An error occurred while uploading the blob to blob storage",
+                ) from e
+
+        return len(data)
 
     def load(self, path: str | Path) -> bytes | None:
-        """Load data from a blob.
+        """Load data from an Azure blob.
 
         Args:
             path: The path to the blob to be loaded.
@@ -149,27 +133,6 @@ class AzureBlobStorageClient:
                 ) from e
 
         return data
-
-    @staticmethod
-    def _upload_blob(
-        blob_service_client: BlobServiceClient,
-        container_name: str,
-        blob_name: str,
-        blob: str | bytes,
-        overwrite=True,
-    ) -> None:
-        with disable_tokenizer_parallelism() and blob_service_client.get_blob_client(
-            container=container_name, blob=blob_name
-        ) as blob_client:
-            try:
-                blob_client.upload_blob(blob, overwrite=overwrite)
-            except ResourceExistsError as e:
-                raise e
-            except Exception as e:
-                raise StorageError(
-                    "An error occurred while uploading the blob to blob storage",
-                    e,
-                )
 
 
 @contextmanager

@@ -47,14 +47,39 @@ def random_name() -> str:
     return f"{adjective}-{noun}-{number}"
 
 
-def random_id(n: int = 8):
+def random_id(
+    n: int = 8,
+    include_alpha_upper: bool = True,
+    include_alpha_lower: bool = True,
+    include_digits: bool = True,
+):
     """Generate a random alphanumeric identifier.
 
     Args:
         n: The length of the identifier. Defaults to `8`.
+        include_alpha_upper: Whether to include uppercase alphabet characters in the
+            identifier.
+        include_alpha_lower: Whether to include lowercase alphabet characters in the
+            identifier.
+        include_digits: Whether to include digits in the identifier.
 
     Returns:
         A random string of length `n` containing letters and digits.
     """
-    alphabet = string.ascii_letters + string.digits
+    alphabet: list[str] = []
+
+    if include_alpha_upper:
+        alphabet.extend(string.ascii_uppercase)
+
+    if include_alpha_lower:
+        alphabet.extend(string.ascii_lowercase)
+
+    if include_digits:
+        alphabet.extend(string.digits)
+
+    if len(alphabet) == 0:
+        raise ValueError(
+            "At least one group of characters must be included to generate an id."
+        )
+
     return "".join([secrets.choice(alphabet) for _ in range(n)])

@@ -1,7 +1,4 @@
 import os
-import pickle
-import random
-import string
 from collections import namedtuple
 
 import pytest
@@ -12,19 +9,13 @@ from lumiere.persistence.clients import AzureBlobStorageClient
 from lumiere.persistence.clients.azure_blob_storage_client import (
     disable_tokenizer_parallelism,
 )
-from lumiere.persistence.errors import (
-    StorageError,
-)
+from lumiere.persistence.errors import StorageError
 from lumiere.utils import randomizer
-
-
-def random_bytes() -> bytes:
-    return b"somerandombytes"
 
 
 @pytest.fixture(scope="module")
 def blob_service_client():
-    """Azure Blob Service client configured from connection string."""
+    """An azure blob storage client."""
     az_blob_conn_string = os.getenv("AZURE_BLOB_CONNECTION_STRING")
     if az_blob_conn_string is None:
         raise KeyError("Connection string not found for Azure Blob Storage.")
@@ -35,10 +26,9 @@ def blob_service_client():
 
 
 @pytest.fixture
-def container(blob_service_client):
-    """Creates a random container in Azure Blob that will be cleaned up after use."""
-    test_id = "".join([random.choice(string.ascii_lowercase) for _ in range(6)])
-    container_name = f"test-{test_id}"
+def tmp_container(blob_service_client):
+    """A temporary blob storage container."""
+    container_name = f"test-{randomizer.random_id(include_alpha_upper=False)}"
     container_client = blob_service_client.create_container(
         container_name, metadata={"Category": "test"}
     )
@@ -50,200 +40,90 @@ def container(blob_service_client):
 
 
 @pytest.fixture
-def client(blob_service_client, container) -> AzureBlobStorageClient:
-    container_name, _ = container
-
-    return AzureBlobStorageClient(blob_service_client, container_name)
-
-
-@pytest.fixture
-def container_client(container):
-    """Return a client for an ephemeral test container."""
-    _, container_client = container
-    return container_client
-
-
-@pytest.fixture
-def run_id():
-    """Return a randomly generated run id using :meth:`randomizer.random_id`."""
-    return randomizer.random_id()
-
-
-@pytest.fixture
-def artifact_key():
-    """Return a randomly generated artifact key."""
-    vocab = string.ascii_uppercase + string.ascii_lowercase
-    return "".join(random.choice(vocab) for _ in range(6))
-
-
-@pytest.fixture
-def az_storage_client(blob_service_client, container):
-    """AzureBlobStorageClient instance for testing."""
-    return AzureBlobStorageClient(blob_service_client, container.name)
-
-
-def _add_target_checkpoint(container_client):
-    run_id = randomizer.random_id()
-    checkpoint_tags = ["epoch_0001", "epoch_0002", "epoch_0003", "best", "final"]
-    target_checkpoint_tag = random.choice(checkpoint_tags)
-
-    for checkpoint_tag in checkpoint_tags:
-        checkpoint_path = f"runs/{run_id}/checkpoints/{checkpoint_tag}.pt"
-        checkpoint_data = (
-            b"target" if checkpoint_tag == target_checkpoint_tag else b"test"
-        )
-        container_client.upload_blob(checkpoint_path, checkpoint_data)
-
-    TargetCheckpoint = namedtuple("TargetCheckpoint", ["run_id", "name"])
-    return TargetCheckpoint(run_id=run_id, name=target_checkpoint_tag)
+def client(blob_service_client, tmp_container) -> AzureBlobStorageClient:
+    return AzureBlobStorageClient(blob_service_client, tmp_container.name)
 
 
 class TestAzureBlobStorageClient:
     """Test suite for :class:`lumiere.persistence.clients.AzureBlobStorageClient`."""
 
-    @pytest.mark.slow
-    def test_save_checkpoint_successfully_uploads_artifact(
-        self, az_storage_client, container
-    ):
-        run_id = randomizer.random_id(n=8)
-        checkpoint_tag = "test"
-        checkpoint_data = b"test"
-
-        az_storage_client.save_checkpoint(run_id, checkpoint_tag, checkpoint_data)
-
-        assert container.client.get_blob_client(
-            f"runs/{run_id}/checkpoints/{checkpoint_tag}.pt"
-        ).exists()
-
-    # TODO: Add test to verify behavior when run does not exist.
-
-    def test_save_checkpoint_raises_error_when_upload_fails(
-        self, mocker, container, blob_service_client
-    ):
-        mocker.patch(
-            "azure.storage.blob.BlobClient.upload_blob",
-            side_effect=Exception("Upload failed"),
-        )
-
-        az_storage_client = AzureBlobStorageClient(blob_service_client, container.name)
-
-        with pytest.raises(StorageError):
-            az_storage_client.save_checkpoint("abc", "best", b"test")
-
     # -----------------------------------
-    # ------- SAVE_ARTIFACT TESTS -------
+    # ------- `SAVE` TESTS -------
     # -----------------------------------
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("artifact", [[1, 2, 3], {"test": "data"}])
-    def test_save_artifact_uploads_object_to_blob_storage(
-        self, az_storage_client, container, artifact
+    @pytest.mark.parametrize("path", ["jujutsu-high/records"])
+    def test_save_uploads_data_as_blob_to_azure_blob_storage(
+        self, client, tmp_container, path
     ):
-        run_id = randomizer.random_id()
-        key = "testkey"
-        expected_blob_name = f"runs/{run_id}/artifacts/{key}"
-        _, container_client = container
-        blob_client = container_client.get_blob_client(expected_blob_name)
+        data = b"divergent-fist"
+        blob_client = tmp_container.client.get_blob_client(path)
 
         # Verify the artifact doesn't already exist.
         assert not blob_client.exists()
 
-        az_storage_client.save_artifact(run_id, key, artifact)
+        client.save(path, data)
 
         # Verify the artifact has been created.
         assert blob_client.exists()
         assert blob_client.get_blob_properties().size != 0
 
     @pytest.mark.slow
-    def test_save_artifact_overwrites_existing_artifact_is_overwrite_is_true(
-        self, az_storage_client, container
+    def test_save_overwrites_existing_blob_if_overwrite_flag_is_true(
+        self, client, tmp_container
     ):
-        run_id = randomizer.random_id()
-        key = "testkey"
-        expected_blob_name = f"runs/{run_id}/artifacts/{key}"
-        _, container_client = container
-        blob_client = container_client.get_blob_client(expected_blob_name)
-
-        # Verify the artifact doesn't already exist.
-        assert not blob_client.exists()
-
-        # Store the first version of the artifact and verify it's stored correctly.
-        original_artifact = {"data": "original"}
-        az_storage_client.save_artifact(run_id, key, original_artifact)
-
-        assert blob_client.exists()
-        reconstructed_original = pickle.loads(blob_client.download_blob().readall())
-        assert original_artifact == reconstructed_original
-
-        # Store another version of the artifact and verify it overwrites the previous.
-        new_artifact = {"data": "new"}
-        az_storage_client.save_artifact(run_id, key, new_artifact, overwrite=True)
-
-        reconstructed_new = pickle.loads(blob_client.download_blob().readall())
-        assert reconstructed_new != original_artifact
-
-    @pytest.mark.slow
-    def test_save_artifact_raises_error_if_existing_key_and_overwrite_is_false(
-        self, az_storage_client, container_client, run_id, artifact_key
-    ):
-        blob_client = container_client.get_blob_client(
-            f"runs/{run_id}/artifacts/{artifact_key}"
-        )
-
-        # Verify the artifact doesn't already exist.
-        assert not blob_client.exists()
-
-        # Store the artifact and verify it's been store successfully.
-        artifact = {"secret_formula": "e=mc^2"}
-        az_storage_client.save_artifact(run_id, artifact_key, artifact, overwrite=False)
-
-        assert blob_client.exists()
-
-        # Attempt to overwrite the previous artifact.
-        new_artifact = {"secret_formula": "e=mc^(1/2)"}
-        with pytest.raises(KeyError):
-            az_storage_client.save_artifact(
-                run_id, artifact_key, new_artifact, overwrite=False
-            )
-
-        assert pickle.loads(blob_client.download_blob().readall()) == artifact
-
-    @pytest.mark.slow
-    def test_save_artifact_does_not_overwite_existing_artifacts_by_default(
-        self, az_storage_client, container_client, run_id, artifact_key
-    ):
-        blob_client = container_client.get_blob_client(
-            f"runs/{run_id}/artifacts/{artifact_key}"
-        )
+        path = "shibuya/october-31/vessel.log"
+        blob_client = tmp_container.client.get_blob_client(path)
 
         assert not blob_client.exists()
 
-        az_storage_client.save_artifact(run_id, artifact_key, ["launch", "codes"])
+        client.save(path, b"yuji-in-control")
         assert blob_client.exists()
+        assert blob_client.download_blob().readall() == b"yuji-in-control"
 
-        with pytest.raises(KeyError):
-            az_storage_client.save_artifact(run_id, artifact_key, ["<redacted>"])
+        client.save(path, b"sukuna-takes-over", overwrite=True)
+        assert blob_client.download_blob().readall() == b"sukuna-takes-over"
 
-    def test_save_artifact_raises_error_if_error_occurs_during_upload(
-        self, mocker, az_storage_client, run_id, artifact_key
+    def test_save_prevents_overwriting_existing_blob_by_default(
+        self, client, tmp_container
     ):
+        path = "jujutsu-high/binding-vow"
+        blob_client = tmp_container.client.get_blob_client(path)
+
+        assert not blob_client.exists()
+
+        client.save(path, b"yuji-itadori")
+        assert blob_client.exists()
+        assert blob_client.download_blob().readall() == b"yuji-itadori"
+
+        with pytest.raises(StorageError):
+            client.save(path, b"ryomen-sukuna")
+
+        assert blob_client.download_blob().readall() == b"yuji-itadori"
+
+    def test_save_raises_error_if_error_occurs_during_upload(self, mocker, client):
         mocker.patch(
             "azure.storage.blob.BlobClient.upload_blob", side_effect=Exception()
         )
 
         with pytest.raises(StorageError):
-            az_storage_client.save_artifact(run_id, artifact_key, ("apple", 42))
+            client.save("yuki/cursed-techniques", b"antigravity")
 
     # -----------------------------------
     # ---------- `LOAD` TESTS -----------
     # -----------------------------------
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "path", ["anthropic", "companies/anthropic", "companies/ai/labs/anthropic"]
+        "path",
+        [
+            "sorcerers/grade-1",
+            "jujutsu-high/sorcerers/grade-1",
+            "jujutsu-high/tokyo/sorcerers/grade-1",
+        ],
     )
-    def test_load_retrieves_data_from_blob(self, client, container_client, path):
-        expected_data = random_bytes()
-        container_client.upload_blob(path, expected_data)
+    def test_load_retrieves_data_from_blob(self, client, tmp_container, path):
+        expected_data = b"yuji-itadori"
+        tmp_container.client.upload_blob(path, expected_data)
 
         actual_data = client.load(path)
 
@@ -251,16 +131,15 @@ class TestAzureBlobStorageClient:
 
     @pytest.mark.slow
     def test_load_returns_none_if_blob_could_not_be_found(self, client):
-        assert client.load("viltrum") is None
+        assert client.load("gojo/prison-realm/location") is None
 
     @pytest.mark.slow
-    def test_load_raises_error_if_blob_container_does_not_exist(
+    def test_load_returns_none_if_blob_container_does_not_exist(
         self, blob_service_client
     ):
-        client = AzureBlobStorageClient(blob_service_client, "planet vegeta")
+        client = AzureBlobStorageClient(blob_service_client, "death-painting-womb")
 
-        with pytest.raises(StorageError):
-            client.load("Bardock")
+        assert client.load("cursed-spirit-painting") is None
 
     def test_load_raises_error_if_error_occurs_while_retrieving_blob(
         self, mocker, client
@@ -271,7 +150,7 @@ class TestAzureBlobStorageClient:
         )
 
         with pytest.raises(StorageError):
-            client.load("randomblob")
+            client.load("innate-domain/unlimited-void")
 
 
 @pytest.mark.slow
