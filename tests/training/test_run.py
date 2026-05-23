@@ -1,337 +1,247 @@
+import json
+import time
 from pathlib import Path
-from typing import Any
 
 import pytest
+import yaml
 
-from lumiere.persistence.clients import (
-    AzureBlobStorageClient,
-    FileSystemStorageClient,
-)
-from lumiere.persistence.errors import ArtifactNotFoundError, StorageError
-from lumiere.training import Checkpoint, CheckpointType, Run, RunManager
-from lumiere.training.config import Config
+from lumiere.persistence.errors import StorageError
+from lumiere.training import Config
+from lumiere.training.run import Run, RunArtifactRepository, RunRepository, RunStatus
 
 
 @pytest.fixture
-def dsconfig_file_path(tmp_path: Path) -> Path:
-    config = """
-    runs:
-        checkpoints:
-            sources:
-                - filesystem 
-                - azure-blob
-            destinations:
-                - azure-blob
-                - filesystem 
-    """
-
-    config_file_path = tmp_path / "dsconfig.yaml"
-    config_file_path.write_text(config)
-    return config_file_path
-
-
-@pytest.fixture(scope="module")
-def run_config() -> dict[str, Any]:
-    return {
-        "tokenizer": {"vocab_size": 1024},
-        "model": {"num_blocks": 8, "d_key": 128, "d_value": 128},
-    }
-
-
-@pytest.fixture(scope="module")
-def checkpoint():
-    return Checkpoint(epoch=1, prev_loss=0.95, best_loss=0.88)
+def config(scope="module") -> Config:
+    return Config(
+        {
+            "village": "Konoha",
+            "hokage": "Naruto",
+            "rank": ["Genin", "Chunin", "Jonin", "Kage"],
+            "natures": ["Fire", "Wind", "Lightning", "Earth", "Water"],
+            "team_7": ["Naruto", "Sasuke", "Sakura"],
+            "kurama_tails": 9,
+            "sage_mode": True,
+        }
+    )
 
 
 @pytest.fixture
-def run_manager(run_config):
-    run_manager = RunManager(
-        sources=["azure-blob", "filesystem"],
-        destinations=["azure-blob", "filesystem"],
-    )
-
-    run_manager.run = Run(run_config)
-
-    return run_manager
+def run(config) -> Run:
+    return Run(config)
 
 
-class TestRunManager:
-    def test_run_manager_can_be_initialized_from_location_list(self):
-        run_manager = RunManager(
-            sources=["azure-blob", "filesystem"],
-            destinations=["azure-blob", "filesystem"],
-        )
+class TestRun:
+    """Tests suite for :class:`lumiere.training.run.Run`."""
 
-        assert isinstance(run_manager.storage_clients[0], AzureBlobStorageClient)
-        assert isinstance(run_manager.storage_clients[1], FileSystemStorageClient)
-        assert isinstance(run_manager.retrieval_clients[0], AzureBlobStorageClient)
-        assert isinstance(run_manager.retrieval_clients[1], FileSystemStorageClient)
+    def test_to_dict_creates_a_dict_from_the_run(self, run: Run):
+        run_dict = run.to_dict()
 
-    def test_run_manager_can_be_initialized_from_yaml_config(
-        self, dsconfig_file_path: Path
-    ) -> None:
-        config = Config.from_yaml(dsconfig_file_path)
-        run_manager = RunManager.from_config(config)
+        assert run.id == run_dict["id"]
+        assert run.name == run_dict["name"]
+        assert run.status == run_dict["status"]
+        assert run.config == run_dict["config"]
+        assert run.created_at == run_dict["created_at"]
+        assert run.updated_at == run_dict["updated_at"]
+        assert run.current_epoch == run_dict["current_epoch"]
+        assert run.current_step == run_dict["current_step"]
+        assert run.current_loss == run_dict["current_loss"]
 
-        assert isinstance(run_manager.storage_clients[0], FileSystemStorageClient)
-        assert isinstance(run_manager.storage_clients[1], AzureBlobStorageClient)
-        assert isinstance(run_manager.retrieval_clients[0], AzureBlobStorageClient)
-        assert isinstance(run_manager.retrieval_clients[1], FileSystemStorageClient)
+    def test_from_dict_creates_a_run_from_a_dict(self, config):
+        run_dict = {
+            "id": "676-425",
+            "name": "tailed-beast-bomb-rasenshuriken",
+            "status": "completed",
+            "config": config,
+            "created_at": 1253235735,
+            "updated_at": 2354254782,
+            "current_epoch": 10,
+            "current_step": 442540,
+            "current_loss": 0.00854345,
+        }
+        run = Run.from_dict(run_dict)
 
-    def test_init_run_cascades_to_storage_clients(
-        self, mocker, dsconfig_file_path, run_config
-    ) -> None:
-        run_manager = RunManager(
-            sources=["azure-blob", "filesystem"],
-            destinations=["azure-blob", "filesystem"],
-        )
+        assert run.id == run_dict["id"]
+        assert run.name == run_dict["name"]
+        assert run.status == run_dict["status"]
+        assert isinstance(run.status, RunStatus)
+        assert run.config == run_dict["config"]
+        assert isinstance(run.config, Config)
+        assert run.created_at == run_dict["created_at"]
+        assert run.updated_at == run_dict["updated_at"]
+        assert run.current_epoch == run_dict["current_epoch"]
+        assert run.current_step == run_dict["current_step"]
+        assert run.current_loss == run_dict["current_loss"]
 
-        for client in run_manager.storage_clients:
-            mocker.patch.object(client, "save_artifact")
+    def test_from_dict_uses_defaults_for_fields_missing_from_dict(self, config):
+        run_dict = {
+            "id": "676-425",
+            "name": "tailed-beast-bomb-rasenshuriken",
+            "status": "completed",
+            "config": config,
+            "created_at": 1253235735,
+        }
+        run = Run.from_dict(run_dict)
 
-        run_manager.init_run(run_config)
+        assert run.id == run_dict["id"]
+        assert run.name == run_dict["name"]
+        assert run.status == run_dict["status"]
+        assert isinstance(run.status, RunStatus)
+        assert run.config == run_dict["config"]
+        assert isinstance(run.config, Config)
+        assert run.created_at == run_dict["created_at"]
+        assert run.updated_at is None
+        assert run.current_epoch == 0
+        assert run.current_step == 0
+        assert run.current_loss == 0
 
-        for client in run_manager.storage_clients:
-            client.save_artifact.assert_called_once_with(
-                run_manager.run.id, "config.yaml", run_manager.run.config, False
-            )
 
-    def test_init_run_raises_error_if_any_storage_client_fails(
-        self, mocker, dsconfig_file_path, run_config
-    ) -> None:
-        run_manager = RunManager(
-            sources=["azure-blob", "filesystem"],
-            destinations=["azure-blob", "filesystem"],
-        )
+class MemoryStorageClient:
+    """A storage client using an in-memory backend."""
 
-        for client in run_manager.storage_clients:
-            mocker.patch.object(client, "save_artifact")
+    def __init__(self):
+        self._storage = {}
 
-        # Configure one storage client to fail
-        run_manager.storage_clients[1].save_artifact.side_effect = StorageError()
+    def save(self, path: str | Path, data: bytes, overwrite: bool = False) -> int:
+        if not overwrite and path in self._storage:
+            raise StorageError(f"Data already exists at '{path}'")
+        self._storage[path] = data
+        return len(data)
 
-        with pytest.raises(StorageError):
-            run_manager.init_run(run_config)
+    def load(self, path: str | Path) -> bytes | None:
+        return self._storage.get(path)
 
-        for client in run_manager.storage_clients:
-            client.save_artifact.assert_called_once()
 
-    def test_save_checkpoint_cascades_to_storage_clients(
-        self, mocker, run_manager, checkpoint
+@pytest.fixture
+def storage_client():
+    return MemoryStorageClient()
+
+
+@pytest.fixture
+def run_repository(storage_client):
+    return RunRepository(storage_client)
+
+
+class TestRunRepository:
+    """Test suite for the :meth:`lumiere.training.run.RunRepository` class."""
+
+    def test_insert_saves_run_metadata_as_json(
+        self, run, run_repository, storage_client
     ):
-        for client in run_manager.storage_clients:
-            mocker.patch.object(client, "save_checkpoint")
+        run_repository.insert(run)
 
-        run_manager.save_checkpoint(
-            CheckpointType.EPOCH, checkpoint, epoch_no=checkpoint["epoch"]
+        run_bytes = storage_client.load(f"runs/{run.name}/meta.json")
+        assert run_bytes is not None
+        run_dict = json.loads(run_bytes)
+        assert run_dict["id"] == run.id
+        assert run_dict["name"] == run.name
+        assert run_dict["status"] == run.status.value
+        assert "config" not in run_dict
+        assert run_dict["created_at"] == run.created_at
+        assert run_dict["updated_at"] == run.updated_at
+        assert run_dict["current_epoch"] == run.current_epoch
+        assert run_dict["current_step"] == run.current_step
+        assert run_dict["current_loss"] == run.current_loss
+
+    def test_insert_saves_run_config_as_yaml(self, run, run_repository, storage_client):
+        run_repository.insert(run)
+
+        config_bytes = storage_client.load(f"runs/{run.name}/config.yaml")
+        assert config_bytes is not None
+        assert yaml.safe_load(config_bytes) == dict(run.config)
+
+    def test_update_overwrites_run_metadata(self, run, run_repository, storage_client):
+        run_repository.insert(run)
+        run.status = RunStatus.RUNNING
+        run.current_epoch = 5
+        run.current_step = 12500
+        run.current_loss = 0.3217
+
+        run_repository.update(run)
+
+        run_bytes = storage_client.load(f"runs/{run.name}/meta.json")
+        run_dict = json.loads(run_bytes)
+        assert run_dict["status"] == RunStatus.RUNNING
+        assert run_dict["current_epoch"] == 5
+        assert run_dict["current_step"] == 12500
+        assert run_dict["current_loss"] == 0.3217
+
+    def test_update_does_not_modify_config(self, run, run_repository, storage_client):
+        run_repository.insert(run)
+        original_config_bytes = storage_client.load(f"runs/{run.name}/config.yaml")
+
+        run.status = RunStatus.RUNNING
+        run_repository.update(run)
+
+        assert (
+            storage_client.load(f"runs/{run.name}/config.yaml") == original_config_bytes
         )
 
-        for client in run_manager.storage_clients:
-            client.save_checkpoint.assert_called_once_with(
-                run_manager.run.id, "epoch:0001", bytes(checkpoint)
-            )
+    def test_get_retrieves_run_by_name(self, storage_client, run_repository):
+        run_dict = {
+            "id": "kage",
+            "name": "gaara",
+            "status": "pending",
+            "created_at": time.time_ns(),
+            "updated_at": time.time_ns(),
+            "current_epoch": 100,
+            "current_step": 242700,
+            "current_loss": 0.0535,
+        }
+        run_bytes = bytes(json.dumps(run_dict), "utf-8")
+        storage_client.save(f"runs/{run_dict['name']}/meta.json", run_bytes)
 
-    @pytest.mark.parametrize(
-        "checkpoint_type, checkpoint_tag",
-        [
-            (CheckpointType.EPOCH, "epoch:0001"),
-            (CheckpointType.BEST, "best"),
-            (CheckpointType.FINAL, "final"),
-        ],
-    )
-    def test_save_checkpoint_uses_correct_checkpoint_tag(
-        self, mocker, run_manager, checkpoint, checkpoint_type, checkpoint_tag
+        run_config_dict = {"nature": "earth"}
+        run_config_bytes = bytes(yaml.dump(run_config_dict), "utf-8")
+        storage_client.save(f"runs/{run_dict['name']}/config.yaml", run_config_bytes)
+
+        run = run_repository.get("gaara")
+
+        assert run_dict["id"] == run.id
+        assert run_dict["name"] == run.name
+        assert run_dict["status"] == run.status.value
+        assert run_dict["created_at"] == run.created_at
+        assert run_dict["updated_at"] == run.updated_at
+        assert run_dict["current_epoch"] == run.current_epoch
+        assert run_dict["current_step"] == run.current_step
+        assert run_dict["current_loss"] == run.current_loss
+        assert run_config_dict == run.config.to_dict()
+
+
+@pytest.fixture
+def artifact_repository(storage_client):
+    return RunArtifactRepository(storage_client)
+
+
+class TestRunArtifactRepository:
+    """Test suite for the :class:`lumiere.training.run.Run` class."""
+
+    # TODO: Implement remaining tests.
+    def test_insert_saves_artifact_to_storage_location(
+        self, storage_client, artifact_repository
     ):
-        for client in run_manager.storage_clients:
-            mocker.patch.object(client, "save_checkpoint")
+        artifact = b"3534xcc-53345d-4ngfkb"
 
-        if checkpoint_type == CheckpointType.EPOCH:
-            run_manager.save_checkpoint(
-                checkpoint_type, checkpoint, epoch_no=checkpoint["epoch"]
-            )
-        else:
-            run_manager.save_checkpoint(checkpoint_type, checkpoint)
+        artifact_repository.insert("ultimate-ninja", "raikiri-staff", artifact)
 
-        for client in run_manager.storage_clients:
-            client.save_checkpoint.assert_called_once_with(
-                run_manager.run.id, checkpoint_tag, bytes(checkpoint)
-            )
-
-    def test_save_checkpoint_does_not_raise_error_if_any_storage_client_fails(
-        self, mocker, run_manager, checkpoint
-    ) -> None:
-        for client in run_manager.storage_clients:
-            mocker.patch.object(client, "save_checkpoint")
-
-        # Configure one storage client to fail
-        run_manager.storage_clients[1].save_checkpoint.side_effect = StorageError()
-
-        run_manager.save_checkpoint(
-            CheckpointType.EPOCH, checkpoint, epoch_no=checkpoint["epoch"]
+        assert (
+            storage_client.load("runs/ultimate-ninja/artifacts/raikiri-staff")
+            == artifact
         )
 
-        for client in run_manager.storage_clients:
-            client.save_checkpoint.assert_called_once()
-
-    # ----------------------------------
-    # ------ SAVE ARTIFACT TESTS -------
-    # ----------------------------------
-
-    def test_save_artifact_saves_to_all_storage_locations(self, mocker, run_manager):
-        for client in run_manager.storage_clients:
-            mocker.patch.object(client, "save_artifact")
-
-        key = "test-dict"
-        artifact = {"test_data": ["Some", "simple", "test", "data"]}
-
-        run_manager.save_artifact(key, artifact)
-
-        # Since RunManager doesn't actually save the artifacts, but instead delegates
-        # the actual work to the storage client configured for each location, we just
-        # verify that the necessary calls have been dispatched correctly.
-        for client in run_manager.storage_clients:
-            actual_args = client.save_artifact.call_args.args
-            assert actual_args[0] == run_manager.run.id
-            assert actual_args[1] == key
-            assert actual_args[2] == artifact
-
-    def test_save_artifact_does_not_overwrite_existing_artifacts_by_default(
-        self, mocker, run_manager
+    def test_get_loads_artifact_from_storage_location(
+        self, storage_client, artifact_repository
     ):
-        for client in run_manager.storage_clients:
-            mocker.patch.object(client, "save_artifact")
+        artifact = b"3534xcc-53345d-4ngfkb"
 
-        key = "test-dict"
-        artifact = {"test_data": ["Some", "simple", "test", "data"]}
+        storage_client.save("runs/ultimate-ninja/artifacts/raikiri-staff", artifact)
 
-        run_manager.save_artifact(key, artifact)
+        assert artifact_repository.get("ultimate-ninja", "raikiri-staff") == artifact
 
-        # Same as the other tests for this method, just verify that the method call
-        # is dispatched specifying that the storage client should not overwrite the
-        # previous document.
-        for client in run_manager.storage_clients:
-            assert not client.save_artifact.call_args.kwargs["overwrite"]
-
-    def test_save_artifact_overwrites_existing_artifacts_if_overwrite_is_true(
-        self, mocker, run_manager
+    def test_get_returns_none_if_artifact_does_not_exist(
+        self, storage_client, artifact_repository
     ):
-        for client in run_manager.storage_clients:
-            mocker.patch.object(client, "save_artifact")
+        artifact = b"3534xcc-53345d-4ngfkb"
 
-        key = "test"
-        artifact = {"testdata": 10}
+        storage_client.save("runs/ultimate-ninja/artifacts/raikiri-staff", artifact)
 
-        # Verify that the method call is dispatched to each storage client specifying
-        # that artifacts should be overwritten.
-        run_manager.save_artifact(key, artifact, overwrite=True)
-
-        for client in run_manager.storage_clients:
-            assert client.save_artifact.call_args.kwargs["overwrite"]
-
-    def test_save_artifact_does_not_overwrite_existing_artifacts_if_overwrite_is_false(
-        self, mocker, run_manager
-    ):
-        for client in run_manager.storage_clients:
-            mocker.patch.object(client, "save_artifact")
-
-        key = "test"
-        artifact = {"testdata": 10}
-
-        # Verify that the method call is dispatched to each storage client specifying
-        # that artifacts should not be overwritten.
-        run_manager.save_artifact(key, artifact, overwrite=False)
-
-        for client in run_manager.storage_clients:
-            assert not client.save_artifact.call_args.kwargs["overwrite"]
-
-    def test_save_artifact_raises_error_if_raise_exception_is_true(
-        self, mocker, run_manager
-    ):
-        mocker.patch.object(
-            run_manager.storage_clients[1], "save_artifact", side_effect=Exception()
-        )
-
-        with pytest.raises(StorageError):
-            run_manager.save_artifact(
-                "test", ["some", "test", "data"], raise_exception=True
-            )
-
-    def test_save_artifact_does_not_raise_error_if_raise_exception_is_false(
-        self, mocker, run_manager
-    ):
-        for client in run_manager.storage_clients:
-            mocker.patch.object(client, "save_artifact")
-
-        # Configure at least one storage client to raise an error.
-        mocker.patch.object(
-            run_manager.storage_clients[1], "save_artifact", side_effect=Exception()
-        )
-
-        # This should not raise an error even if a client raises an error.
-        run_manager.save_artifact(
-            "test", ["some", "test", "data"], raise_exception=False
-        )
-
-        # Double check to make sure that all clients (including the one that errored)
-        # were callled.
-        for client in run_manager.storage_clients:
-            client.save_artifact.assert_called_once()
-
-    # ------------------------------------
-    # ------- LOAD_ARTIFACT TESTS --------
-    # -------------------------------------
-
-    def test_load_artifact_loads_from_storage_locations_in_configured_order(
-        self, mocker, run_manager
-    ):
-        # Configure each storage client to return a unique object.
-        artifact1 = {"test": "data"}
-        mocker.patch.object(
-            run_manager.retrieval_clients[0], "load_artifact", return_value=artifact1
-        )
-
-        artifact2 = {"test": "data2"}
-        mocker.patch.object(
-            run_manager.retrieval_clients[1], "load_artifact", return_value=artifact2
-        )
-
-        # Since our run_manager fixture defines a run manager configured with sources
-        # "azure-blob" and "filesystem" in that order. We should expect artifacts are
-        # looked up from these sources in the same order.
-
-        # Since azure blob comes first, we should find artifact1 on lookup.
-        artifact = run_manager.load_artifact("test")
-        assert artifact == artifact1
-        assert artifact != artifact2  # Not necessary but for extra safety.
-
-        # If azure blob does not contain the object, then we expect the object should be
-        # loaded from the filesystem.
-        run_manager.retrieval_clients[0].load_artifact.return_value = None
-        artifact = run_manager.load_artifact("test")
-        assert artifact == artifact2
-
-    def test_load_artifact_does_not_raise_error_if_location_raises_error(
-        self, mocker, run_manager
-    ):
-        for client in run_manager.retrieval_clients:
-            mocker.patch.object(client, "load_artifact", side_effect=Exception())
-
-        mocker.patch.object(
-            run_manager.retrieval_clients[-1],
-            "load_artifact",
-            return_value={"test": "data"},
-        )
-
-        run_manager.load_artifact("test")
-
-        for client in run_manager.retrieval_clients:
-            client.load_artifact.assert_called_once()
-
-    def test_load_artifact_raises_an_error_if_the_artifact_could_not_be_found(
-        self, mocker, run_manager
-    ):
-        for client in run_manager.retrieval_clients:
-            mocker.patch.object(client, "load_artifact", return_value=None)
-
-        with pytest.raises(ArtifactNotFoundError):
-            run_manager.load_artifact("test")
+        assert artifact_repository.get("ultimate-ninja", "sand-gourd") is None
