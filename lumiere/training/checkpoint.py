@@ -5,16 +5,18 @@ from typing import Protocol
 import torch
 
 
-class CheckpointType(StrEnum):
-    """Represents the type of checkpoint.
+class CheckpointTag(StrEnum):
+    """A label for easily identifying and tracking checkpoints.
 
-    EPOCH: Represents a checkpoint at the end of an epoch.
-    BEST: Represents the best checkpoint based on a metric.
-    FINAL: Represents the final checkpoint after training is complete.
+    EPOCH: Identifies a checkpoint generated at the end of an epoch.
+    BEST: Identifies the checkpont with the best loss.
+    LATEST: Identifies the most recent checkpoint for a run.
+    FINAL: Identifies the final checkpoint for a completed training run.
     """
 
     EPOCH = auto()
     BEST = auto()
+    LATEST = auto()
     FINAL = auto()
 
 
