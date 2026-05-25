@@ -5,9 +5,9 @@ import torch
 from lumiere import Loader, register_dependency
 from lumiere.training.checkpoint import Checkpoint, CheckpointType
 from lumiere.training.config import Config
+from lumiere.training.loss import cross_entropy_loss
 from lumiere.training.run import RunManager
 from lumiere.training.trainer import Trainer, TrainingState
-from lumiere.training.loss import cross_entropy_loss
 from lumiere.utils import get_device
 
 
