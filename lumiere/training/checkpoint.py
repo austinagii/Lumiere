@@ -1,8 +1,18 @@
 import io
+import json
+import logging
+import time
 from enum import StrEnum, auto
-from typing import Protocol
 
 import torch
+
+from lumiere.utils import randomizer
+
+
+CHECKPOINT_INDEX_PATH_TEMPLATE = "runs/{run_name}/artifacts/checkpoints/index.json"
+CHECKPOINT_PATH_TEMPLATE = "runs/{run_name}/artifacts/checkpoints/{checkpoint_id}.ckpt"
+
+logger = logging.getLogger(__name__)
 
 
 class CheckpointTag(StrEnum):
@@ -31,9 +41,6 @@ class Checkpoint(dict):
     Supports attribute-style access (e.g., `checkpoint.epoch`) in addition to
     dictionary-style access (e.g., `checkpoint["epoch"]`).
 
-    Args:
-        **kwargs: Key-value pairs to store in the checkpoint.
-
     Example:
         ```python
         checkpoint = Checkpoint(
@@ -47,13 +54,26 @@ class Checkpoint(dict):
         ```
     """
 
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        epoch: int,
+        loss: float,
+        id: str | None = None,
+        created_at: int | None = None,
+        **kwargs,
+    ):
         """Initialize a checkpoint with the specified key-value pairs.
 
         Args:
             **kwargs: Key-value pairs to store in the checkpoint.
         """
-        super().__init__(**kwargs)
+        super().__init__()
+
+        self.id = id if id else randomizer.random_id()
+        self.epoch = epoch
+        self.loss = loss
+        self.created_at = created_at if created_at else time.time_ns()
+        self.update(kwargs)
 
     def __getattr__(self, key):
         return self[key]
@@ -61,7 +81,15 @@ class Checkpoint(dict):
     def __setattr__(self, key, value):
         self[key] = value
 
-    def __bytes__(self):
+    def meta(self):
+        return {
+            "id": self.id,
+            "epoch": self.epoch,
+            "loss": self.loss,
+            "created_at": self.created_at,
+        }
+
+    def to_bytes(self):
         buffer = io.BytesIO()
         torch.save(dict(self), buffer)
         return buffer.getvalue()
@@ -95,17 +123,59 @@ class Checkpoint(dict):
         return cls(**torch.load(io.BytesIO(bytes), map_location=device))
 
 
-class Checkpointable(Protocol):
-    """Protocol for objects that can be converted to checkpoints.
+class CheckpointRepository:
+    def __init__(self, client: StorageClient):
+        self.client = client
 
-    Objects implementing this protocol can serialize their state into a `Checkpoint`
-    for saving during training.
-    """
+    def insert(self, run_name: str, checkpoint: Checkpoint):
+        """Save a checkpoint.
 
-    def to_checkpoint(self) -> Checkpoint:
-        """Convert this object to a checkpoint.
+        Raises:
+            StorageError: If an error occurred while attempting to save the checkpoint.
 
-        Returns:
-            A `Checkpoint` containing the object's state.
         """
-        ...
+        checkpoint_path = CHECKPOINT_PATH_TEMPLATE.format(
+            run_name=run_name, checkpoint_id=checkpoint.id
+        )
+        checkpoint_bytes = checkpoint.to_bytes()
+        logger.info("Saving checkpoint '{checkpoint.id}' for run '{run_name}'.")
+        num_bytes_written = self.client.save(checkpoint_path, checkpoint_bytes)
+        if num_bytes_written < len(checkpoint_bytes):
+            raise RuntimeError(
+                f"Failed to save all data for checkpoint: '{checkpoint.id}'."
+            )
+
+        self._index_checkpoint(run_name, checkpoint.meta())
+
+    def _index_checkpoint(self, run_name: str, checkpoint: Checkpoint):
+        checkpoint_dict = checkpoint.to_dict()
+        checkpoint_index_path = CHECKPOINT_INDEX_PATH_TEMPLATE.format(run_name=run_name)
+        if checkpoint_index_bytes := self.client.load(checkpoint_index_path):
+            checkpoint_index = json.loads(checkpoint_index_bytes)
+        else:
+            checkpoint_index = {}
+
+        epoch_tag = f"{CheckpointTag.EPOCH}:{checkpoint.epoch}"
+        checkpoint_index[epoch_tag] = checkpoint_dict
+
+        if latest_checkpoint := checkpoint_index.get(CheckpointTag.LATEST):
+            if checkpoint.created_at > latest_checkpoint.created_at:
+                checkpoint_index[CheckpointTag.LATEST] = checkpoint
+        else:
+            checkpoint_index[CheckpointTag.LATEST] = checkpoint
+
+        if best_checkpoint := checkpoint_index.get(CheckpointTag.BEST):
+            if checkpoint.loss < best_checkpoint.loss:
+                checkpoint_index[CheckpointTag.BEST] = checkpoint
+        else:
+            checkpoint_index[CheckpointTag.BEST] = checkpoint
+
+        # TODO: Clean up unereferenced checkpoints.
+
+        checkpoint_index_bytes = json.dumps(checkpoint_index, indent=2)
+        self.client.save(checkpoint_index_path, checkpoint_index_bytes)
+
+    def get(
+        self, run_name: str, checkpoint_tag: CheckpointTag, include_state: bool = True
+    ) -> Checkpoint:
+        pass
