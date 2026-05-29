@@ -56,6 +56,7 @@ exclude = [
     "D103",  # Ignore warnings on top level test functions.
     "D105",  # Missing docstring in magic method
     "D107",  # Missing docstring in __init__
+    "D108",  # Missing docstring in public class.
 
 ]
 

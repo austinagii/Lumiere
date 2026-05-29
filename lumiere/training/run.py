@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from lumiere.persistence import StorageClient
+from lumiere.persistence.clients import StorageClient
 from lumiere.utils import randomizer
 
 from .config import Config

@@ -5,6 +5,7 @@ import time
 from enum import StrEnum, auto
 
 import torch
+from lumiere.persistence.clients import StorageClient
 
 from lumiere.utils import randomizer
 
@@ -41,17 +42,6 @@ class Checkpoint(dict):
     Supports attribute-style access (e.g., `checkpoint.epoch`) in addition to
     dictionary-style access (e.g., `checkpoint["epoch"]`).
 
-    Example:
-        ```python
-        checkpoint = Checkpoint(
-            model=model.state_dict(),
-            optimizer=optimizer.state_dict(),
-            epoch=5,
-            loss=0.123
-        )
-        print(checkpoint.epoch)
-        # Output: 5
-        ```
     """
 
     def __init__(
@@ -178,4 +168,4 @@ class CheckpointRepository:
     def get(
         self, run_name: str, checkpoint_tag: CheckpointTag, include_state: bool = True
     ) -> Checkpoint:
-        pass
+        raise NotImplementedError()

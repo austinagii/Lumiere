@@ -3,11 +3,11 @@ import logging
 import torch
 
 from lumiere import Loader, register_dependency
-from lumiere.training.checkpoint import Checkpoint, CheckpointType
-from lumiere.training.config import Config
-from lumiere.training.loss import cross_entropy_loss
-from lumiere.training.run import RunManager
-from lumiere.training.trainer import Trainer, TrainingState
+from .checkpoint import Checkpoint, CheckpointTag
+from .config import Config
+from .loss import cross_entropy_loss
+from .run import RunRepository
+from .trainer import Trainer, TrainingState
 from lumiere.utils import get_device
 
 
@@ -34,9 +34,9 @@ class TrainingOrchestrator:
         device = get_device()
         logger.info(f"Using device: {device}")
 
-        logger.info(f"Initializing RunManager from {RUN_CONFIG_PATH}...")
-        run_manager = RunManager.from_config_file(RUN_CONFIG_PATH)
-        logger.info("RunManager initialized")
+        logger.info(f"Initializing RunRepository from {RUN_CONFIG_PATH}...")
+        run_manager = RunRepository.from_config_file(RUN_CONFIG_PATH)
+        logger.info("RunRepository initialized")
 
         if run_id is None:
             logger.info("Starting new training run...")
@@ -255,11 +255,11 @@ class TrainingOrchestrator:
         return model, dataloader, pipeline, optimizer, scheduler, tokenizer
 
     @staticmethod
-    def create_checkpoint_saver(run_manager: RunManager):
+    def create_checkpoint_saver(run_manager: RunRepository):
         """Create a hook to save checkpoints at the end of each epoch.
 
         Args:
-            run_manager: The `RunManager` instance for saving checkpoints.
+            run_manager: The `RunRepository` instance for saving checkpoints.
 
         Returns:
             Hook function to save checkpoints.

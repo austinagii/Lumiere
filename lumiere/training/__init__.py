@@ -1,16 +1,16 @@
-from .checkpoint import Checkpoint, CheckpointType
+from .checkpoint import Checkpoint, CheckpointTag
 from .config import Config
 from .orchestrator import TrainingOrchestrator
-from .run import Run, RunManager, RunStatus
+from .run import Run, RunRepository, RunStatus
 from .trainer import Trainer, TrainingState
 
 
 __all__ = [
     "Checkpoint",
-    "CheckpointType",
+    "CheckpointTag",
     "Config",
     "Run",
-    "RunManager",
+    "RunRepository",
     "RunStatus",
     "Trainer",
     "TrainingOrchestrator",
