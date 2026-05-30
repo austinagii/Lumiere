@@ -149,33 +149,75 @@ class TestCheckpointRepository:
         checkpoint_3 = Checkpoint(epoch=3, loss=0.8, created_at=current_time + 200_000)
 
         checkpoint_repository.insert(run_name, checkpoint_1)
-        checkpoint_index = load_index(run_name)
+        checkpoint_index = load_index()
         assert _equal_checkpoints(checkpoint_index.get("epoch:1"), checkpoint_1)
         assert _equal_checkpoints(checkpoint_index.get("latest"), checkpoint_1)
         assert _equal_checkpoints(checkpoint_index.get("best"), checkpoint_1)
 
         checkpoint_repository.insert(run_name, checkpoint_2)
-        checkpoint_index = load_index(run_name)
+        checkpoint_index = load_index()
         assert _equal_checkpoints(checkpoint_index.get("epoch:2"), checkpoint_2)
         assert _equal_checkpoints(checkpoint_index.get("latest"), checkpoint_1)
         assert _equal_checkpoints(checkpoint_index.get("best"), checkpoint_2)
 
         checkpoint_repository.insert(run_name, checkpoint_3)
-        checkpoint_index = load_index(run_name)
+        checkpoint_index = load_index()
         assert _equal_checkpoints(checkpoint_index.get("epoch:3"), checkpoint_3)
         assert _equal_checkpoints(checkpoint_index.get("latest"), checkpoint_3)
         assert _equal_checkpoints(checkpoint_index.get("best"), checkpoint_2)
 
     def test_get_retrieves_checkpoint_from_storage(
-        self, checkpoint_repository: CheckpointRepository, storage_client: StorageClient
+        self,
+        checkpoint_repository: CheckpointRepository,
+        storage_client: StorageClient,
     ):
-        pass
+        current_time = time.time_ns()
+        run_name = randomizer.random_name()
+        checkpoint_1 = Checkpoint(
+            epoch=1,
+            loss=1.0,
+            created_at=current_time + 100_000,
+            model_state=torch.randn(3),
+        )
+        checkpoint_2 = Checkpoint(
+            epoch=2,
+            loss=0.5,
+            created_at=current_time,
+            model_state=torch.randn(3),
+        )
+        checkpoint_3 = Checkpoint(
+            epoch=3,
+            loss=0.8,
+            created_at=current_time + 200_000,
+            model_state=torch.randn(3),
+        )
+
+        checkpoint_repository.insert(run_name, checkpoint_1)
+        checkpoint_repository.insert(run_name, checkpoint_2)
+        checkpoint_repository.insert(run_name, checkpoint_3)
+
+        def _assert_checkpoints_equal(a, b):
+            assert a.id == b.id
+            assert a.epoch == b.epoch
+            assert a.loss == b.loss
+            assert a.created_at == b.created_at
+            assert torch.allclose(a.model_state, b.model_state)
+
+        # fmt: off
+        _assert_checkpoints_equal(checkpoint_repository.get(run_name, "latest"), checkpoint_3)   # NOQA: E501
+        _assert_checkpoints_equal(checkpoint_repository.get(run_name, "best"), checkpoint_2)     # NOQA: E501
+        _assert_checkpoints_equal(checkpoint_repository.get(run_name, "epoch:1"), checkpoint_1)  # NOQA: E501
+        _assert_checkpoints_equal(checkpoint_repository.get(run_name, "epoch:2"), checkpoint_2)  # NOQA: E501
+        _assert_checkpoints_equal(checkpoint_repository.get(run_name, "epoch:3"), checkpoint_3)  # NOQA: E501
+        # fmt: on
 
 
-def _load_index(self, storage_client, run_name):
+def _load_index(storage_client, run_name):
     checkpoint_index_bytes = storage_client.load(
         f"runs/{run_name}/artifacts/checkpoints/index.json"
     )
+    if checkpoint_index_bytes is None:
+        return None
     checkpoint_index = json.loads(checkpoint_index_bytes, object_hook=decode_checkpoint)
     return checkpoint_index
 

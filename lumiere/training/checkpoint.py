@@ -92,7 +92,7 @@ class Checkpoint:
         return buffer.getvalue()
 
     @classmethod
-    def from_bytes(cls, bytes: bytes):
+    def from_bytes(cls, bytes: bytes) -> "Checkpoint":
         """Construct a checkpoint from a bytes object.
 
         The `bytes` argument is expected to be byte data output from calling `bytes`
@@ -167,12 +167,8 @@ class CheckpointRepository:
         self._index_checkpoint(run_name, checkpoint)
 
     def _index_checkpoint(self, run_name: str, checkpoint: Checkpoint):
-        checkpoint_index_path = CHECKPOINT_INDEX_PATH_TEMPLATE.format(run_name=run_name)
-        if checkpoint_index_bytes := self.client.load(checkpoint_index_path):
-            checkpoint_index = json.loads(
-                checkpoint_index_bytes, object_hook=decode_checkpoint
-            )
-        else:
+        checkpoint_index = self._load_index(run_name)
+        if checkpoint_index is None:
             checkpoint_index = {}
 
         epoch_tag = f"{CheckpointTag.EPOCH}:{checkpoint.epoch}"
@@ -191,15 +187,46 @@ class CheckpointRepository:
         else:
             checkpoint_index[CheckpointTag.BEST] = checkpoint
 
-        # TODO: Clean up unereferenced checkpoints.
+        # TODO: Clean up unereferenced checkpoints after index updates.
+        self._save_index(run_name, checkpoint_index)
 
-        checkpoint_index_json = json.dumps(
-            checkpoint_index, cls=CheckpointEncoder, indent=2
-        )
+    def _load_index(self, run_name: str) -> dict[str, Checkpoint] | None:
+        index = None
+
+        checkpoint_index_path = CHECKPOINT_INDEX_PATH_TEMPLATE.format(run_name=run_name)
+        if checkpoint_index_bytes := self.client.load(checkpoint_index_path):
+            index = json.loads(checkpoint_index_bytes, object_hook=decode_checkpoint)
+
+        return index
+
+    def _save_index(self, run_name: str, index: dict[str, Checkpoint]):
+        checkpoint_index_path = CHECKPOINT_INDEX_PATH_TEMPLATE.format(run_name=run_name)
+        checkpoint_index_json = json.dumps(index, cls=CheckpointEncoder, indent=2)
         checkpoint_index_bytes = bytes(checkpoint_index_json, "utf-8")
         self.client.save(checkpoint_index_path, checkpoint_index_bytes, overwrite=True)
 
     def get(
-        self, run_name: str, checkpoint_tag: CheckpointTag, include_state: bool = True
-    ) -> Checkpoint:
-        raise NotImplementedError()
+        self, run_name: str, checkpoint_tag: CheckpointTag | str
+    ) -> Checkpoint | None:
+        index = self._load_index(run_name)
+        if index is None:
+            return None
+
+        checkpoint_meta = index.get(checkpoint_tag)
+        if checkpoint_meta is None:
+            logger.debug(
+                f"No checkpoint with tag '{checkpoint_tag}' could be found for run"
+                + " '{run_name}'."
+            )
+            return None
+
+        checkpoint_path = CHECKPOINT_PATH_TEMPLATE.format(
+            run_name=run_name, checkpoint_id=checkpoint_meta.id
+        )
+        checkpoint_bytes = self.client.load(checkpoint_path)
+        if checkpoint_bytes is None:
+            logger.debug(
+                f"Checkpoint '{checkpoint_meta.id}' ({checkpoint_tag}) could not be"
+                + " found for run '{run_name}'."
+            )
+        return Checkpoint.from_bytes(checkpoint_bytes)
