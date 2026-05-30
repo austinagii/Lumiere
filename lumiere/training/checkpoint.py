@@ -1,12 +1,14 @@
+import copy
 import io
+import itertools
 import json
 import logging
 import time
 from enum import StrEnum, auto
 
 import torch
-from lumiere.persistence.clients import StorageClient
 
+from lumiere.persistence.clients import StorageClient
 from lumiere.utils import randomizer
 
 
@@ -31,7 +33,7 @@ class CheckpointTag(StrEnum):
     FINAL = auto()
 
 
-class Checkpoint(dict):
+class Checkpoint:
     """A container of arbitrary key-value pairs representing a model's state.
 
     A checkpoint is a dictionary of key-value pairs that can be saved and loaded.
@@ -57,35 +59,40 @@ class Checkpoint(dict):
         Args:
             **kwargs: Key-value pairs to store in the checkpoint.
         """
-        super().__init__()
+        self.__dict__["_meta"] = {
+            "id": id if id else randomizer.random_id(),
+            "epoch": epoch,
+            "loss": loss,
+            "created_at": created_at if created_at else time.time_ns(),
+        }
+        self.__dict__["_state"] = kwargs
 
-        self.id = id if id else randomizer.random_id()
-        self.epoch = epoch
-        self.loss = loss
-        self.created_at = created_at if created_at else time.time_ns()
-        self.update(kwargs)
+    def __getattr__(self, name):
+        if name in self.__dict__["_meta"]:
+            return self.__dict__["_meta"][name]
+        if name in self.__dict__["_state"]:
+            return self.__dict__["_state"][name]
+        else:
+            raise AttributeError(
+                f"Attribute '{name}' not defined for type '{type(self).__name__}"
+            )
 
-    def __getattr__(self, key):
-        return self[key]
-
-    def __setattr__(self, key, value):
-        self[key] = value
+    def __setattr__(self, name, value):
+        self.__dict__["_state"][name] = value
 
     def meta(self):
-        return {
-            "id": self.id,
-            "epoch": self.epoch,
-            "loss": self.loss,
-            "created_at": self.created_at,
-        }
+        return copy.copy(self._meta)
 
     def to_bytes(self):
         buffer = io.BytesIO()
-        torch.save(dict(self), buffer)
+        torch.save(
+            dict(itertools.chain(self._meta.items(), self._state.items())),
+            buffer,
+        )
         return buffer.getvalue()
 
     @classmethod
-    def from_bytes(cls, bytes: bytes, device: torch.device = torch.device("cpu")):
+    def from_bytes(cls, bytes: bytes):
         """Construct a checkpoint from a bytes object.
 
         The `bytes` argument is expected to be byte data output from calling `bytes`
@@ -110,7 +117,29 @@ class Checkpoint(dict):
         Returns:
             A new checkpoint object.
         """
-        return cls(**torch.load(io.BytesIO(bytes), map_location=device))
+        return cls(**torch.load(io.BytesIO(bytes)))
+
+
+class CheckpointEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Checkpoint):
+            return {
+                "__type__": "Checkpoint",
+                "id": obj.id,
+                "epoch": obj.epoch,
+                "loss": obj.loss,
+                "created_at": obj.created_at,
+            }
+        else:
+            return super().default(obj)
+
+
+def decode_checkpoint(d):
+    if "__type__" in d and d["__type__"] == "Checkpoint":
+        return Checkpoint(
+            id=d["id"], epoch=d["epoch"], loss=d["loss"], created_at=d["created_at"]
+        )
+    return d
 
 
 class CheckpointRepository:
@@ -135,19 +164,21 @@ class CheckpointRepository:
                 f"Failed to save all data for checkpoint: '{checkpoint.id}'."
             )
 
-        self._index_checkpoint(run_name, checkpoint.meta())
+        self._index_checkpoint(run_name, checkpoint)
 
     def _index_checkpoint(self, run_name: str, checkpoint: Checkpoint):
-        checkpoint_dict = checkpoint.to_dict()
         checkpoint_index_path = CHECKPOINT_INDEX_PATH_TEMPLATE.format(run_name=run_name)
         if checkpoint_index_bytes := self.client.load(checkpoint_index_path):
-            checkpoint_index = json.loads(checkpoint_index_bytes)
+            checkpoint_index = json.loads(
+                checkpoint_index_bytes, object_hook=decode_checkpoint
+            )
         else:
             checkpoint_index = {}
 
         epoch_tag = f"{CheckpointTag.EPOCH}:{checkpoint.epoch}"
-        checkpoint_index[epoch_tag] = checkpoint_dict
+        checkpoint_index[epoch_tag] = checkpoint
 
+        # TODO: Use epoch instead of datetime to determine latest checkpoint.
         if latest_checkpoint := checkpoint_index.get(CheckpointTag.LATEST):
             if checkpoint.created_at > latest_checkpoint.created_at:
                 checkpoint_index[CheckpointTag.LATEST] = checkpoint
@@ -162,8 +193,11 @@ class CheckpointRepository:
 
         # TODO: Clean up unereferenced checkpoints.
 
-        checkpoint_index_bytes = json.dumps(checkpoint_index, indent=2)
-        self.client.save(checkpoint_index_path, checkpoint_index_bytes)
+        checkpoint_index_json = json.dumps(
+            checkpoint_index, cls=CheckpointEncoder, indent=2
+        )
+        checkpoint_index_bytes = bytes(checkpoint_index_json, "utf-8")
+        self.client.save(checkpoint_index_path, checkpoint_index_bytes, overwrite=True)
 
     def get(
         self, run_name: str, checkpoint_tag: CheckpointTag, include_state: bool = True
