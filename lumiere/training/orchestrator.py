@@ -1,80 +1,190 @@
 import logging
+from typing import Any
 
 import torch
 
 from lumiere import Loader, register_dependency
-from .checkpoint import Checkpoint, CheckpointTag
+from lumiere.utils import randomizer
+
+from .checkpoint import Checkpoint, CheckpointRepository, CheckpointTag
 from .config import Config
+from .errors import CheckpointNotFoundError, RunNotFoundError
 from .loss import cross_entropy_loss
-from .run import RunRepository
+from .repository import RunArtifactRepository, RunRepository
+from .run import Run, RunStatus
 from .trainer import Trainer, TrainingState
-from lumiere.utils import get_device
 
 
 logger = logging.getLogger(__name__)
-RUN_CONFIG_PATH = "lumiere.yaml"
 
 
 class TrainingOrchestrator:
-    """Orchestrates and executes training runs."""
+    """Orchestrates and executes training runs.
 
-    @staticmethod
+    The orchestrator's focus is on ensuring that all the components needed to
+    execute a training run are present and that they are coordinated in a way to
+    successfully complete the training run without issue, doing everything that they
+    need to do at every step of the way.
+    """
+
+    def __init__(
+        self,
+        run_repository: RunRepository,
+        checkpoint_repository: CheckpointRepository,
+        artifact_repository: RunArtifactRepository,
+        device="cpu",
+    ):
+        """Initialize a TrainingOrchestrator.
+
+        Args:
+            run_repository: The repository for run information.
+            artifact_repository: The repository for training run artifacts.
+
+        """
+        self.run_repository = run_repository
+        self.checkpoint_repository = checkpoint_repository
+        self.artifact_repository = artifact_repository
+        self.device = device
+        self._buffer: dict[str, Any] = {}
+
     def train(
+        self,
         config: Config | None = None,
-        run_id: str | None = None,
+        run_name: str | None = None,
         checkpoint_tag: str | None = None,
     ):
         """Orchestrate and execute a training run.
 
+        If `run_id` is specified, then this method will attempt to resume the training
+        run with the specified id from `checkpoint_tag` (or latest if not provided).
+        Otherwise this method will attempt to start a new training run using `config`
+        as the configuration for the new run. If `config` is not provided in this case
+        an error will be raised.
+
         Args:
             config: The configuration to be used for the training run.
-            run_id: Optional run ID to resume from.
-            checkpoint_tag: Optional checkpoint tag to resume from (requires run_id).
+            run_name: The name of the training run to be resumed.
+            checkpoint_tag: The checkpoint to resume training from.
         """
-        device = get_device()
-        logger.info(f"Using device: {device}")
-
-        logger.info(f"Initializing RunRepository from {RUN_CONFIG_PATH}...")
-        run_manager = RunRepository.from_config_file(RUN_CONFIG_PATH)
-        logger.info("RunRepository initialized")
-
-        if run_id is None:
-            logger.info("Starting new training run...")
-
+        if run_name is None:
+            logger.info("Initializing a new training run...")
             if config is None:
-                raise RuntimeError()  # TODO: Use actual error.
-            run_id = run_manager.init_run(config)
+                raise ValueError("No configuration provided for the training run.")
 
-            logger.info(f"Initialized new training run with ID: {run_id}")
+            run, trainer = self._init_training_run(config, self.device)
+        else:
+            if checkpoint_tag is None:
+                logger.debug(
+                    "No checkpoint specified as the restore point for training run"
+                    + "'{run_name}'. Defaulting to 'latest'."
+                )
+                checkpoint_tag = CheckpointTag.LATEST
 
-            model, dataloader, pipeline, optimizer, scheduler, tokenizer = (
-                TrainingOrchestrator.init_training_run(config, device)
+            logger.info(
+                f"Resuming training run '{run_name}' from checkpoint '{checkpoint_tag}'..."  # NOQA: E501
+            )
+            run, trainer = self._load_training_run(
+                run_name, checkpoint_tag, self.device
             )
 
-            # TODO: Move this into the initialization function.
+        self._register_training_hooks(trainer)
+        logger.info("Trainer initialized successfully")
+
+        logger.info(f"Starting training run: '{run.name}'")
+        train_metrics = trainer.train()
+        logger.info(
+            f"Training completed in {_format_hours(train_metrics.total_time_taken)}!"
+        )
+
+    def _init_training_run(
+        self, config: Config, device: torch.device
+    ) -> tuple[Run, Trainer]:
+        """Initialize components for a new training run.
+
+        Args:
+            run: The training run for which the components are to be intialized.
+            device: The device to use for training.
+
+        Returns:
+            Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer)
+        """
+        # Validate early to avoid partially loading components.
+        # TODO: Raise ValueError if required config fields are missing.
+        # fmt: off
+        assert config.get("tokenizer") is not None, "Config missing required 'tokenizer' section"   # NOQA: E501
+        assert config.get("data") is not None, "Config missing required 'data' section"             # NOQA: E501
+        assert config.get("pipeline") is not None, "Config missing required 'pipeline' section"     # NOQA: E501
+        assert config.get("model") is not None, "Config missing required 'model' section"           # NOQA: E501
+        assert config.get("optimizer") is not None, "Config missing required 'optimizer' section"   # NOQA: E501
+        assert config.get("training") is not None, "Config missing required 'training' section"     # NOQA: E501
+        # fmt: on
+
+        run = Run(config)
+        try:
+            self.run_repository.insert(run)
+        except Exception as e:
+            logger.error(f"Failed to initialize training run '{run.name}'.")
+            raise e
+        logger.info(
+            f"Successfully initialized training run '{run.name}' (ID: {run.id})."
+        )
+
+        try:
+            logger.info("Loading dataset...")
+            dataloader = Loader.data(run.config["data"])
+            logger.info(
+                f"Dataloader initialized with {len(dataloader.datasets)} dataset(s)"
+            )
+
+            logger.info("Loading tokenizer...")
+            tokenizer = Loader.tokenizer(run.config["tokenizer"])
+            register_dependency("tokenizer", tokenizer)
+            logger.info("Tokenizer loaded successfully")
+
+            logger.info("Training tokenizer on training data...")
+            tokenizer.train(dataloader["train"])
+            logger.info(
+                f"Tokenizer trained successfully (vocab size: {tokenizer.vocab_size})"
+            )
+
             logger.info("Saving tokenizer artifact...")
-            run_manager.save_artifact("tokenizer", tokenizer)
+            self.artifact_repository.create(run.id, "tokenizer", bytes(tokenizer))
             logger.info("Tokenizer artifact saved successfully")
 
-            training_state = None
-        else:
+            logger.info("Loading pipeline...")
+            pipeline = Loader.pipeline(config["pipeline"])
+            logger.info("Pipeline loaded successfully")
+
+            logger.info("Building model...")
+            model = Loader.model(config["model"]).to(device)
+            total_params = sum(p.numel() for p in model.parameters())
+            trainable_params = sum(
+                p.numel() for p in model.parameters() if p.requires_grad
+            )
             logger.info(
-                f"Resuming training run '{run_id}' from checkpoint '{checkpoint_tag}'..."
+                f"Model built successfully - "
+                f"Total params: {total_params:,}, Trainable: {trainable_params:,}"
             )
 
-            config, checkpoint = run_manager.resume_run(
-                run_id, checkpoint_tag, device=device
+            logger.info("Loading optimizer...")
+            optimizer = Loader.optimizer(config["optimizer"], model.parameters())
+            logger.info(f"Optimizer loaded: {type(optimizer).__name__}")
+
+            scheduler = None
+            if (scheduler_config := config.get("scheduler")) is not None:
+                logger.info("Loading learning rate scheduler...")
+                scheduler = Loader.scheduler(scheduler_config, optimizer)
+                logger.info(f"Scheduler loaded: {type(scheduler).__name__}")
+
+            logger.info("All components initialized successfully")
+        except Exception as e:
+            logger.error(
+                "Failed to initialize training components for run '{run.name}'."
             )
-            logger.info("Checkpoint loaded successfully")
+            run.status = RunStatus.ERROR
+            self.run_repository.update(run)
+            raise e
 
-            model, dataloader, pipeline, optimizer, scheduler, tokenizer = (
-                TrainingOrchestrator.resume_training_run(config, checkpoint, device)
-            )
-
-            training_state = TrainingState.from_dict(checkpoint["training_state"])
-            logger.info(f"Resuming from epoch {training_state.current_epoch}")
-
-        logger.info("Initializing trainer...")
         trainer = Trainer(
             model=model,
             dataloader=dataloader,
@@ -82,106 +192,15 @@ class TrainingOrchestrator:
             loss_fn=cross_entropy_loss,
             optimizer=optimizer,
             scheduler=scheduler,
-            device=device,
-            state=training_state,
+            device=self.device,
             **config["training"],
         )
-        trainer.register_post_epoch_hook(
-            TrainingOrchestrator.create_checkpoint_saver(run_manager)
-        )
-        logger.info("Trainer initialized successfully")
 
-        logger.info("=" * 60)
-        logger.info(f"Starting training run: {run_id}")
-        logger.info("=" * 60)
+        return run, trainer
 
-        train_metrics = trainer.train()
-
-        logger.info("Saving final checkpoint...")
-        final_checkpoint = Checkpoint(
-            run_id=run_id,
-            training_state=trainer.state_dict(),
-            model_state_dict=model.state_dict(),
-            optimizer_state_dict=trainer.optimizer.state_dict(),
-        )
-
-        if trainer.scheduler is not None:
-            final_checkpoint["scheduler_state_dict"] = trainer.scheduler.state_dict()
-
-        run_manager.save_checkpoint(CheckpointType.FINAL, final_checkpoint)
-        logger.info("Final checkpoint saved successfully")
-        logger.info(
-            f"Training completed in {_format_hours(train_metrics.total_time_taken)}!"
-        )
-
-    @staticmethod
-    def init_training_run(config: Config, device: torch.device):
-        """Initialize components for a new training run.
-
-        Args:
-            config: The configuration for the training run.
-            device: The device to use for training.
-
-        Returns:
-            Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer)
-        """
-        # fmt: off
-        assert config.get("tokenizer") is not None, "Config missing required 'tokenizer' section"  # NOQA: E501
-        assert config.get("data") is not None, "Config missing required 'data' section"
-        assert config.get("pipeline") is not None, "Config missing required 'pipeline' section"  # NOQA: E501
-        assert config.get("model") is not None, "Config missing required 'model' section"
-        assert config.get("optimizer") is not None, "Config missing required 'optimizer' section"  # NOQA: E501
-        assert config.get("training") is not None, "Config missing required 'training' section"  # NOQA: E501
-        # fmt: on
-
-        logger.info("Loading tokenizer...")
-        tokenizer = Loader.tokenizer(config["tokenizer"])
-        register_dependency("tokenizer", tokenizer)
-        logger.info("Tokenizer loaded successfully")
-
-        logger.info("Loading dataset...")
-        dataloader = Loader.data(config["data"])
-        logger.info(
-            f"Dataloader initialized with {len(dataloader.datasets)} dataset(s)"
-        )
-
-        logger.info("Training tokenizer on training data...")
-        tokenizer.train(dataloader["train"])
-        logger.info(
-            f"Tokenizer trained successfully (vocab size: {tokenizer.vocab_size})"
-        )
-
-        logger.info("Loading pipeline...")
-        pipeline = Loader.pipeline(config["pipeline"])
-        logger.info("Pipeline loaded successfully")
-
-        logger.info("Building model...")
-        model = Loader.model(config["model"]).to(device)
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        logger.info(
-            f"Model built successfully - "
-            f"Total params: {total_params:,}, Trainable: {trainable_params:,}"
-        )
-
-        logger.info("Loading optimizer...")
-        optimizer = Loader.optimizer(config["optimizer"], model.parameters())
-        logger.info(f"Optimizer loaded: {type(optimizer).__name__}")
-
-        scheduler = None
-        if (scheduler_config := config.get("scheduler")) is not None:
-            logger.info("Loading learning rate scheduler...")
-            scheduler = Loader.scheduler(scheduler_config, optimizer)
-            logger.info(f"Scheduler loaded: {type(scheduler).__name__}")
-
-        logger.info("All components initialized successfully")
-
-        return model, dataloader, pipeline, optimizer, scheduler, tokenizer
-
-    @staticmethod
-    def resume_training_run(
-        config: Config, checkpoint: Checkpoint, device: torch.device
-    ):
+    def _load_training_run(
+        self, run_name: str, checkpoint_tag: CheckpointTag | str
+    ) -> tuple[Run, Trainer]:
         """Load components from a previous training run.
 
         Args:
@@ -192,14 +211,30 @@ class TrainingOrchestrator:
         Returns:
             Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer)
         """
+        logger.debug(f"Loading training run '{run_name}' from storage.")
+        run = self.run_repository.get(run_name)
+        if run is None:
+            raise RunNotFoundError(run_name)
+
+        logger.debug(f"Successfully retrieved run '{run_name}'.\n{run.to_dict()}")
+
         # fmt: off
-        assert config.get("tokenizer") is not None, "Config missing required 'tokenizer' section"  # NOQA: E501
-        assert config.get("data") is not None, "Config missing required 'data' section"
-        assert config.get("pipeline") is not None, "Config missing required 'pipeline' section"  # NOQA: E501
-        assert config.get("model") is not None, "Config missing required 'model' section"
-        assert config.get("optimizer") is not None, "Config missing required 'optimizer' section"  # NOQA: E501
-        assert config.get("training") is not None, "Config missing required 'training' section"  # NOQA: E501
+        config = run.config
+        assert config.get("tokenizer") is not None, "Config missing required 'tokenizer' section"   # NOQA: E501
+        assert config.get("data") is not None, "Config missing required 'data' section"             # NOQA: E501
+        assert config.get("pipeline") is not None, "Config missing required 'pipeline' section"     # NOQA: E501
+        assert config.get("model") is not None, "Config missing required 'model' section"           # NOQA: E501
+        assert config.get("optimizer") is not None, "Config missing required 'optimizer' section"   # NOQA: E501
+        assert config.get("training") is not None, "Config missing required 'training' section"     # NOQA: E501
         # fmt: on
+
+        checkpoint = self.checkpoint_repository.get(run_name, checkpoint_tag)
+        if checkpoint is None:
+            raise CheckpointNotFoundError(run_name, checkpoint_tag)
+        logger.debug(
+            f"Successfully retrieved checkpoint '{checkpoint_tag}' from storage.\n"
+            + f"{checkpoint.meta()}"
+        )
 
         logger.info("Loading tokenizer...")
         tokenizer = Loader.tokenizer(config["tokenizer"], state=checkpoint["tokenizer"])
@@ -217,7 +252,7 @@ class TrainingOrchestrator:
         logger.info("Pipeline loaded successfully")
 
         logger.info("Building model...")
-        model = Loader.model(config["model"]).to(device)
+        model = Loader.model(config["model"]).to(self.device)
         assert "model_state_dict" in checkpoint, (
             "Model state could not be found in checkpoint"
         )
@@ -252,33 +287,78 @@ class TrainingOrchestrator:
 
         logger.info("All components loaded successfully from checkpoint")
 
-        return model, dataloader, pipeline, optimizer, scheduler, tokenizer
+        training_state = TrainingState.from_dict(checkpoint.training_state)
+        logger.info(
+            f"Resuming run '{run_name}' from epoch {training_state.current_epoch}."
+        )
 
-    @staticmethod
-    def create_checkpoint_saver(run_manager: RunRepository):
+        trainer = Trainer(
+            model=model,
+            dataloader=dataloader,
+            pipeline=pipeline,
+            loss_fn=cross_entropy_loss,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=self.device,
+            state=training_state,
+            **config["training"],
+        )
+
+        return run, trainer
+
+    def _register_training_hooks(self, trainer: Trainer) -> None:
+        def post_fit_hook(trainer: Trainer, train_metrics) -> None:
+            self._buffer["train_loss"] = float(train_metrics.avg_loss)
+
+        def post_eval_hook(trainer: Trainer, eval_metrics) -> None:
+            self._buffer["val_loss"] = float(eval_metrics.avg_loss)
+
+        def post_epoch_hook(trainer: Trainer) -> None:
+            e = {
+                "train_loss": self._buffer.get("train_loss", 0.0),
+                "val_loss": self._buffer.get("val_loss", 0.0),
+                "lr": trainer.state.current_lr,
+                "epoch": trainer.state.current_epoch,
+                "global_step": trainer.state.global_step,
+            }
+            self.events_buffer.append(e)
+
+        trainer.register_post_fit_hook(post_fit_hook)
+        trainer.register_post_eval_hook(post_eval_hook)
+        trainer.register_post_epoch_hook(post_epoch_hook)
+        trainer.register_post_epoch_hook(
+            _create_checkpoint_saver(run, trainer, interval=epoch_checkpoint_interval)
+        )
+
+    def _create_checkpoint_saver(
+        self,
+        run: Run,
+        trainer: Trainer,
+        interval: int = 5,
+    ):
         """Create a hook to save checkpoints at the end of each epoch.
 
         Args:
-            run_manager: The `RunRepository` instance for saving checkpoints.
+            artifact_manager: The `RunArtifactManager` instance for saving checkpoints.
 
         Returns:
             Hook function to save checkpoints.
         """
 
-        def save_checkpoint_hook(trainer):
-            """Save checkpoint at the end of each epoch."""
-            # Save best checkpoint if this is the best epoch
+        def _save_checkpoint(trainer):
+            """Save a checkpoint."""
+            # Avoid creating a checkpoint if saving criteria aren't met.
             if (
-                trainer.state.current_epoch % 5
-                != 0  # TODO: Use checkpoint interval from config.
+                trainer.state.current_epoch % interval != 0
                 and trainer.state.prev_loss != trainer.state.best_loss
             ):
                 return
 
             checkpoint = Checkpoint(
-                run_id=run_manager.run.id,
+                id=randomizer.random_id(),
+                run_id=run.id,
+                run_name=run.name,
                 training_state=trainer.state_dict(),
-                tokenizer=bytes(trainer.pipeline.tokenizer),
                 model_state_dict=trainer.model.state_dict(),
                 optimizer_state_dict=trainer.optimizer.state_dict(),
             )
@@ -286,27 +366,21 @@ class TrainingOrchestrator:
             if trainer.scheduler is not None:
                 checkpoint["scheduler_state_dict"] = trainer.scheduler.state_dict()
 
-            # Save epoch checkpoint if its the correct epoch.
-            if (
-                trainer.state.current_epoch % 5 == 0
-            ):  # TODO: Use checkpoint interval from config.
-                logger.info(
-                    f"Saving checkpoint for epoch {trainer.state.current_epoch}..."
-                )
-                run_manager.save_checkpoint(
-                    CheckpointType.EPOCH,
-                    checkpoint,
-                    epoch_no=trainer.state.current_epoch,
-                )
-                logger.info("Checkpoint saved successfully")
+            # TODO: Handle checkpoint creation failures.
+            logging.info(f"Saving checkpoint '{checkpoint.id}'...")
+            repository.create(
+                f"checkpoints/{checkpoint.id}",
+                bytes(checkpoint),
+            )
+            logger.info("Checkpoint saved successfully")
 
-            # Save best checkpoint if this is the best epoch
-            if trainer.state.prev_loss == trainer.state.best_loss:
-                logger.info("Saving 'best' checkpoint...")
-                run_manager.save_checkpoint(CheckpointType.BEST, checkpoint)
-                logger.info("Checkpoint saved successfully")
+            if trainer.state.current_epoch % interval == 0:
+                epoch_checkpoint_tag = (
+                    f"{str(CheckpointType.EPOCH)}:{trainer.state.current_epoch:04d}"
+                )
+                checkpoints[epoch_checkpoint_tag] = checkpoint.id
 
-        return save_checkpoint_hook
+        return _save_checkpoint
 
 
 def _format_hours(time: float) -> str:

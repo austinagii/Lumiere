@@ -1,12 +1,9 @@
 # Lumiere framework configuration
 # Infrastructure-level settings for run management and storage
 
-runs:
-  checkpoints:
-    sources:
-      - filesystem
-      - azure-blob
-    destinations:
+training:
+  persistence:
+    locations:
       - filesystem
       - azure-blob
 

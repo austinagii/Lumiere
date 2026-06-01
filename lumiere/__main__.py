@@ -5,8 +5,19 @@ import logging
 import sys
 from argparse import Namespace
 
+from lumiere.persistence.clients import (
+    AzureBlobStorageClient,
+    FileSystemStorageClient,
+    StorageClientDemux,
+)
 from lumiere.training import Config, TrainingOrchestrator
+from lumiere.training.artifact import ArtifactRepository
+from lumiere.training.checkpoint import CheckpointRepository
+from lumiere.training.run import RunRepository
+from lumiere.utils.device import get_device
 
+
+LUMIERE_CONFIG_PATH = "../lumiere.yaml"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,12 +82,36 @@ class TrainCommandParser:
         return parser.parse_args(args)
 
 
+storage_clients = {
+    "filesystem": FileSystemStorageClient(),
+    "azure-blob": AzureBlobStorageClient(),
+}
+
+
 class TrainCommandExecutor:
     @staticmethod
-    def execute(args: Namespace):
-        config = None
-        if args.config_path:
-            config = Config.from_yaml(args.config_path)
+    def execute(global_config: Config, args: Namespace):
+        train_config = None
+
+        clients = [
+            storage_clients[loc]
+            for loc in global_config.get("training.persistence.locations")
+        ]
+
+        if len(clients) > 1:
+            storage_client = StorageClientDemux(*clients)
+        else:
+            storage_client = clients[0]
+
+        run_repository = RunRepository(storage_client)
+        checkpoint_repository = CheckpointRepository(storage_client)
+        artifact_repository = ArtifactRepository(storage_client)
+        orchestrator = TrainingOrchestrator(
+            run_repository=run_repository,
+            checkpoint_repository=checkpoint_repository,
+            artifact_repository=artifact_repository,
+            device=get_device(),
+        )
 
         TrainingOrchestrator.train(
             config=config,
@@ -91,6 +126,9 @@ executors = {"train": TrainCommandExecutor}
 
 def main():
     """Main entry point for the training script."""
+    global_config_path = Path(__file__) / LUMIERE_CONFIG_PATH
+    lumiere_config = Config.from_yaml(global_config_path)
+
     command, args = _parse_command()
     parser = parsers.get(command)
     if parser is None:

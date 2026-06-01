@@ -20,7 +20,7 @@ RUN_META_PATH_TEMPLATE = "runs/{run_name}/meta.json"
 RUN_CONFIG_PATH_TEMPLATE = "runs/{run_name}/config.yaml"
 RUN_ARTIFACT_PATH_TEMPLATE = "runs/{run_name}/artifacts/{artifact_name}"
 
-LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class RunStatus(StrEnum):
@@ -135,6 +135,7 @@ class RunRepository:
                 location.
 
         """
+        logger.info(f"Saving training run '{run.name}' to storage.")
         run_bytes = _run_to_json(run)
         self.client.save(f"runs/{run.name}/meta.json", run_bytes)
 
