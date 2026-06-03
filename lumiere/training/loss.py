@@ -66,7 +66,7 @@ def cross_entropy_loss(
     # targets: (batch_size * seq_len)
     batch_size, seq_len, vocab_size = predictions.shape
     predictions = predictions.view(-1, vocab_size)
-    targets = targets.view(-1)
+    targets = targets.reshape(-1)
 
     # Compute cross entropy loss
     loss = F.cross_entropy(predictions, targets, reduction="mean")

@@ -1,0 +1,170 @@
+from pathlib import Path
+
+import pytest
+
+from lumiere.persistence.errors import StorageError
+from lumiere.training.artifact import ArtifactRepository
+from lumiere.training.checkpoint import CheckpointRepository
+from lumiere.training.config import Config
+from lumiere.training.event import EventRepository
+from lumiere.training.orchestrator import TrainingOrchestrator
+from lumiere.training.run import RunRepository, RunStatus
+
+
+# TODO: Move to test utility package.
+class MemoryStorageClient:
+    """A simple storage client using an in-memory backend."""
+
+    def __init__(self):
+        self._storage = {}
+
+    def save(self, path: str | Path, data: bytes, overwrite: bool = False) -> int:
+        if not overwrite and path in self._storage:
+            raise StorageError(f"Data already exists at '{path}'")
+        self._storage[path] = data
+        return len(data)
+
+    def load(self, path: str | Path) -> bytes | None:
+        return self._storage.get(path)
+
+
+@pytest.fixture
+def storage_client():
+    return MemoryStorageClient()
+
+
+@pytest.fixture
+def run_repository(storage_client):
+    return RunRepository(storage_client)
+
+
+@pytest.fixture
+def checkpoint_repository(storage_client):
+    return CheckpointRepository(storage_client)
+
+
+@pytest.fixture
+def artifact_repository(storage_client):
+    return ArtifactRepository(storage_client)
+
+
+@pytest.fixture
+def event_repository(storage_client):
+    return EventRepository(storage_client)
+
+
+@pytest.fixture
+def config():
+    config_yaml = """
+        model:
+          type: transformer
+          vocab_size: 256
+          context_size: 64
+          embedding_size: 128
+          num_blocks: 1
+          normalization:
+            type: rms
+            normalized_shape: 128
+          embedding:
+            type: sinusoidal
+            padding_id: 2
+          block:
+            type: standard
+            attention:
+              type: multihead
+              num_heads: 4
+              d_key: 32
+              d_value: 32
+            feedforward:
+              type: linear
+              d_ff: 256
+            normalization:
+              type: rms
+              normalized_shape: 128
+            dropout: 0.1
+            pre_norm: True
+            post_norm: False
+
+        data:
+          datasets:
+            - name: wikitext
+              split: "1:1:1"
+
+        tokenizer:
+          name: bpe
+          vocab_size: 256
+          min_frequency: 2
+
+        pipeline:
+          name: text
+          tokenizer: "@tokenizer"
+          batch_size: 32
+          context_size: 64
+          pad_id: 2
+          sliding_window_size: 8
+          preprocessors:
+            - name: autoregressive
+              device: cpu
+
+        optimizer:
+          name: adamw
+          lr: 0.0003
+
+        scheduler:
+          name: cosine-annealing
+          max_epochs: 1000
+          epoch_steps: 1700
+          warmup_steps: 1700
+
+        training:
+          max_epochs: 3
+          stopping_threshold: 0.0001
+          gradient_clip_norm: 1.0
+    """
+    return Config.from_yaml(config_yaml)
+
+
+class TestOrchestrator:
+    def test_train_records_training_run(
+        self,
+        storage_client,
+        run_repository,
+        checkpoint_repository,
+        artifact_repository,
+        event_repository,
+        config,
+    ):
+        orchestrator = TrainingOrchestrator(
+            run_repository=run_repository,
+            checkpoint_repository=checkpoint_repository,
+            artifact_repository=artifact_repository,
+            event_repository=event_repository,
+            checkpoint_interval=1,
+        )
+
+        run = orchestrator.train(config=config)
+
+        saved_run = run_repository.get(run.name)
+        assert saved_run.status == RunStatus.COMPLETED
+        assert saved_run.created_at
+        assert isinstance(saved_run.created_at, int)
+        assert saved_run.updated_at
+        assert isinstance(saved_run.updated_at, int)
+        assert saved_run.updated_at > saved_run.created_at
+        assert saved_run.current_epoch == 3
+        assert saved_run.current_step > 0
+        assert saved_run.current_loss
+        assert isinstance(saved_run.current_loss, float)
+
+    def test_train_captures_training_checkpoints(self):
+        # Expect checkpoint index to be created.
+        # Expect 5 checkpoints to be created for run.
+        pass
+
+    def test_train_captures_training_events(self):
+        # Expect event log to contain 3 epoch events.
+        pass
+
+    def test_train_captures_training_artifacts(self):
+        # Expect tokenizer artifact.
+        pass

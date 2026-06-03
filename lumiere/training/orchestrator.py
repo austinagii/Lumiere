@@ -1,17 +1,16 @@
 import logging
+import time
 from typing import Any
 
-import torch
-
 from lumiere import Loader, register_dependency
-from lumiere.utils import randomizer
 
+from .artifact import ArtifactRepository
 from .checkpoint import Checkpoint, CheckpointRepository, CheckpointTag
 from .config import Config
 from .errors import CheckpointNotFoundError, RunNotFoundError
+from .event import EventRepository
 from .loss import cross_entropy_loss
-from .repository import RunArtifactRepository, RunRepository
-from .run import Run, RunStatus
+from .run import Run, RunRepository, RunStatus
 from .trainer import Trainer, TrainingState
 
 
@@ -31,8 +30,10 @@ class TrainingOrchestrator:
         self,
         run_repository: RunRepository,
         checkpoint_repository: CheckpointRepository,
-        artifact_repository: RunArtifactRepository,
+        artifact_repository: ArtifactRepository,
+        event_repository: EventRepository,
         device="cpu",
+        checkpoint_interval=3,
     ):
         """Initialize a TrainingOrchestrator.
 
@@ -44,7 +45,9 @@ class TrainingOrchestrator:
         self.run_repository = run_repository
         self.checkpoint_repository = checkpoint_repository
         self.artifact_repository = artifact_repository
+        self.event_repository = event_repository
         self.device = device
+        self.checkpoint_interval = checkpoint_interval
         self._buffer: dict[str, Any] = {}
 
     def train(
@@ -71,7 +74,7 @@ class TrainingOrchestrator:
             if config is None:
                 raise ValueError("No configuration provided for the training run.")
 
-            run, trainer = self._init_training_run(config, self.device)
+            run, trainer = self._init_training_run(config)
         else:
             if checkpoint_tag is None:
                 logger.debug(
@@ -83,22 +86,25 @@ class TrainingOrchestrator:
             logger.info(
                 f"Resuming training run '{run_name}' from checkpoint '{checkpoint_tag}'..."  # NOQA: E501
             )
-            run, trainer = self._load_training_run(
-                run_name, checkpoint_tag, self.device
-            )
+            run, trainer = self._load_training_run(run_name, checkpoint_tag)
 
-        self._register_training_hooks(trainer)
+        self._register_training_hooks(run, trainer)
         logger.info("Trainer initialized successfully")
-
         logger.info(f"Starting training run: '{run.name}'")
         train_metrics = trainer.train()
         logger.info(
             f"Training completed in {_format_hours(train_metrics.total_time_taken)}!"
         )
 
-    def _init_training_run(
-        self, config: Config, device: torch.device
-    ) -> tuple[Run, Trainer]:
+        run.status = RunStatus.COMPLETED
+        run.updated_at = time.time_ns()
+        self.run_repository.update(run)
+
+        # self.checkpoint_repository.mark_final()
+
+        return run
+
+    def _init_training_run(self, config: Config) -> tuple[Run, Trainer]:
         """Initialize components for a new training run.
 
         Args:
@@ -148,7 +154,7 @@ class TrainingOrchestrator:
             )
 
             logger.info("Saving tokenizer artifact...")
-            self.artifact_repository.create(run.id, "tokenizer", bytes(tokenizer))
+            self.artifact_repository.insert(run.name, "tokenizer", bytes(tokenizer))
             logger.info("Tokenizer artifact saved successfully")
 
             logger.info("Loading pipeline...")
@@ -156,7 +162,7 @@ class TrainingOrchestrator:
             logger.info("Pipeline loaded successfully")
 
             logger.info("Building model...")
-            model = Loader.model(config["model"]).to(device)
+            model = Loader.model(config["model"]).to(self.device)
             total_params = sum(p.numel() for p in model.parameters())
             trainable_params = sum(
                 p.numel() for p in model.parameters() if p.requires_grad
@@ -237,7 +243,7 @@ class TrainingOrchestrator:
         )
 
         logger.info("Loading tokenizer...")
-        tokenizer = Loader.tokenizer(config["tokenizer"], state=checkpoint["tokenizer"])
+        tokenizer = Loader.tokenizer(config["tokenizer"], state=checkpoint.tokenizer)
         register_dependency("tokenizer", tokenizer)
         logger.info("Tokenizer loaded successfully")
 
@@ -256,7 +262,7 @@ class TrainingOrchestrator:
         assert "model_state_dict" in checkpoint, (
             "Model state could not be found in checkpoint"
         )
-        model.load_state_dict(checkpoint["model_state_dict"])
+        model.load_state_dict(checkpoint.model_state_dict)
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         logger.info(
@@ -270,7 +276,7 @@ class TrainingOrchestrator:
         assert "optimizer_state_dict" in checkpoint, (
             "Optimizer state could not be found in checkpoint"
         )
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        optimizer.load_state_dict(checkpoint.optimizer_state_dict)
         logger.info(f"Optimizer loaded: {type(optimizer).__name__}")
 
         scheduler = None
@@ -282,7 +288,7 @@ class TrainingOrchestrator:
             assert "scheduler_state_dict" in checkpoint, (
                 "Optimizer state could not be found in checkpoint"
             )
-            scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+            scheduler.load_state_dict(checkpoint.scheduler_state_dict)
             logger.info(f"Scheduler loaded: {type(scheduler).__name__}")
 
         logger.info("All components loaded successfully from checkpoint")
@@ -306,14 +312,14 @@ class TrainingOrchestrator:
 
         return run, trainer
 
-    def _register_training_hooks(self, trainer: Trainer) -> None:
-        def post_fit_hook(trainer: Trainer, train_metrics) -> None:
+    def _register_training_hooks(self, run: Run, trainer: Trainer) -> None:
+        def _capture_train_loss(trainer: Trainer, train_metrics) -> None:
             self._buffer["train_loss"] = float(train_metrics.avg_loss)
 
-        def post_eval_hook(trainer: Trainer, eval_metrics) -> None:
+        def _capture_val_loss(trainer: Trainer, eval_metrics) -> None:
             self._buffer["val_loss"] = float(eval_metrics.avg_loss)
 
-        def post_epoch_hook(trainer: Trainer) -> None:
+        def _save_epoch_stats(trainer: Trainer) -> None:
             e = {
                 "train_loss": self._buffer.get("train_loss", 0.0),
                 "val_loss": self._buffer.get("val_loss", 0.0),
@@ -321,66 +327,45 @@ class TrainingOrchestrator:
                 "epoch": trainer.state.current_epoch,
                 "global_step": trainer.state.global_step,
             }
-            self.events_buffer.append(e)
-
-        trainer.register_post_fit_hook(post_fit_hook)
-        trainer.register_post_eval_hook(post_eval_hook)
-        trainer.register_post_epoch_hook(post_epoch_hook)
-        trainer.register_post_epoch_hook(
-            _create_checkpoint_saver(run, trainer, interval=epoch_checkpoint_interval)
-        )
-
-    def _create_checkpoint_saver(
-        self,
-        run: Run,
-        trainer: Trainer,
-        interval: int = 5,
-    ):
-        """Create a hook to save checkpoints at the end of each epoch.
-
-        Args:
-            artifact_manager: The `RunArtifactManager` instance for saving checkpoints.
-
-        Returns:
-            Hook function to save checkpoints.
-        """
+            self.event_repository.insert(e)
 
         def _save_checkpoint(trainer):
             """Save a checkpoint."""
             # Avoid creating a checkpoint if saving criteria aren't met.
+            # TODO: Only skip creation of epoch checkpoints, best / latest should always be created.
             if (
-                trainer.state.current_epoch % interval != 0
+                trainer.state.current_epoch % self.checkpoint_interval != 0
                 and trainer.state.prev_loss != trainer.state.best_loss
             ):
                 return
 
             checkpoint = Checkpoint(
-                id=randomizer.random_id(),
-                run_id=run.id,
-                run_name=run.name,
+                epoch=trainer.state.current_epoch,
+                loss=trainer.state.prev_loss.item(),
                 training_state=trainer.state_dict(),
                 model_state_dict=trainer.model.state_dict(),
                 optimizer_state_dict=trainer.optimizer.state_dict(),
             )
-
             if trainer.scheduler is not None:
-                checkpoint["scheduler_state_dict"] = trainer.scheduler.state_dict()
+                checkpoint.scheduler_state_dict = trainer.scheduler.state_dict()
 
-            # TODO: Handle checkpoint creation failures.
             logging.info(f"Saving checkpoint '{checkpoint.id}'...")
-            repository.create(
-                f"checkpoints/{checkpoint.id}",
-                bytes(checkpoint),
-            )
+            self.checkpoint_repository.insert(run.name, checkpoint)
             logger.info("Checkpoint saved successfully")
 
-            if trainer.state.current_epoch % interval == 0:
-                epoch_checkpoint_tag = (
-                    f"{str(CheckpointType.EPOCH)}:{trainer.state.current_epoch:04d}"
-                )
-                checkpoints[epoch_checkpoint_tag] = checkpoint.id
+        def _update_run(trainer):
+            run.current_epoch = trainer.state.current_epoch
+            run.current_step = trainer.state.global_step
+            run.current_loss = trainer.state.prev_loss.item()
+            # TODO: Consider adding total training time as well.
+            run.updated_at = time.time_ns()
+            self.run_repository.update(run)
 
-        return _save_checkpoint
+        trainer.register_post_fit_hook(_capture_train_loss)
+        trainer.register_post_eval_hook(_capture_val_loss)
+        trainer.register_post_epoch_hook(_save_epoch_stats)
+        trainer.register_post_epoch_hook(_save_checkpoint)
+        trainer.register_post_epoch_hook(_update_run)
 
 
 def _format_hours(time: float) -> str:

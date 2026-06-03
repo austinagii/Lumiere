@@ -1,4 +1,7 @@
-from lumiere.persistence import StorageClient
+from pathlib import Path
+from typing import Any
+
+from lumiere.persistence.clients import StorageClient
 
 
 class ArtifactRepository:
@@ -7,7 +10,8 @@ class ArtifactRepository:
 
     def insert(
         self,
-        name: Path,
+        run_name: str,
+        artifact_name: Path,
         artifact: Any,
         overwrite: bool = False,
         raise_exception: bool = False,
@@ -40,6 +44,7 @@ class ArtifactRepository:
             StorageError: If an error occurred while storing the artifact and
             `raise_exception` is True.
         """
+        return
         artifact_bytes = pickle.dumps(artifact)
         artifact_path = ARTIFACT_PATH_TEMPLATE.format(self.run.id, name)
 
@@ -61,7 +66,9 @@ class ArtifactRepository:
         Returns:
             Any | None: The artifact as its original type or `None` if no matching
                 artifact could be found.
+
         """
+        return
         artifact: Any = None
 
         # Load the artifact from the first available source.

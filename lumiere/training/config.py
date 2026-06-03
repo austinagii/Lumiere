@@ -24,34 +24,6 @@ class Config:
         ```
     """
 
-    @classmethod
-    def from_yaml(cls, path: str | Path):
-        """Create a `Config` instance from a YAML file.
-
-        Args:
-            path: Path to the YAML configuration file.
-
-        Returns:
-            Initialized `Config` instance.
-
-        Raises:
-            ValueError: If the path is invalid.
-            FileNotFoundError: If the file does not exist.
-        """
-        if isinstance(path, str):
-            try:
-                path = Path(path)
-            except Exception:
-                raise ValueError(f"'{path}' is not a valid path")
-
-        if not path.exists():
-            raise FileNotFoundError(f"Configuration file not found: {path}")
-
-        with open(path) as f:
-            config = yaml.safe_load(f)
-
-        return cls(config)
-
     def __init__(self, data: dict[str, Any]):
         """Initialize a Config instance with the given data.
 
@@ -192,10 +164,32 @@ class Config:
         Raises:
             FileNotFoundError: If the file does not exist.
         """
-        if not Path(config_path).exists():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
+        if isinstance(path, str):
+            try:
+                path = Path(path)
+            except Exception:
+                raise ValueError(f"'{path}' is not a valid path")
 
-        with open(config_path) as f:
+        if not path.exists():
+            raise FileNotFoundError(f"Configuration file not found: {path}")
+
+        with open(path) as f:
             config = yaml.safe_load(f)
 
         return cls(config)
+
+    @classmethod
+    def from_yaml(cls, s: str):
+        """Create a `Config` instance from a YAML file.
+
+        Args:
+            path: Path to the YAML configuration file.
+
+        Returns:
+            Initialized `Config` instance.
+
+        Raises:
+            ValueError: If the path is invalid.
+            FileNotFoundError: If the file does not exist.
+        """
+        return cls(yaml.safe_load(s))

@@ -67,19 +67,6 @@ class Checkpoint:
         }
         self.__dict__["_state"] = kwargs
 
-    def __getattr__(self, name):
-        if name in self.__dict__["_meta"]:
-            return self.__dict__["_meta"][name]
-        if name in self.__dict__["_state"]:
-            return self.__dict__["_state"][name]
-        else:
-            raise AttributeError(
-                f"Attribute '{name}' not defined for type '{type(self).__name__}"
-            )
-
-    def __setattr__(self, name, value):
-        self.__dict__["_state"][name] = value
-
     def meta(self):
         return copy.copy(self._meta)
 
@@ -118,6 +105,22 @@ class Checkpoint:
             A new checkpoint object.
         """
         return cls(**torch.load(io.BytesIO(bytes)))
+
+    def __getattr__(self, name):
+        if name in self.__dict__["_meta"]:
+            return self.__dict__["_meta"][name]
+        if name in self.__dict__["_state"]:
+            return self.__dict__["_state"][name]
+        else:
+            raise AttributeError(
+                f"Attribute '{name}' not defined for type '{type(self).__name__}"
+            )
+
+    def __setattr__(self, name, value):
+        self.__dict__["_state"][name] = value
+
+    def __iter__(self):
+        return (x for x in vars(self).keys())
 
 
 class CheckpointEncoder(json.JSONEncoder):
