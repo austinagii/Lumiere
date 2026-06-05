@@ -176,9 +176,20 @@ class TestOrchestrator:
         assert checkpoint_store.get(run.name, "epoch:2")
         assert checkpoint_store.get(run.name, "epoch:3")
 
-    def test_train_captures_training_events(self):
-        # Expect event log to contain 3 epoch events.
-        pass
+    def test_train_captures_training_events(
+        self, orchestrator, event_store, storage_client, config
+    ):
+        run = orchestrator.train(config=config)
+
+        events = event_store.list(run.name)
+
+        assert len(events) == 3
+        for e in events:
+            assert "train_loss" in e
+            assert "val_loss" in e
+            assert "lr" in e
+            assert "epoch" in e
+            assert "global_step" in e
 
     def test_train_captures_training_artifacts(self):
         # Expect tokenizer artifact.

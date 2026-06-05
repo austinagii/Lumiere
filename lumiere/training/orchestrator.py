@@ -314,10 +314,10 @@ class TrainingOrchestrator:
 
     def _register_training_hooks(self, run: Run, trainer: Trainer) -> None:
         def _capture_train_loss(trainer: Trainer, train_metrics) -> None:
-            self._buffer["train_loss"] = float(train_metrics.avg_loss)
+            self._buffer["train_loss"] = train_metrics.avg_loss.item()
 
         def _capture_val_loss(trainer: Trainer, eval_metrics) -> None:
-            self._buffer["val_loss"] = float(eval_metrics.avg_loss)
+            self._buffer["val_loss"] = eval_metrics.avg_loss.item()
 
         def _save_epoch_stats(trainer: Trainer) -> None:
             self.event_store.add(
