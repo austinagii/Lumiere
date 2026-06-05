@@ -6,7 +6,7 @@ from lumiere.persistence.errors import StorageError
 from lumiere.training.artifact import ArtifactRepository
 from lumiere.training.checkpoint import CheckpointRepository
 from lumiere.training.config import Config
-from lumiere.training.event import EventRepository
+from lumiere.training.event import EventStore
 from lumiere.training.orchestrator import TrainingOrchestrator
 from lumiere.training.run import RunRepository, RunStatus
 
@@ -49,8 +49,8 @@ def artifact_repository(storage_client):
 
 
 @pytest.fixture
-def event_repository(storage_client):
-    return EventRepository(storage_client)
+def event_store(storage_client):
+    return EventStore(storage_client)
 
 
 @pytest.fixture
@@ -124,6 +124,19 @@ def config():
     return Config.from_yaml(config_yaml)
 
 
+@pytest.fixture
+def orchestrator(
+    run_repository, checkpoint_repository, artifact_repository, event_store
+):
+    return TrainingOrchestrator(
+        run_repository=run_repository,
+        checkpoint_repository=checkpoint_repository,
+        artifact_repository=artifact_repository,
+        event_store=event_store,
+        checkpoint_interval=1,
+    )
+
+
 class TestOrchestrator:
     def test_train_records_training_run(
         self,
@@ -131,14 +144,14 @@ class TestOrchestrator:
         run_repository,
         checkpoint_repository,
         artifact_repository,
-        event_repository,
+        event_store,
         config,
     ):
         orchestrator = TrainingOrchestrator(
             run_repository=run_repository,
             checkpoint_repository=checkpoint_repository,
             artifact_repository=artifact_repository,
-            event_repository=event_repository,
+            event_store=event_store,
             checkpoint_interval=1,
         )
 
@@ -156,10 +169,14 @@ class TestOrchestrator:
         assert saved_run.current_loss
         assert isinstance(saved_run.current_loss, float)
 
-    def test_train_captures_training_checkpoints(self):
-        # Expect checkpoint index to be created.
-        # Expect 5 checkpoints to be created for run.
-        pass
+    def test_train_captures_training_checkpoints(
+        self, config, orchestrator, checkpoint_repository
+    ):
+        run = orchestrator.train(config)
+
+        assert checkpoint_repository.get(run.name, "epoch:1")
+        assert checkpoint_repository.get(run.name, "epoch:2")
+        assert checkpoint_repository.get(run.name, "epoch:3")
 
     def test_train_captures_training_events(self):
         # Expect event log to contain 3 epoch events.

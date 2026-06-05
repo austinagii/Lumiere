@@ -8,7 +8,7 @@ from .artifact import ArtifactRepository
 from .checkpoint import Checkpoint, CheckpointRepository, CheckpointTag
 from .config import Config
 from .errors import CheckpointNotFoundError, RunNotFoundError
-from .event import EventRepository
+from .event import EventStore
 from .loss import cross_entropy_loss
 from .run import Run, RunRepository, RunStatus
 from .trainer import Trainer, TrainingState
@@ -31,7 +31,7 @@ class TrainingOrchestrator:
         run_repository: RunRepository,
         checkpoint_repository: CheckpointRepository,
         artifact_repository: ArtifactRepository,
-        event_repository: EventRepository,
+        event_store: EventStore,
         device="cpu",
         checkpoint_interval=3,
     ):
@@ -45,7 +45,7 @@ class TrainingOrchestrator:
         self.run_repository = run_repository
         self.checkpoint_repository = checkpoint_repository
         self.artifact_repository = artifact_repository
-        self.event_repository = event_repository
+        self.event_store = event_store
         self.device = device
         self.checkpoint_interval = checkpoint_interval
         self._buffer: dict[str, Any] = {}
@@ -320,14 +320,16 @@ class TrainingOrchestrator:
             self._buffer["val_loss"] = float(eval_metrics.avg_loss)
 
         def _save_epoch_stats(trainer: Trainer) -> None:
-            e = {
-                "train_loss": self._buffer.get("train_loss", 0.0),
-                "val_loss": self._buffer.get("val_loss", 0.0),
-                "lr": trainer.state.current_lr,
-                "epoch": trainer.state.current_epoch,
-                "global_step": trainer.state.global_step,
-            }
-            self.event_repository.insert(e)
+            self.event_store.add(
+                run.name,
+                {
+                    "train_loss": self._buffer.get("train_loss", 0.0),
+                    "val_loss": self._buffer.get("val_loss", 0.0),
+                    "lr": trainer.state.current_lr,
+                    "epoch": trainer.state.current_epoch,
+                    "global_step": trainer.state.global_step,
+                },
+            )
 
         def _save_checkpoint(trainer):
             """Save a checkpoint."""
