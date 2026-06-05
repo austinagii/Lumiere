@@ -145,11 +145,11 @@ def decode_checkpoint(d):
     return d
 
 
-class CheckpointRepository:
+class CheckpointStore:
     def __init__(self, client: StorageClient):
         self.client = client
 
-    def insert(self, run_name: str, checkpoint: Checkpoint):
+    def add(self, run_name: str, checkpoint: Checkpoint):
         """Save a checkpoint.
 
         Raises:

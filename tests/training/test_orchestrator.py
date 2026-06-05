@@ -4,7 +4,7 @@ import pytest
 
 from lumiere.persistence.errors import StorageError
 from lumiere.training.artifact import ArtifactStore
-from lumiere.training.checkpoint import CheckpointRepository
+from lumiere.training.checkpoint import CheckpointStore
 from lumiere.training.config import Config
 from lumiere.training.event import EventStore
 from lumiere.training.orchestrator import TrainingOrchestrator
@@ -39,8 +39,8 @@ def run_repository(storage_client):
 
 
 @pytest.fixture
-def checkpoint_repository(storage_client):
-    return CheckpointRepository(storage_client)
+def checkpoint_store(storage_client):
+    return CheckpointStore(storage_client)
 
 
 @pytest.fixture
@@ -125,10 +125,10 @@ def config():
 
 
 @pytest.fixture
-def orchestrator(run_repository, checkpoint_repository, artifact_store, event_store):
+def orchestrator(run_repository, checkpoint_store, artifact_store, event_store):
     return TrainingOrchestrator(
         run_repository=run_repository,
-        checkpoint_repository=checkpoint_repository,
+        checkpoint_store=checkpoint_store,
         artifact_store=artifact_store,
         event_store=event_store,
         checkpoint_interval=1,
@@ -140,14 +140,14 @@ class TestOrchestrator:
         self,
         storage_client,
         run_repository,
-        checkpoint_repository,
+        checkpoint_store,
         artifact_store,
         event_store,
         config,
     ):
         orchestrator = TrainingOrchestrator(
             run_repository=run_repository,
-            checkpoint_repository=checkpoint_repository,
+            checkpoint_store=checkpoint_store,
             artifact_store=artifact_store,
             event_store=event_store,
             checkpoint_interval=1,
@@ -168,13 +168,13 @@ class TestOrchestrator:
         assert isinstance(saved_run.current_loss, float)
 
     def test_train_captures_training_checkpoints(
-        self, config, orchestrator, checkpoint_repository
+        self, config, orchestrator, checkpoint_store
     ):
         run = orchestrator.train(config)
 
-        assert checkpoint_repository.get(run.name, "epoch:1")
-        assert checkpoint_repository.get(run.name, "epoch:2")
-        assert checkpoint_repository.get(run.name, "epoch:3")
+        assert checkpoint_store.get(run.name, "epoch:1")
+        assert checkpoint_store.get(run.name, "epoch:2")
+        assert checkpoint_store.get(run.name, "epoch:3")
 
     def test_train_captures_training_events(self):
         # Expect event log to contain 3 epoch events.

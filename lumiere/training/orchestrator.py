@@ -5,7 +5,7 @@ from typing import Any
 from lumiere import Loader, register_dependency
 
 from .artifact import ArtifactStore
-from .checkpoint import Checkpoint, CheckpointRepository, CheckpointTag
+from .checkpoint import Checkpoint, CheckpointStore, CheckpointTag
 from .config import Config
 from .errors import CheckpointNotFoundError, RunNotFoundError
 from .event import EventStore
@@ -29,7 +29,7 @@ class TrainingOrchestrator:
     def __init__(
         self,
         run_repository: RunRepository,
-        checkpoint_repository: CheckpointRepository,
+        checkpoint_store: CheckpointStore,
         artifact_store: ArtifactStore,
         event_store: EventStore,
         device="cpu",
@@ -43,7 +43,7 @@ class TrainingOrchestrator:
 
         """
         self.run_repository = run_repository
-        self.checkpoint_repository = checkpoint_repository
+        self.checkpoint_store = checkpoint_store
         self.artifact_store = artifact_store
         self.event_store = event_store
         self.device = device
@@ -100,7 +100,7 @@ class TrainingOrchestrator:
         run.updated_at = time.time_ns()
         self.run_repository.update(run)
 
-        # self.checkpoint_repository.mark_final()
+        # self.checkpoint_store.mark_final()
 
         return run
 
@@ -234,7 +234,7 @@ class TrainingOrchestrator:
         assert config.get("training") is not None, "Config missing required 'training' section"     # NOQA: E501
         # fmt: on
 
-        checkpoint = self.checkpoint_repository.get(run_name, checkpoint_tag)
+        checkpoint = self.checkpoint_store.get(run_name, checkpoint_tag)
         if checkpoint is None:
             raise CheckpointNotFoundError(run_name, checkpoint_tag)
         logger.debug(
@@ -352,7 +352,7 @@ class TrainingOrchestrator:
                 checkpoint.scheduler_state_dict = trainer.scheduler.state_dict()
 
             logging.info(f"Saving checkpoint '{checkpoint.id}'...")
-            self.checkpoint_repository.insert(run.name, checkpoint)
+            self.checkpoint_store.get(run.name, checkpoint)
             logger.info("Checkpoint saved successfully")
 
         def _update_run(trainer):

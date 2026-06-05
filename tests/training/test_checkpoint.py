@@ -10,7 +10,7 @@ from lumiere.persistence.clients import StorageClient
 from lumiere.persistence.errors import StorageError
 from lumiere.training.checkpoint import (
     Checkpoint,
-    CheckpointRepository,
+    CheckpointStore,
     decode_checkpoint,
 )
 from lumiere.utils import randomizer
@@ -69,20 +69,20 @@ def storage_client():
 
 
 @pytest.fixture
-def checkpoint_repository(storage_client: StorageClient):
-    return CheckpointRepository(storage_client)
+def checkpoint_store(storage_client: StorageClient):
+    return CheckpointStore(storage_client)
 
 
-class TestCheckpointRepository:
+class TestCheckpointStore:
     def test_insert_saves_checkpoint_to_storage_location(
         self,
         checkpoint: Checkpoint,
-        checkpoint_repository: CheckpointRepository,
+        checkpoint_store: CheckpointStore,
         storage_client: StorageClient,
     ):
         run_name = randomizer.random_name()
 
-        checkpoint_repository.insert(run_name, checkpoint)
+        checkpoint_store.add(run_name, checkpoint)
 
         checkpoint_bytes = storage_client.load(
             f"runs/{run_name}/artifacts/checkpoints/{checkpoint.id}.ckpt"
@@ -97,7 +97,7 @@ class TestCheckpointRepository:
     def test_insert_adds_checkpoint_to_index(
         self,
         checkpoint: Checkpoint,
-        checkpoint_repository: CheckpointRepository,
+        checkpoint_store: CheckpointStore,
         storage_client: StorageClient,
     ):
         run_name = randomizer.random_name()
@@ -107,7 +107,7 @@ class TestCheckpointRepository:
         )
         assert checkpoint_index_bytes is None
 
-        checkpoint_repository.insert(run_name, checkpoint)
+        checkpoint_store.get(run_name, checkpoint)
         checkpoint_index_bytes = storage_client.load(
             f"runs/{run_name}/artifacts/checkpoints/index.json"
         )
@@ -130,7 +130,7 @@ class TestCheckpointRepository:
     def test_insert_updates_index_after_a_checkpoint_is_added(
         self,
         checkpoint: Checkpoint,
-        checkpoint_repository: CheckpointRepository,
+        checkpoint_store: CheckpointStore,
         storage_client: StorageClient,
     ):
         run_name = randomizer.random_name()
@@ -148,19 +148,19 @@ class TestCheckpointRepository:
         checkpoint_2 = Checkpoint(epoch=2, loss=0.5, created_at=current_time)
         checkpoint_3 = Checkpoint(epoch=3, loss=0.8, created_at=current_time + 200_000)
 
-        checkpoint_repository.insert(run_name, checkpoint_1)
+        checkpoint_store.get(run_name, checkpoint_1)
         checkpoint_index = load_index()
         assert _equal_checkpoints(checkpoint_index.get("epoch:1"), checkpoint_1)
         assert _equal_checkpoints(checkpoint_index.get("latest"), checkpoint_1)
         assert _equal_checkpoints(checkpoint_index.get("best"), checkpoint_1)
 
-        checkpoint_repository.insert(run_name, checkpoint_2)
+        checkpoint_store.get(run_name, checkpoint_2)
         checkpoint_index = load_index()
         assert _equal_checkpoints(checkpoint_index.get("epoch:2"), checkpoint_2)
         assert _equal_checkpoints(checkpoint_index.get("latest"), checkpoint_1)
         assert _equal_checkpoints(checkpoint_index.get("best"), checkpoint_2)
 
-        checkpoint_repository.insert(run_name, checkpoint_3)
+        checkpoint_store.get(run_name, checkpoint_3)
         checkpoint_index = load_index()
         assert _equal_checkpoints(checkpoint_index.get("epoch:3"), checkpoint_3)
         assert _equal_checkpoints(checkpoint_index.get("latest"), checkpoint_3)
@@ -168,7 +168,7 @@ class TestCheckpointRepository:
 
     def test_get_retrieves_checkpoint_from_storage(
         self,
-        checkpoint_repository: CheckpointRepository,
+        checkpoint_store: CheckpointStore,
         storage_client: StorageClient,
     ):
         current_time = time.time_ns()
@@ -192,9 +192,9 @@ class TestCheckpointRepository:
             model_state=torch.randn(3),
         )
 
-        checkpoint_repository.insert(run_name, checkpoint_1)
-        checkpoint_repository.insert(run_name, checkpoint_2)
-        checkpoint_repository.insert(run_name, checkpoint_3)
+        checkpoint_store.add(run_name, checkpoint_1)
+        checkpoint_store.add(run_name, checkpoint_2)
+        checkpoint_store.add(run_name, checkpoint_3)
 
         def _assert_checkpoints_equal(a, b):
             assert a.id == b.id
@@ -204,11 +204,11 @@ class TestCheckpointRepository:
             assert torch.allclose(a.model_state, b.model_state)
 
         # fmt: off
-        _assert_checkpoints_equal(checkpoint_repository.get(run_name, "latest"), checkpoint_3)   # NOQA: E501
-        _assert_checkpoints_equal(checkpoint_repository.get(run_name, "best"), checkpoint_2)     # NOQA: E501
-        _assert_checkpoints_equal(checkpoint_repository.get(run_name, "epoch:1"), checkpoint_1)  # NOQA: E501
-        _assert_checkpoints_equal(checkpoint_repository.get(run_name, "epoch:2"), checkpoint_2)  # NOQA: E501
-        _assert_checkpoints_equal(checkpoint_repository.get(run_name, "epoch:3"), checkpoint_3)  # NOQA: E501
+        _assert_checkpoints_equal(checkpoint_store.get(run_name, "latest"), checkpoint_3)   # NOQA: E501
+        _assert_checkpoints_equal(checkpoint_store.get(run_name, "best"), checkpoint_2)     # NOQA: E501
+        _assert_checkpoints_equal(checkpoint_store.get(run_name, "epoch:1"), checkpoint_1)  # NOQA: E501
+        _assert_checkpoints_equal(checkpoint_store.get(run_name, "epoch:2"), checkpoint_2)  # NOQA: E501
+        _assert_checkpoints_equal(checkpoint_store.get(run_name, "epoch:3"), checkpoint_3)  # NOQA: E501
         # fmt: on
 
 

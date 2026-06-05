@@ -12,7 +12,7 @@ from lumiere.persistence.clients import (
 )
 from lumiere.training import Config, TrainingOrchestrator
 from lumiere.training.artifact import ArtifactStore
-from lumiere.training.checkpoint import CheckpointRepository
+from lumiere.training.checkpoint import CheckpointStore
 from lumiere.training.run import RunRepository
 from lumiere.utils.device import get_device
 
@@ -104,11 +104,11 @@ class TrainCommandExecutor:
             storage_client = clients[0]
 
         run_repository = RunRepository(storage_client)
-        checkpoint_repository = CheckpointRepository(storage_client)
+        checkpoint_store = CheckpointStore(storage_client)
         artifact_store = ArtifactStore(storage_client)
         orchestrator = TrainingOrchestrator(
             run_repository=run_repository,
-            checkpoint_repository=checkpoint_repository,
+            checkpoint_store=checkpoint_store,
             artifact_store=artifact_store,
             device=get_device(),
         )
