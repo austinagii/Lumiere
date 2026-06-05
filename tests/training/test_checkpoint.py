@@ -107,7 +107,7 @@ class TestCheckpointStore:
         )
         assert checkpoint_index_bytes is None
 
-        checkpoint_store.get(run_name, checkpoint)
+        checkpoint_store.add(run_name, checkpoint)
         checkpoint_index_bytes = storage_client.load(
             f"runs/{run_name}/artifacts/checkpoints/index.json"
         )
@@ -148,19 +148,19 @@ class TestCheckpointStore:
         checkpoint_2 = Checkpoint(epoch=2, loss=0.5, created_at=current_time)
         checkpoint_3 = Checkpoint(epoch=3, loss=0.8, created_at=current_time + 200_000)
 
-        checkpoint_store.get(run_name, checkpoint_1)
+        checkpoint_store.add(run_name, checkpoint_1)
         checkpoint_index = load_index()
         assert _equal_checkpoints(checkpoint_index.get("epoch:1"), checkpoint_1)
         assert _equal_checkpoints(checkpoint_index.get("latest"), checkpoint_1)
         assert _equal_checkpoints(checkpoint_index.get("best"), checkpoint_1)
 
-        checkpoint_store.get(run_name, checkpoint_2)
+        checkpoint_store.add(run_name, checkpoint_2)
         checkpoint_index = load_index()
         assert _equal_checkpoints(checkpoint_index.get("epoch:2"), checkpoint_2)
         assert _equal_checkpoints(checkpoint_index.get("latest"), checkpoint_1)
         assert _equal_checkpoints(checkpoint_index.get("best"), checkpoint_2)
 
-        checkpoint_store.get(run_name, checkpoint_3)
+        checkpoint_store.add(run_name, checkpoint_3)
         checkpoint_index = load_index()
         assert _equal_checkpoints(checkpoint_index.get("epoch:3"), checkpoint_3)
         assert _equal_checkpoints(checkpoint_index.get("latest"), checkpoint_3)

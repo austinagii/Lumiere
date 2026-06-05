@@ -176,9 +176,7 @@ class TestOrchestrator:
         assert checkpoint_store.get(run.name, "epoch:2")
         assert checkpoint_store.get(run.name, "epoch:3")
 
-    def test_train_captures_training_events(
-        self, orchestrator, event_store, storage_client, config
-    ):
+    def test_train_captures_training_events(self, orchestrator, event_store, config):
         run = orchestrator.train(config=config)
 
         events = event_store.list(run.name)
@@ -191,6 +189,9 @@ class TestOrchestrator:
             assert "epoch" in e
             assert "global_step" in e
 
-    def test_train_captures_training_artifacts(self):
-        # Expect tokenizer artifact.
-        pass
+    def test_train_captures_training_artifacts(
+        self, orchestrator, artifact_store, config, storage_client
+    ):
+        run = orchestrator.train(config=config)
+
+        assert artifact_store.get(run.name, "tokenizer")

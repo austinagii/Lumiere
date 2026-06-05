@@ -352,7 +352,7 @@ class TrainingOrchestrator:
                 checkpoint.scheduler_state_dict = trainer.scheduler.state_dict()
 
             logging.info(f"Saving checkpoint '{checkpoint.id}'...")
-            self.checkpoint_store.get(run.name, checkpoint)
+            self.checkpoint_store.add(run.name, checkpoint)
             logger.info("Checkpoint saved successfully")
 
         def _update_run(trainer):
