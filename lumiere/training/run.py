@@ -193,7 +193,7 @@ def _run_to_json(run: Run) -> bytes:
     return bytes(json.dumps(run_dict, indent=2), "utf-8")
 
 
-class RunArtifactRepository:
+class RunArtifactStore:
     """Stores and retrieves artifacts generated during training runs."""
 
     def __init__(self, client: StorageClient):

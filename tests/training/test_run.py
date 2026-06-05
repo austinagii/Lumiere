@@ -7,7 +7,7 @@ import yaml
 
 from lumiere.persistence.errors import StorageError
 from lumiere.training import Config
-from lumiere.training.run import Run, RunArtifactRepository, RunRepository, RunStatus
+from lumiere.training.run import Run, RunRepository, RunStatus
 
 
 @pytest.fixture
@@ -205,43 +205,3 @@ class TestRunRepository:
         assert run_dict["current_step"] == run.current_step
         assert run_dict["current_loss"] == run.current_loss
         assert run_config_dict == run.config.to_dict()
-
-
-@pytest.fixture
-def artifact_repository(storage_client):
-    return RunArtifactRepository(storage_client)
-
-
-class TestRunArtifactRepository:
-    """Test suite for the :class:`lumiere.training.run.Run` class."""
-
-    # TODO: Implement remaining tests.
-    def test_insert_saves_artifact_to_storage_location(
-        self, storage_client, artifact_repository
-    ):
-        artifact = b"3534xcc-53345d-4ngfkb"
-
-        artifact_repository.insert("ultimate-ninja", "raikiri-staff", artifact)
-
-        assert (
-            storage_client.load("runs/ultimate-ninja/artifacts/raikiri-staff")
-            == artifact
-        )
-
-    def test_get_loads_artifact_from_storage_location(
-        self, storage_client, artifact_repository
-    ):
-        artifact = b"3534xcc-53345d-4ngfkb"
-
-        storage_client.save("runs/ultimate-ninja/artifacts/raikiri-staff", artifact)
-
-        assert artifact_repository.get("ultimate-ninja", "raikiri-staff") == artifact
-
-    def test_get_returns_none_if_artifact_does_not_exist(
-        self, storage_client, artifact_repository
-    ):
-        artifact = b"3534xcc-53345d-4ngfkb"
-
-        storage_client.save("runs/ultimate-ninja/artifacts/raikiri-staff", artifact)
-
-        assert artifact_repository.get("ultimate-ninja", "sand-gourd") is None

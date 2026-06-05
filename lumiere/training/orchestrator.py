@@ -4,7 +4,7 @@ from typing import Any
 
 from lumiere import Loader, register_dependency
 
-from .artifact import ArtifactRepository
+from .artifact import ArtifactStore
 from .checkpoint import Checkpoint, CheckpointRepository, CheckpointTag
 from .config import Config
 from .errors import CheckpointNotFoundError, RunNotFoundError
@@ -30,7 +30,7 @@ class TrainingOrchestrator:
         self,
         run_repository: RunRepository,
         checkpoint_repository: CheckpointRepository,
-        artifact_repository: ArtifactRepository,
+        artifact_store: ArtifactStore,
         event_store: EventStore,
         device="cpu",
         checkpoint_interval=3,
@@ -39,12 +39,12 @@ class TrainingOrchestrator:
 
         Args:
             run_repository: The repository for run information.
-            artifact_repository: The repository for training run artifacts.
+            artifact_store: The repository for training run artifacts.
 
         """
         self.run_repository = run_repository
         self.checkpoint_repository = checkpoint_repository
-        self.artifact_repository = artifact_repository
+        self.artifact_store = artifact_store
         self.event_store = event_store
         self.device = device
         self.checkpoint_interval = checkpoint_interval
@@ -154,7 +154,7 @@ class TrainingOrchestrator:
             )
 
             logger.info("Saving tokenizer artifact...")
-            self.artifact_repository.insert(run.name, "tokenizer", bytes(tokenizer))
+            self.artifact_store.add(run.name, "tokenizer", bytes(tokenizer))
             logger.info("Tokenizer artifact saved successfully")
 
             logger.info("Loading pipeline...")

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from lumiere.persistence.errors import StorageError
-from lumiere.training.artifact import ArtifactRepository
+from lumiere.training.artifact import ArtifactStore
 from lumiere.training.checkpoint import CheckpointRepository
 from lumiere.training.config import Config
 from lumiere.training.event import EventStore
@@ -44,8 +44,8 @@ def checkpoint_repository(storage_client):
 
 
 @pytest.fixture
-def artifact_repository(storage_client):
-    return ArtifactRepository(storage_client)
+def artifact_store(storage_client):
+    return ArtifactStore(storage_client)
 
 
 @pytest.fixture
@@ -125,13 +125,11 @@ def config():
 
 
 @pytest.fixture
-def orchestrator(
-    run_repository, checkpoint_repository, artifact_repository, event_store
-):
+def orchestrator(run_repository, checkpoint_repository, artifact_store, event_store):
     return TrainingOrchestrator(
         run_repository=run_repository,
         checkpoint_repository=checkpoint_repository,
-        artifact_repository=artifact_repository,
+        artifact_store=artifact_store,
         event_store=event_store,
         checkpoint_interval=1,
     )
@@ -143,14 +141,14 @@ class TestOrchestrator:
         storage_client,
         run_repository,
         checkpoint_repository,
-        artifact_repository,
+        artifact_store,
         event_store,
         config,
     ):
         orchestrator = TrainingOrchestrator(
             run_repository=run_repository,
             checkpoint_repository=checkpoint_repository,
-            artifact_repository=artifact_repository,
+            artifact_store=artifact_store,
             event_store=event_store,
             checkpoint_interval=1,
         )

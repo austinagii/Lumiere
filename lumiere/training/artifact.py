@@ -1,35 +1,28 @@
+import logging
 from pathlib import Path
-from typing import Any
 
 from lumiere.persistence.clients import StorageClient
+from lumiere.persistence.errors import StorageError
 
 
-class ArtifactRepository:
+ARTIFACT_PATH_TEMPLATE = "runs/{run_name}/artifacts/{artifact_name}"
+
+logger = logging.getLogger(__name__)
+
+
+class ArtifactStore:
     def __init__(self, client: StorageClient):
         self.client = client
 
-    def insert(
+    def add(
         self,
         run_name: str,
         artifact_name: Path,
-        artifact: Any,
-        overwrite: bool = False,
-        raise_exception: bool = False,
+        artifact: bytes,
     ) -> None:
-        """Save an artifact for the current training run.
+        """Save an arbitrary artifact for the current training run.
 
         The specified artifact can be an arbitrary python object.
-
-        If an artifact with the specified name already exists, then the `overwrite` flag
-        will be used to determine if the previous artifact should be overwritten. If
-        `overwrite` is `False` and an artifact with the specified name already exists,
-        then an exception will be raised. If `overwrite` is `True` and an artifact with
-        the specified name already exists, then the previous artifact will be overwritten.
-
-        If `raise_exception` is `True` then this method will raise the first exception
-        that occurs while storing the artifact in the configured sources. Else, it
-        will return immediately upon initiating the storage of the artifact, ignoring
-        any exceptions that occur.
 
         Args:
             name: The name that identifies the artifact being stored.
@@ -44,54 +37,42 @@ class ArtifactRepository:
             StorageError: If an error occurred while storing the artifact and
             `raise_exception` is True.
         """
-        return
-        artifact_bytes = pickle.dumps(artifact)
-        artifact_path = ARTIFACT_PATH_TEMPLATE.format(self.run.id, name)
+        artifact_path = ARTIFACT_PATH_TEMPLATE.format(
+            run_name=run_name, artifact_name=artifact_name
+        )
 
         try:
-            self._execute_async(
-                "save", artifact_path, artifact_bytes, overwrite=overwrite
+            num_bytes_written = self.client.save(
+                artifact_path, artifact, overwrite=True
             )
         except Exception as e:
             raise StorageError("An error occurred while storing the artifact.") from e
 
-    def get(self, name: str) -> Any:
-        """Load an artifact for the current training run.
+        if num_bytes_written != len(artifact):
+            raise StorageError(
+                f"Failed to save full data for artifact '{artifact_name}'."
+            )
 
-        The artifact will be returned as it's original type.
+    def get(self, run_name: str, artifact_name: str) -> bytes | None:
+        """Load an artifact for the current training run.
 
         Args:
             name: The name of the object to be loaded.
 
         Returns:
-            Any | None: The artifact as its original type or `None` if no matching
-                artifact could be found.
+            bytes | None: The matching artifact.
 
         """
-        return
-        artifact: Any = None
+        artifact_path = ARTIFACT_PATH_TEMPLATE.format(
+            run_name=run_name, artifact_name=artifact_name
+        )
 
-        # Load the artifact from the first available source.
-        for client in self.retrieval_clients:
-            try:
-                artifact = client.load_artifact(self.run.id, name)
-            except Exception as e:
-                LOGGER.info(
-                    f"An error occurred while attempting to retrieve artifact: {name}",
-                    e,
-                )
-                continue
-
-            if artifact is not None:
-                break
-
-        # If the artifact could not be found in any of the configured sources then raise
-        # an error.
-        # TODO: Consider changing this behavior to return None. The arifact not being
-        # found should not be an exceptional case.
-        if artifact is None:  # Do we want this behavior or just return None?
-            raise ArtifactNotFoundError(
-                f"Artifact '{name}' could not be found in the configured locations."
-            )
+        try:
+            artifact = self.client.load(artifact_path)
+        except Exception as e:
+            raise StorageError(
+                "An error occurred while attempting to retrieve artifact:"
+                + " '{artifact_name}'.",
+            ) from e
 
         return artifact
