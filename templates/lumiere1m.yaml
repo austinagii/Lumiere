@@ -1,6 +1,3 @@
-# Training configuration
-# Model, data, optimizer, and training hyperparameters
-
 model:
   type: transformer
   vocab_size: 4096
