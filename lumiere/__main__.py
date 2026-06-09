@@ -241,14 +241,6 @@ def _start(
 
     orchestrator.train(config=model, run_name=name)
 
-    # if device is None:
-    #     device = _get_optimal_device()
-    # if disable_checkpoints:
-    #     checkpoint_interval = -1
-    # if disable_logging:
-    #     log_interval = -1
-    #
-
 
 def _load_spec(spec):
     cwd = Path(os.getcwd())
