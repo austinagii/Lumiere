@@ -152,7 +152,7 @@ class Config:
         yield from self.data.items()
 
     @classmethod
-    def from_file(cls, config_path: str) -> "Config":
+    def from_file(cls, path: str | Path) -> "Config":
         """Create a `Config` instance from a YAML file.
 
         Args:
@@ -167,8 +167,8 @@ class Config:
         if isinstance(path, str):
             try:
                 path = Path(path)
-            except Exception:
-                raise ValueError(f"'{path}' is not a valid path")
+            except Exception as e:
+                raise ValueError(f"'{path}' is not a valid path") from e
 
         if not path.exists():
             raise FileNotFoundError(f"Configuration file not found: {path}")

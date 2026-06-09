@@ -61,7 +61,7 @@ class Trainer:
         max_epochs: int | None = None,
         stopping_threshold: float = 1e-3,
         patience: int | None = None,
-        gradient_clip_norm: float = 1e-6,
+        gradient_clip_norm: float | None = 1.0,
         device: str | torch.device = "cpu",
         state: TrainingState | None = None,
     ):
@@ -200,9 +200,10 @@ class Trainer:
 
                 batch_loss = self.loss_fn(outputs, targets)
                 batch_loss.backward()
-                grad_norm = torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), self.gradient_clip_norm
-                )
+                if self.gradient_clip_norm:
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), self.gradient_clip_norm
+                    )
 
                 self.optimizer.step()
                 if self.scheduler:

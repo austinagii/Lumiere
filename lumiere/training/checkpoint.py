@@ -160,7 +160,7 @@ class CheckpointStore:
             run_name=run_name, checkpoint_id=checkpoint.id
         )
         checkpoint_bytes = checkpoint.to_bytes()
-        logger.info("Saving checkpoint '{checkpoint.id}' for run '{run_name}'.")
+        logger.info(f"Saving checkpoint '{checkpoint.id}' for run '{run_name}'.")
         num_bytes_written = self.client.save(checkpoint_path, checkpoint_bytes)
         if num_bytes_written < len(checkpoint_bytes):
             raise RuntimeError(

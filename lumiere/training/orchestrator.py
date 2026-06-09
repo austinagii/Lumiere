@@ -32,8 +32,13 @@ class TrainingOrchestrator:
         checkpoint_store: CheckpointStore,
         artifact_store: ArtifactStore,
         event_store: EventStore,
+        max_epochs: int | None,
+        patience: int | None,
+        stopping_threshold: float,
+        gradient_clip_norm: float | None,
+        log_interval: int | None,
+        checkpoint_interval: int | None,
         device="cpu",
-        checkpoint_interval=3,
     ):
         """Initialize a TrainingOrchestrator.
 
@@ -46,8 +51,14 @@ class TrainingOrchestrator:
         self.checkpoint_store = checkpoint_store
         self.artifact_store = artifact_store
         self.event_store = event_store
-        self.device = device
+        self.max_epochs = max_epochs
+        self.patience = patience
+        self.stopping_threshold = stopping_threshold
+        self.gradient_clip_norm = gradient_clip_norm
+        self.log_interval = log_interval
         self.checkpoint_interval = checkpoint_interval
+        self.device = device
+
         self._buffer: dict[str, Any] = {}
 
     def train(
@@ -69,13 +80,14 @@ class TrainingOrchestrator:
             run_name: The name of the training run to be resumed.
             checkpoint_tag: The checkpoint to resume training from.
         """
-        if run_name is None:
+        if config:
             logger.info("Initializing a new training run...")
-            if config is None:
-                raise ValueError("No configuration provided for the training run.")
-
-            run, trainer = self._init_training_run(config)
+            run, trainer = self._init_training_run(config, name=run_name)
         else:
+            if run_name is None:
+                raise ValueError(
+                    "No training config or run to be resumed was specified."
+                )
             if checkpoint_tag is None:
                 logger.debug(
                     "No checkpoint specified as the restore point for training run"
@@ -104,7 +116,9 @@ class TrainingOrchestrator:
 
         return run
 
-    def _init_training_run(self, config: Config) -> tuple[Run, Trainer]:
+    def _init_training_run(
+        self, config: Config, name: str | None = None
+    ) -> tuple[Run, Trainer]:
         """Initialize components for a new training run.
 
         Args:
@@ -122,10 +136,9 @@ class TrainingOrchestrator:
         assert config.get("pipeline") is not None, "Config missing required 'pipeline' section"     # NOQA: E501
         assert config.get("model") is not None, "Config missing required 'model' section"           # NOQA: E501
         assert config.get("optimizer") is not None, "Config missing required 'optimizer' section"   # NOQA: E501
-        assert config.get("training") is not None, "Config missing required 'training' section"     # NOQA: E501
         # fmt: on
 
-        run = Run(config)
+        run = Run(config, name=name)
         try:
             self.run_repository.insert(run)
         except Exception as e:
@@ -198,8 +211,11 @@ class TrainingOrchestrator:
             loss_fn=cross_entropy_loss,
             optimizer=optimizer,
             scheduler=scheduler,
+            max_epochs=self.max_epochs,
+            stopping_threshold=self.stopping_threshold,
+            patience=self.patience,
+            gradient_clip_norm=self.gradient_clip_norm,
             device=self.device,
-            **config["training"],
         )
 
         return run, trainer
@@ -307,7 +323,7 @@ class TrainingOrchestrator:
             scheduler=scheduler,
             device=self.device,
             state=training_state,
-            **config["training"],
+            **config["training"],  # Need to add training args to config.
         )
 
         return run, trainer
@@ -366,7 +382,8 @@ class TrainingOrchestrator:
         trainer.register_post_fit_hook(_capture_train_loss)
         trainer.register_post_eval_hook(_capture_val_loss)
         trainer.register_post_epoch_hook(_save_epoch_stats)
-        trainer.register_post_epoch_hook(_save_checkpoint)
+        if self.checkpoint_interval:
+            trainer.register_post_epoch_hook(_save_checkpoint)
         trainer.register_post_epoch_hook(_update_run)
 
 

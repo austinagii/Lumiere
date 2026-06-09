@@ -1,18 +1,17 @@
 """Provides the main entrypoints for starting or resuming runs."""
 
 import argparse
+import copy
 import logging
+import os
 import sys
-from argparse import Namespace
+from pathlib import Path
 
-from lumiere.persistence.clients import (
-    AzureBlobStorageClient,
-    FileSystemStorageClient,
-    StorageClientDemux,
-)
+from lumiere.persistence.clients import FileSystemStorageClient
 from lumiere.training import Config, TrainingOrchestrator
 from lumiere.training.artifact import ArtifactStore
 from lumiere.training.checkpoint import CheckpointStore
+from lumiere.training.event import EventStore
 from lumiere.training.run import RunRepository
 from lumiere.utils.device import get_device
 
@@ -28,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _parse_command():
+def _parse_subcommand():
     """Extract the command and remaining args from the command line.
 
     Usage: `python -m lumiere <command> [args]`
@@ -44,80 +43,264 @@ def _parse_command():
     return sys.argv[1], sys.argv[2:]
 
 
+""" 
+Example commands 
+
+# Train the default model (should be used just to test installation)
+python -m lumiere 
+
+# Simple override.
+python -m lumiere --template “lumiere1m” --override “mode.block.feedforward.hidden_size=1024"  --max-epochs 1000
+
+# Complex overrides.
+python -m lumiere --template “lumiere1m” --override ./experiments/ablate-feedforward.yaml
+
+# Resume training.
+python -m lumiere --resume "dancing-coyote-1993" --checkpoint "latest" 
+
+Command line options (train):
+-c, --config 
+-p, --checkpoint,  # map to checkpoint_tag
+-o, --override,  # can be specified multiple times.
+-m, --model,
+-r, --resume,  # map to run_name
+--max-epoch,
+--stopping-threshold,
+--patience,
+--gradient-clip-norm
+--log-interval
+--storage
+
+"""
+
+"""
+python -m lumiere start --spec ./models/miniformer.yaml 
+python -m lumiere start --template lumiere1m --override "model.block.feedforward.hidden_size=1024"
+python -m lumiere start --name "hadouken-1992" custom-transformer.yaml
+"""
+
+
+def _parse_train_command_args(args):
+    parser = argparse.ArgumentParser(
+        description="Train a Lumiére model.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    parser.add_argument(
+        "--spec",
+        dest="spec",
+        type=str,
+        default=None,
+        help="The path to the training configuration file",
+    )
+
+    parser.add_argument(
+        "--template",
+        dest="template",
+        type=str,
+        default=None,
+        help="The name of the model template",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--name",
+        dest="name",
+        type=str,
+        default=None,
+        help="The name of the training run",
+    )
+
+    parser.add_argument(
+        "-o",
+        "--set",
+        action="append",
+        dest="overrides",
+        metavar="KEY=VALUE",
+        help="Properties of either the spec or template to be replaced during the run",
+    )
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-e", "--max-epochs", type=int, default=10)
+    group.add_argument("--no-max-epochs", action="store_true", default=False)
+
+    parser.add_argument(
+        "-p", "--max-epochs-without-improvement", dest="patience", type=int, default=5
+    )
+    group.add_argument(
+        "--no-max-epochs-without-improvement",
+        dest="no_patience",
+        action="store_true",
+        default=False,
+    )
+
+    parser.add_argument(
+        "--min-improvement", dest="stopping_threshold", type=float, default=0.001
+    )
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--log-interval", type=int, default=10)
+    group.add_argument("--no-logging", action="store_true", default=False)
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--checkpoint-interval", type=int, default=3)
+    group.add_argument("--no-checkpoints", action="store_true", default=False)
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--gradient-clip-norm", type=float, default=1.0)
+    group.add_argument("--no-gradient-clipping", action="store_true", default=False)
+
+    parser.add_argument("-d", "--device", default="cpu")
+    return parser.parse_args(args)
+
+
+def _train_cmd_line_runner(  # This should call the start method.
+    spec: str | None,
+    template: str | None,
+    name: str | None,
+    overrides: str | None,
+    max_epochs: int | None,
+    no_max_epochs: bool,
+    patience: int | None,
+    no_patience: bool,
+    stopping_threshold: float,
+    log_interval: int,
+    no_logging: bool,
+    checkpoint_interval: int,
+    no_checkpoints: bool,
+    gradient_clip_norm: float,
+    no_gradient_clipping: bool,
+    # storage_locations: str,
+    device: str,
+):
+    if spec:
+        config = _load_spec(spec)
+    elif template:
+        config = _load_template(template)
+    else:
+        raise ValueError("Either a spec or template must be provided.")
+
+    _overrides = _parse_overrides(overrides) if overrides else None
+    _max_epochs = None if no_max_epochs else max_epochs
+    _patience = None if no_patience else patience
+    _log_interval = None if no_logging else log_interval
+    _checkpoint_interval = None if no_checkpoints else checkpoint_interval
+    _gradient_clip_norm = None if no_gradient_clipping else gradient_clip_norm
+
+    _start(
+        model=config,
+        name=name,
+        overrides=_overrides,
+        max_epochs=_max_epochs,
+        patience=_patience,
+        stopping_threshold=stopping_threshold,
+        gradient_clip_norm=_gradient_clip_norm,
+        log_interval=_log_interval,
+        checkpoint_interval=_checkpoint_interval,
+        device=device,
+    )
+
+
+def _start(
+    model: Config,
+    name: str | None = None,
+    overrides: Config | None = None,
+    max_epochs: int | None = 100,
+    patience: int | None = 5,
+    stopping_threshold: float = 1e-3,
+    gradient_clip_norm: float | None = 1e-6,
+    log_interval: int | None = 50,
+    checkpoint_interval: int | None = 3,
+    # storage_locations: str = "filesystem:filesystem",
+    device: str | None = None,
+):
+    if overrides:
+        model = _apply_overrides(model, overrides)
+
+    storage_client = _init_storage_client()
+    run_store = RunRepository(storage_client)
+    checkpoint_store = CheckpointStore(storage_client)
+    artifact_store = ArtifactStore(storage_client)
+    event_store = EventStore(storage_client)
+    device = get_device() if device is None else device
+
+    orchestrator = TrainingOrchestrator(
+        run_repository=run_store,
+        checkpoint_store=checkpoint_store,
+        artifact_store=artifact_store,
+        event_store=event_store,
+        max_epochs=max_epochs,
+        patience=patience,
+        stopping_threshold=stopping_threshold,
+        gradient_clip_norm=gradient_clip_norm,
+        log_interval=log_interval,
+        checkpoint_interval=checkpoint_interval,
+        device=device,
+    )
+
+    orchestrator.train(config=model, run_name=name)
+
+    # if device is None:
+    #     device = _get_optimal_device()
+    # if disable_checkpoints:
+    #     checkpoint_interval = -1
+    # if disable_logging:
+    #     log_interval = -1
+    #
+
+
+def _load_spec(spec):
+    cwd = Path(os.getcwd())
+    spec_path = (cwd / spec).resolve()
+    return Config.from_file(spec_path)
+
+
+def _load_template(template):
+    cwd = Path(__file__).parent
+    template_path = (cwd / f"../templates/{template}.yaml").resolve()
+    if not template_path.exists():
+        print(f"Error: Template '{template}' does not exist.")
+        sys.exit(1)
+
+    return Config.from_file(template_path)
+
+
+def _parse_overrides(overrides: str) -> Config:
+    return Config(dict(item.split("=", 1) for item in overrides))
+
+
+# TODO: Need to correctly type convert values from cmd line.
+def _apply_overrides(config, overrides):
+    config = copy.deepcopy(config)
+
+    for param, value in overrides.data.items():
+        config[param] = _infer_type(value)
+
+    return config
+
+
+def _infer_type(value: str):
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    return value
+
+
+def _init_storage_client():
+    return FileSystemStorageClient(Path(__file__).parent.parent)
+
+
 class TrainCommandParser:
-    @staticmethod
-    def parse(args):
-        """Parse the command and the specified args.
-
-        Usage: `python -m lumiere <command> [args]`
-        Example: `python -m lumiere train --config ./configs/transformer.yaml`
-        """
-        parser = argparse.ArgumentParser(
-            description="Train a Lumiére model.",
-            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        )
-
-        parser.add_argument(
-            "--config-path",
-            dest="config_path",
-            type=str,
-            default=None,
-            help="The path to the training configuration file",
-        )
-
-        parser.add_argument(
-            "--run-id",
-            dest="run_id",
-            default=None,
-            help="The ID of the training run to be resumed",
-        )
-
-        parser.add_argument(
-            "--checkpoint-tag",
-            dest="checkpoint_tag",
-            default="best",
-            help="The tag of the checkpoint to resume from (e.g., 'epoch:0001', 'best', 'final')",
-        )
-
-        return parser.parse_args(args)
-
-
-storage_clients = {
-    "filesystem": FileSystemStorageClient(),
-    "azure-blob": AzureBlobStorageClient(),
-}
+    pass
 
 
 class TrainCommandExecutor:
-    @staticmethod
-    def execute(global_config: Config, args: Namespace):
-        train_config = None
-
-        clients = [
-            storage_clients[loc]
-            for loc in global_config.get("training.persistence.locations")
-        ]
-
-        if len(clients) > 1:
-            storage_client = StorageClientDemux(*clients)
-        else:
-            storage_client = clients[0]
-
-        run_repository = RunRepository(storage_client)
-        checkpoint_store = CheckpointStore(storage_client)
-        artifact_store = ArtifactStore(storage_client)
-        orchestrator = TrainingOrchestrator(
-            run_repository=run_repository,
-            checkpoint_store=checkpoint_store,
-            artifact_store=artifact_store,
-            device=get_device(),
-        )
-
-        TrainingOrchestrator.train(
-            config=config,
-            run_id=args.run_id,
-            checkpoint_tag=args.checkpoint_tag,
-        )
+    pass
 
 
 parsers = {"train": TrainCommandParser}
@@ -126,24 +309,14 @@ executors = {"train": TrainCommandExecutor}
 
 def main():
     """Main entry point for the training script."""
-    global_config_path = Path(__file__) / LUMIERE_CONFIG_PATH
-    lumiere_config = Config.from_yaml(global_config_path)
+    subcommand, args = _parse_subcommand()
 
-    command, args = _parse_command()
-    parser = parsers.get(command)
-    if parser is None:
-        raise ValueError(f"No parser found for command '{command}'.")
+    if subcommand == "train":
+        args = _parse_train_command_args(args)
 
-    command_args = parser.parse(args)
-    command_executor = executors.get(command)
-    if command_executor is None:
-        raise RuntimeError()
-
-    try:
-        command_executor.execute(command_args)
-    except Exception as e:
-        logger.error(f"Fatal error: {e}", e)
-        sys.exit(1)
+        _train_cmd_line_runner(**vars(args))
+    else:
+        print(f"Error: Unrecognized subcommand '{subcommand}'.")
 
 
 if __name__ == "__main__":

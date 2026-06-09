@@ -17,6 +17,7 @@ from pathlib import Path
 from lumiere.persistence.errors import StorageError
 
 
+# TODO: Remove default.
 DEFAULT_BASE_DIR = Path(".")
 
 
