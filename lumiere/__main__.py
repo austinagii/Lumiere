@@ -43,43 +43,6 @@ def _parse_subcommand():
     return sys.argv[1], sys.argv[2:]
 
 
-""" 
-Example commands 
-
-# Train the default model (should be used just to test installation)
-python -m lumiere 
-
-# Simple override.
-python -m lumiere --template “lumiere1m” --override “mode.block.feedforward.hidden_size=1024"  --max-epochs 1000
-
-# Complex overrides.
-python -m lumiere --template “lumiere1m” --override ./experiments/ablate-feedforward.yaml
-
-# Resume training.
-python -m lumiere --resume "dancing-coyote-1993" --checkpoint "latest" 
-
-Command line options (train):
--c, --config 
--p, --checkpoint,  # map to checkpoint_tag
--o, --override,  # can be specified multiple times.
--m, --model,
--r, --resume,  # map to run_name
---max-epoch,
---stopping-threshold,
---patience,
---gradient-clip-norm
---log-interval
---storage
-
-"""
-
-"""
-python -m lumiere start --spec ./models/miniformer.yaml 
-python -m lumiere start --template lumiere1m --override "model.block.feedforward.hidden_size=1024"
-python -m lumiere start --name "hadouken-1992" custom-transformer.yaml
-"""
-
-
 def _parse_train_command_args(args):
     parser = argparse.ArgumentParser(
         description="Train a Lumiére model.",
