@@ -124,6 +124,7 @@ def _parse_train_command_args(args):
     group.add_argument("-e", "--max-epochs", type=int, default=10)
     group.add_argument("--no-max-epochs", action="store_true", default=False)
 
+    group = parser.add_mutually_exclusive_group()
     parser.add_argument(
         "-p", "--max-epochs-without-improvement", dest="patience", type=int, default=5
     )
