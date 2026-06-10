@@ -118,6 +118,47 @@ def _parse_train_command_args(args):
     return parser.parse_args(args)
 
 
+def _parse_resume_command_args(args):
+    parser = argparse.ArgumentParser(prog="resume")
+
+    parser.add_argument("name")
+    parser.add_argument("-f", "--from", dest="checkpoint_tag", default="latest")
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-e", "--max-epochs", type=int, default=10)
+    group.add_argument("--no-max-epochs", action="store_true", default=False)
+
+    group = parser.add_mutually_exclusive_group()
+    parser.add_argument(
+        "-p", "--max-epochs-without-improvement", dest="patience", type=int, default=5
+    )
+    group.add_argument(
+        "--no-max-epochs-without-improvement",
+        dest="no_patience",
+        action="store_true",
+        default=False,
+    )
+
+    parser.add_argument(
+        "--min-improvement", dest="stopping_threshold", type=float, default=0.001
+    )
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--log-interval", type=int, default=10)
+    group.add_argument("--no-logging", action="store_true", default=False)
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--checkpoint-interval", type=int, default=3)
+    group.add_argument("--no-checkpoints", action="store_true", default=False)
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--gradient-clip-norm", type=float, default=1.0)
+    group.add_argument("--no-gradient-clipping", action="store_true", default=False)
+
+    parser.add_argument("-d", "--device", default="cpu")
+    return parser.parse_args(args)
+
+
 def _train_cmd_line_runner(  # This should call the start method.
     spec: str | None,
     template: str | None,
@@ -205,6 +246,78 @@ def _start(
     orchestrator.train(config=model, run_name=name)
 
 
+def _resume_cmd_line_runner(
+    name: str,
+    checkpoint_tag: str,
+    max_epochs: int | None,
+    no_max_epochs: bool,
+    patience: int | None,
+    no_patience: bool,
+    stopping_threshold: float,
+    log_interval: int,
+    no_logging: bool,
+    checkpoint_interval: int,
+    no_checkpoints: bool,
+    gradient_clip_norm: float,
+    no_gradient_clipping: bool,
+    # storage_locations: str,
+    device: str,
+):
+    _max_epochs = None if no_max_epochs else max_epochs
+    _patience = None if no_patience else patience
+    _log_interval = None if no_logging else log_interval
+    _checkpoint_interval = None if no_checkpoints else checkpoint_interval
+    _gradient_clip_norm = None if no_gradient_clipping else gradient_clip_norm
+
+    _resume(
+        name=name,
+        checkpoint_tag=checkpoint_tag,
+        max_epochs=_max_epochs,
+        patience=_patience,
+        stopping_threshold=stopping_threshold,
+        gradient_clip_norm=_gradient_clip_norm,
+        log_interval=_log_interval,
+        checkpoint_interval=_checkpoint_interval,
+        device=device,
+    )
+
+
+def _resume(
+    name: str,
+    checkpoint_tag: str = "latest",
+    max_epochs: int | None = None,
+    patience: int | None = None,
+    stopping_threshold: float = None,
+    gradient_clip_norm: float | None = None,
+    log_interval: int | None = None,
+    checkpoint_interval: int | None = None,
+    # storage_locations: str = "filesystem:filesystem",
+    device: str | None = None,
+):
+    storage_client = _init_storage_client()
+    run_store = RunRepository(storage_client)
+    checkpoint_store = CheckpointStore(storage_client)
+    artifact_store = ArtifactStore(storage_client)
+    event_store = EventStore(storage_client)
+    device = get_device() if device is None else device
+
+    orchestrator = TrainingOrchestrator(
+        run_repository=run_store,
+        checkpoint_store=checkpoint_store,
+        artifact_store=artifact_store,
+        event_store=event_store,
+        max_epochs=max_epochs,
+        patience=patience,
+        stopping_threshold=stopping_threshold,
+        gradient_clip_norm=gradient_clip_norm,
+        log_interval=log_interval,
+        checkpoint_interval=checkpoint_interval,
+        device=device,
+    )
+
+    orchestrator.train(run_name=name, checkpoint_tag=checkpoint_tag)
+
+
 def _load_spec(spec):
     cwd = Path(os.getcwd())
     spec_path = (cwd / spec).resolve()
@@ -271,6 +384,10 @@ def main():
         args = _parse_train_command_args(args)
 
         _train_cmd_line_runner(**vars(args))
+    elif subcommand == "resume":
+        args = _parse_resume_command_args(args)
+
+        _resume_cmd_line_runner(**vars(args))
     else:
         print(f"Error: Unrecognized subcommand '{subcommand}'.")
 
