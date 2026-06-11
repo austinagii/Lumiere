@@ -63,6 +63,8 @@ class Pipeline(Protocol):
         """
         ...
 
+    def to(self, device): ...
+
 
 class Preprocessor:
     """Base class for preprocessor implementations.
@@ -83,3 +85,5 @@ class Preprocessor:
             Transformed data.
         """
         ...
+
+    def to(self, device: str): ...

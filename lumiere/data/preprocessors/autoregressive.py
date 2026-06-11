@@ -22,7 +22,7 @@ class AutoregressiveLanguageModellingPreprocessor:
         - Target: `[2, 3, 4, 5]`
     """
 
-    def __init__(self, device):
+    def __init__(self, device: str = "cpu"):
         """Initialize the autoregressive preprocessor.
 
         Args:
@@ -57,3 +57,7 @@ class AutoregressiveLanguageModellingPreprocessor:
         tokens = tokens[:, :-1].to(self.device)
         padding_mask = padding_mask[:, :-1].to(self.device)
         return (tokens, padding_mask), next_tokens
+
+    def to(self, device: str):
+        self.device = device
+        return self

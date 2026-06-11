@@ -4,6 +4,7 @@ Provides :class:`TextPipeline`, a :class:`~lumiere.data.Pipeline` implementation
 that tokenizes raw text sequences, packs them into fixed-length context windows,
 and produces padded token batches suitable for language model training or inference.
 """
+
 import functools
 from collections.abc import Iterable
 
@@ -33,7 +34,8 @@ class TextPipeline:
         context_size: int,
         pad_id: int,
         sliding_window_size: int,
-        preprocessors: Iterable[Preprocessor] | None = None,
+        preprocessors: list[Preprocessor] | None = None,
+        device: str = "cpu",
     ):
         """Initialise the text pipeline.
 
@@ -73,6 +75,7 @@ class TextPipeline:
         self.batch_size = batch_size
         self.pad_id = pad_id
         self.sliding_window_size = sliding_window_size
+        self.device = device
 
     def _create_batches(
         self,
@@ -90,10 +93,16 @@ class TextPipeline:
         def _create_batch():
             # Helper function to create a fresh batch and padding mask.
             batch_ = torch.full(
-                (self.batch_size, self.context_size), self.pad_id, dtype=torch.long
+                (self.batch_size, self.context_size),
+                self.pad_id,
+                dtype=torch.long,
+                device=self.device,
             )
             mask_ = torch.full(
-                (self.batch_size, self.context_size), True, dtype=torch.bool
+                (self.batch_size, self.context_size),
+                True,
+                dtype=torch.bool,
+                device=self.device,
             )
             return batch_, mask_
 
@@ -104,11 +113,16 @@ class TextPipeline:
 
         for tokens in self.tokenizer.tokenize_all(data):
             total_tokens_in_seq = len(tokens)
-            tokens = torch.as_tensor(tokens, dtype=torch.long)
+            tokens = torch.as_tensor(tokens, dtype=torch.long, device=self.device)
             seq_read_ix = 0  # The index of the next token to read from the sequence.
 
             sliding_window = (
-                torch.full((self.sliding_window_size,), self.pad_id, dtype=torch.long)
+                torch.full(
+                    (self.sliding_window_size,),
+                    self.pad_id,
+                    dtype=torch.long,
+                    device=self.device,
+                )
                 if self.sliding_window_size > 0
                 else None
             )
@@ -236,3 +250,10 @@ class TextPipeline:
                 batch,
             )
             yield preprocessed_batch
+
+    def to(self, device: str):
+        self.device = device
+        for i in range(len(self.preprocessors)):
+            self.preprocessors[i] = self.preprocessors[i].to(device)
+
+        return self

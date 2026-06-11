@@ -45,7 +45,6 @@ pipeline:
   sliding_window_size: 8
   preprocessors:
     - name: autoregressive
-      device: mps
 
 optimizer:
   name: adamw
