@@ -138,6 +138,16 @@ class TrainingOrchestrator:
         assert config.get("optimizer") is not None, "Config missing required 'optimizer' section"   # NOQA: E501
         # fmt: on
 
+        # Capture the training params so they can be reused when resuming runs.
+        config.data["training"] = {
+            "max_epochs": self.max_epochs,
+            "patience": self.patience,
+            "stopping_threshold": self.stopping_threshold,
+            "gradient_clip_norm": self.gradient_clip_norm,
+            "checkpoint_interval": self.checkpoint_interval,
+            "log_interval": self.log_interval,
+            "device": self.device,
+        }
         run = Run(config, name=name)
         try:
             self.run_repository.insert(run)
@@ -175,7 +185,7 @@ class TrainingOrchestrator:
             logger.info("Pipeline loaded successfully")
 
             logger.info("Building model...")
-            model = Loader.model(config["model"]).to(self.device)
+            model = Loader.model(config["model"])
             total_params = sum(p.numel() for p in model.parameters())
             trainable_params = sum(
                 p.numel() for p in model.parameters() if p.requires_grad

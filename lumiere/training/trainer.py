@@ -88,7 +88,7 @@ class Trainer:
         """
         self.model = model.to(device)
         self.dataloader = dataloader
-        self.pipeline = pipeline
+        self.pipeline = pipeline.to(device)
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.scheduler = scheduler
