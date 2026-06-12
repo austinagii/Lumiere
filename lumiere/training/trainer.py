@@ -90,8 +90,8 @@ class Trainer:
         self.dataloader = dataloader
         self.pipeline = pipeline.to(device)
         self.loss_fn = loss_fn
-        self.optimizer = optimizer
-        self.scheduler = scheduler
+        self.optimizer = optimizer  # Ensure optimizer is on specified device.
+        self.scheduler = scheduler  # Same as above.
         self.max_epochs = max_epochs
         self.stopping_threshold = stopping_threshold
         self.patience = patience

@@ -79,7 +79,7 @@ class Checkpoint:
         return buffer.getvalue()
 
     @classmethod
-    def from_bytes(cls, bytes: bytes) -> "Checkpoint":
+    def from_bytes(cls, bytes: bytes, device: str = "cpu") -> "Checkpoint":
         """Construct a checkpoint from a bytes object.
 
         The `bytes` argument is expected to be byte data output from calling `bytes`
@@ -104,7 +104,7 @@ class Checkpoint:
         Returns:
             A new checkpoint object.
         """
-        return cls(**torch.load(io.BytesIO(bytes)))
+        return cls(**torch.load(io.BytesIO(bytes), map_location=device))
 
     def __getattr__(self, name):
         if name in self.__dict__["_meta"]:
@@ -120,7 +120,7 @@ class Checkpoint:
         self.__dict__["_state"][name] = value
 
     def __iter__(self):
-        return (x for x in vars(self).keys())
+        return self.__dict__["_state"].keys()
 
 
 class CheckpointEncoder(json.JSONEncoder):
@@ -209,7 +209,10 @@ class CheckpointStore:
         self.client.save(checkpoint_index_path, checkpoint_index_bytes, overwrite=True)
 
     def get(
-        self, run_name: str, checkpoint_tag: CheckpointTag | str
+        self,
+        run_name: str,
+        checkpoint_tag: CheckpointTag | str,
+        device: str = "cpu",
     ) -> Checkpoint | None:
         index = self._load_index(run_name)
         if index is None:
@@ -232,4 +235,4 @@ class CheckpointStore:
                 f"Checkpoint '{checkpoint_meta.id}' ({checkpoint_tag}) could not be"
                 + " found for run '{run_name}'."
             )
-        return Checkpoint.from_bytes(checkpoint_bytes)
+        return Checkpoint.from_bytes(checkpoint_bytes, device=device)

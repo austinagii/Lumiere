@@ -260,7 +260,9 @@ class TrainingOrchestrator:
         assert config.get("training") is not None, "Config missing required 'training' section"     # NOQA: E501
         # fmt: on
 
-        checkpoint = self.checkpoint_store.get(run_name, checkpoint_tag)
+        checkpoint = self.checkpoint_store.get(
+            run_name, checkpoint_tag, device=config["training.device"]
+        )
         if checkpoint is None:
             raise CheckpointNotFoundError(run_name, checkpoint_tag)
         logger.debug(
@@ -269,7 +271,10 @@ class TrainingOrchestrator:
         )
 
         logger.info("Loading tokenizer...")
-        tokenizer = Loader.tokenizer(config["tokenizer"], state=checkpoint.tokenizer)
+        tokenizer_data = self.artifact_store.get(run_name, "tokenizer")
+        if tokenizer_data is None:
+            raise RuntimeError(f"No tokenizer found for run '{run_name}'.")
+        tokenizer = Loader.tokenizer(config["tokenizer"], state=tokenizer_data)
         register_dependency("tokenizer", tokenizer)
         logger.info("Tokenizer loaded successfully")
 
@@ -280,15 +285,12 @@ class TrainingOrchestrator:
         )
 
         logger.info("Loading pipeline...")
-        pipeline = Loader.pipeline(config["pipeline"])
+        pipeline = Loader.pipeline(config["pipeline"]).to(config["training.device"])
         logger.info("Pipeline loaded successfully")
 
         logger.info("Building model...")
-        model = Loader.model(config["model"]).to(self.device)
-        assert "model_state_dict" in checkpoint, (
-            "Model state could not be found in checkpoint"
-        )
-        model.load_state_dict(checkpoint.model_state_dict)
+        model = Loader.model(config["model"])
+        model.load_state_dict(checkpoint.model_state_dict, strict=True, assign=True)
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         logger.info(
@@ -298,10 +300,6 @@ class TrainingOrchestrator:
 
         logger.info("Loading optimizer...")
         optimizer = Loader.optimizer(config["optimizer"], model.parameters())
-
-        assert "optimizer_state_dict" in checkpoint, (
-            "Optimizer state could not be found in checkpoint"
-        )
         optimizer.load_state_dict(checkpoint.optimizer_state_dict)
         logger.info(f"Optimizer loaded: {type(optimizer).__name__}")
 
@@ -310,10 +308,6 @@ class TrainingOrchestrator:
         if scheduler_config is not None:
             logger.info("Loading scheduler...")
             scheduler = Loader.scheduler(scheduler_config, optimizer)
-
-            assert "scheduler_state_dict" in checkpoint, (
-                "Optimizer state could not be found in checkpoint"
-            )
             scheduler.load_state_dict(checkpoint.scheduler_state_dict)
             logger.info(f"Scheduler loaded: {type(scheduler).__name__}")
 
@@ -331,9 +325,12 @@ class TrainingOrchestrator:
             loss_fn=cross_entropy_loss,
             optimizer=optimizer,
             scheduler=scheduler,
-            device=self.device,
             state=training_state,
-            **config["training"],  # Need to add training args to config.
+            max_epochs=config["training.max_epochs"],
+            stopping_threshold=config["training.stopping_threshold"],
+            patience=config["training.patience"],
+            gradient_clip_norm=config["training.gradient_clip_norm"],
+            device=config["training.device"],
         )
 
         return run, trainer
