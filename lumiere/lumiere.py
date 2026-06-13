@@ -12,14 +12,21 @@ from .training.run import RunStore
 from .utils.device import get_device
 
 
+class _Inherit:
+    __slots__ = ()
+
+
+INHERIT = _Inherit()
+
+
 def start(
     model: Config,
     name: str | None = None,
-    max_epochs: int | None = None,
+    max_epochs: int | None = 30,
     stopping_threshold: float = 1e-3,
     patience: int | None = 5,
     gradient_clip_norm: float | None = 1e-6,
-    log_interval: int | None = 50,
+    log_interval: int | None = 10,
     checkpoint_interval: int | None = 3,
     # storage_locations: str = "filesystem:filesystem",
     device: str | None = None,
@@ -72,15 +79,35 @@ def start(
 def resume(
     name: str,
     checkpoint_tag: str = "latest",
-    max_epochs: int | None = None,
-    patience: int | None = None,
-    stopping_threshold: float = None,
-    gradient_clip_norm: float | None = None,
-    log_interval: int | None = None,
-    checkpoint_interval: int | None = None,
-    # storage_locations: str = "filesystem:filesystem",
-    device: str | None = None,
+    max_epochs: int | None | _Inherit = INHERIT,
+    patience: int | None | _Inherit = INHERIT,
+    stopping_threshold: float | _Inherit = INHERIT,
+    gradient_clip_norm: float | None | _Inherit = INHERIT,
+    log_interval: int | None | _Inherit = INHERIT,
+    checkpoint_interval: int | None | _Inherit = INHERIT,
+    device: str | None | _Inherit = INHERIT,
 ):
+    """Resume a training run.
+
+    By default, the resumed run will retail the training parameters specified during
+    its creation, however, these values can be overridden by specifying the desired
+    values during invocation.
+
+    Args:
+        name: The name of the run to be resumed.
+        checkpoint_tag: The tag of the checkpoint to resume training from.
+        max_epochs: The maximum number epochs to be executed or None if there is no
+            such limit.
+        stopping_threshold: The minimum improvement to the validation performance for
+            this epoch to count as an improvement.
+        patience: The maximum number of consecutive epochs allowed without improvement.
+            Exceeding this number halts the training run.
+        gradient_clip_norm: The maximum normal
+        log_interval: The number of steps between each capture or training metrics.
+        checkpoint_interval: The number of epochs between saving each checkpoint.
+        device: The device training should be executed on.
+
+    """
     storage_client = _init_storage_client()
     run_store = RunStore(storage_client)
     checkpoint_store = CheckpointStore(storage_client)
@@ -88,6 +115,7 @@ def resume(
     event_store = EventStore(storage_client)
     device = get_device() if device is None else device
 
+    # TODO: Update training orchestrator to handle _Inherit sentinel or use alternative.
     orchestrator = TrainingOrchestrator(
         run_store=run_store,
         checkpoint_store=checkpoint_store,
