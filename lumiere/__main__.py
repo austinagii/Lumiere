@@ -6,14 +6,10 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
-from lumiere.persistence.clients import FileSystemStorageClient
-from lumiere.training import Config, TrainingOrchestrator
-from lumiere.training.artifact import ArtifactStore
-from lumiere.training.checkpoint import CheckpointStore
-from lumiere.training.event import EventStore
-from lumiere.training.run import RunRepository
-from lumiere.utils.device import get_device
+from .lumiere import resume, start
+from .training.config import Config
 
 
 LUMIERE_CONFIG_PATH = "../lumiere.yaml"
@@ -27,37 +23,125 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _parse_subcommand():
-    """Extract the command and remaining args from the command line.
+def _add_training_control_args(parser: argparse.ArgumentParser) -> None:
+    """Add the shared training-control arguments to a parser."""
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "-e",
+        "--max-epochs",
+        dest="max_epochs",
+        type=int,
+        default=10,
+        help="The maximum number of epochs to train for",
+    )
+    group.add_argument(
+        "--no-max-epochs",
+        dest="no_max_epochs",
+        action="store_true",
+        default=False,
+        help="Train indefinitely, with no maximum epoch limit",
+    )
 
-    Usage: `python -m lumiere <command> [args]`
-    Example: `python -m lumiere train --config ./configs/transformer.yaml`
-
-    Returns a tuple of (command, remaining_args) where command is the first
-    positional argument and remaining_args is the rest of argv to be parsed
-    by the command-specific parser.
-    """
-    if len(sys.argv) < 2:
-        print("Usage: python -m lumiere <command> [args]", file=sys.stderr)
-        sys.exit(1)
-    return sys.argv[1], sys.argv[2:]
-
-
-def _parse_train_command_args(args):
-    parser = argparse.ArgumentParser(
-        description="Train a Lumiére model.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "-p",
+        "--max-epochs-without-improvement",
+        dest="patience",
+        type=int,
+        default=5,
+        help="The maximum number of consecutive epochs allowed without improvement. "
+        "Exceeding this number halts the training run",
+    )
+    group.add_argument(
+        "--no-max-epochs-without-improvement",
+        dest="no_patience",
+        action="store_true",
+        default=False,
+        help="Disable early stopping based on lack of improvement",
     )
 
     parser.add_argument(
+        "--min-improvement",
+        dest="stopping_threshold",
+        type=float,
+        default=0.001,
+        help="The minimum change in the monitored metric to qualify as an improvement",
+    )
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--log-interval",
+        dest="log_interval",
+        type=int,
+        default=10,
+        help="Number of steps between logging updates",
+    )
+    group.add_argument(
+        "--no-logging",
+        dest="no_logging",
+        action="store_true",
+        default=False,
+        help="Disable logging entirely",
+    )
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--checkpoint-interval",
+        dest="checkpoint_interval",
+        type=int,
+        default=3,
+        help="Number of epochs between saving checkpoints",
+    )
+    group.add_argument(
+        "--no-checkpoints",
+        dest="no_checkpoints",
+        action="store_true",
+        default=False,
+        help="Disable checkpoint saving entirely",
+    )
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--gradient-clip-norm",
+        dest="gradient_clip_norm",
+        type=float,
+        default=1.0,
+        help="Maximum norm for gradient clipping",
+    )
+    group.add_argument(
+        "--no-gradient-clipping",
+        dest="no_gradient_clipping",
+        action="store_true",
+        default=False,
+        help="Disable gradient clipping entirely",
+    )
+
+    parser.add_argument(
+        "-d",
+        "--device",
+        dest="device",
+        type=str,
+        default="cpu",
+        choices=["cpu", "cuda", "mps"],
+        help="The device to train on",
+    )
+
+
+def _parse_start_command_args(args) -> dict[str, Any]:
+    parser = argparse.ArgumentParser(
+        description="Start a new training run.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
         "--spec",
         dest="spec",
         type=str,
         default=None,
         help="The path to the training configuration file",
     )
-
-    parser.add_argument(
+    group.add_argument(
         "--template",
         dest="template",
         type=str,
@@ -73,7 +157,6 @@ def _parse_train_command_args(args):
         default=None,
         help="The name of the training run",
     )
-
     parser.add_argument(
         "-o",
         "--set",
@@ -83,83 +166,12 @@ def _parse_train_command_args(args):
         help="Properties of either the spec or template to be replaced during the run",
     )
 
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("-e", "--max-epochs", type=int, default=10)
-    group.add_argument("--no-max-epochs", action="store_true", default=False)
+    _add_training_control_args(parser)
 
-    group = parser.add_mutually_exclusive_group()
-    parser.add_argument(
-        "-p", "--max-epochs-without-improvement", dest="patience", type=int, default=5
-    )
-    group.add_argument(
-        "--no-max-epochs-without-improvement",
-        dest="no_patience",
-        action="store_true",
-        default=False,
-    )
-
-    parser.add_argument(
-        "--min-improvement", dest="stopping_threshold", type=float, default=0.001
-    )
-
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--log-interval", type=int, default=10)
-    group.add_argument("--no-logging", action="store_true", default=False)
-
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--checkpoint-interval", type=int, default=3)
-    group.add_argument("--no-checkpoints", action="store_true", default=False)
-
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--gradient-clip-norm", type=float, default=1.0)
-    group.add_argument("--no-gradient-clipping", action="store_true", default=False)
-
-    parser.add_argument("-d", "--device", default="cpu")
-    return parser.parse_args(args)
+    return vars(parser.parse_args(args))
 
 
-def _parse_resume_command_args(args):
-    parser = argparse.ArgumentParser(prog="resume")
-
-    parser.add_argument("name")
-    parser.add_argument("-f", "--from", dest="checkpoint_tag", default="latest")
-
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("-e", "--max-epochs", type=int, default=10)
-    group.add_argument("--no-max-epochs", action="store_true", default=False)
-
-    group = parser.add_mutually_exclusive_group()
-    parser.add_argument(
-        "-p", "--max-epochs-without-improvement", dest="patience", type=int, default=5
-    )
-    group.add_argument(
-        "--no-max-epochs-without-improvement",
-        dest="no_patience",
-        action="store_true",
-        default=False,
-    )
-
-    parser.add_argument(
-        "--min-improvement", dest="stopping_threshold", type=float, default=0.001
-    )
-
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--log-interval", type=int, default=10)
-    group.add_argument("--no-logging", action="store_true", default=False)
-
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--checkpoint-interval", type=int, default=3)
-    group.add_argument("--no-checkpoints", action="store_true", default=False)
-
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--gradient-clip-norm", type=float, default=1.0)
-    group.add_argument("--no-gradient-clipping", action="store_true", default=False)
-
-    parser.add_argument("-d", "--device", default="cpu")
-    return parser.parse_args(args)
-
-
-def _train_cmd_line_runner(  # This should call the start method.
+def _execute_start_command(
     spec: str | None,
     template: str | None,
     name: str | None,
@@ -182,71 +194,47 @@ def _train_cmd_line_runner(  # This should call the start method.
         config = _load_spec(spec)
     elif template:
         config = _load_template(template)
-    else:
-        raise ValueError("Either a spec or template must be provided.")
 
-    _overrides = _parse_overrides(overrides) if overrides else None
-    _max_epochs = None if no_max_epochs else max_epochs
-    _patience = None if no_patience else patience
-    _log_interval = None if no_logging else log_interval
-    _checkpoint_interval = None if no_checkpoints else checkpoint_interval
-    _gradient_clip_norm = None if no_gradient_clipping else gradient_clip_norm
+    if overrides:
+        config = _apply_overrides(config, overrides)
 
-    _start(
+    start(
         model=config,
         name=name,
-        overrides=_overrides,
-        max_epochs=_max_epochs,
-        patience=_patience,
+        max_epochs=None if no_max_epochs else max_epochs,
+        patience=None if no_patience else patience,
         stopping_threshold=stopping_threshold,
-        gradient_clip_norm=_gradient_clip_norm,
-        log_interval=_log_interval,
-        checkpoint_interval=_checkpoint_interval,
+        gradient_clip_norm=None if no_gradient_clipping else gradient_clip_norm,
+        log_interval=None if no_logging else log_interval,
+        checkpoint_interval=None if no_checkpoints else checkpoint_interval,
         device=device,
     )
 
 
-def _start(
-    model: Config,
-    name: str | None = None,
-    overrides: Config | None = None,
-    max_epochs: int | None = 100,
-    patience: int | None = 5,
-    stopping_threshold: float = 1e-3,
-    gradient_clip_norm: float | None = 1e-6,
-    log_interval: int | None = 50,
-    checkpoint_interval: int | None = 3,
-    # storage_locations: str = "filesystem:filesystem",
-    device: str | None = None,
-):
-    if overrides:
-        model = _apply_overrides(model, overrides)
-
-    storage_client = _init_storage_client()
-    run_store = RunRepository(storage_client)
-    checkpoint_store = CheckpointStore(storage_client)
-    artifact_store = ArtifactStore(storage_client)
-    event_store = EventStore(storage_client)
-    device = get_device() if device is None else device
-
-    orchestrator = TrainingOrchestrator(
-        run_repository=run_store,
-        checkpoint_store=checkpoint_store,
-        artifact_store=artifact_store,
-        event_store=event_store,
-        max_epochs=max_epochs,
-        patience=patience,
-        stopping_threshold=stopping_threshold,
-        gradient_clip_norm=gradient_clip_norm,
-        log_interval=log_interval,
-        checkpoint_interval=checkpoint_interval,
-        device=device,
+def _parse_resume_command_args(args) -> dict[str, Any]:
+    parser = argparse.ArgumentParser(
+        prog="resume",
+        description="Resume a training run from a checkpoint.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "name",
+        help="The name of the training run to resume",
+    )
+    parser.add_argument(
+        "-f",
+        "--from",
+        dest="checkpoint_tag",
+        default="latest",
+        help="The checkpoint tag to resume from",
     )
 
-    orchestrator.train(config=model, run_name=name)
+    _add_training_control_args(parser)
+
+    return vars(parser.parse_args(args))
 
 
-def _resume_cmd_line_runner(
+def _execute_resume_command(
     name: str,
     checkpoint_tag: str,
     max_epochs: int | None,
@@ -263,59 +251,17 @@ def _resume_cmd_line_runner(
     # storage_locations: str,
     device: str,
 ):
-    _max_epochs = None if no_max_epochs else max_epochs
-    _patience = None if no_patience else patience
-    _log_interval = None if no_logging else log_interval
-    _checkpoint_interval = None if no_checkpoints else checkpoint_interval
-    _gradient_clip_norm = None if no_gradient_clipping else gradient_clip_norm
-
-    _resume(
+    resume(
         name=name,
         checkpoint_tag=checkpoint_tag,
-        max_epochs=_max_epochs,
-        patience=_patience,
+        max_epochs=None if no_max_epochs else max_epochs,
+        patience=None if no_patience else patience,
         stopping_threshold=stopping_threshold,
-        gradient_clip_norm=_gradient_clip_norm,
-        log_interval=_log_interval,
-        checkpoint_interval=_checkpoint_interval,
+        log_interval=None if no_logging else log_interval,
+        checkpoint_interval=None if no_checkpoints else checkpoint_interval,
+        gradient_clip_norm=None if no_gradient_clipping else gradient_clip_norm,
         device=device,
     )
-
-
-def _resume(
-    name: str,
-    checkpoint_tag: str = "latest",
-    max_epochs: int | None = None,
-    patience: int | None = None,
-    stopping_threshold: float = None,
-    gradient_clip_norm: float | None = None,
-    log_interval: int | None = None,
-    checkpoint_interval: int | None = None,
-    # storage_locations: str = "filesystem:filesystem",
-    device: str | None = None,
-):
-    storage_client = _init_storage_client()
-    run_store = RunRepository(storage_client)
-    checkpoint_store = CheckpointStore(storage_client)
-    artifact_store = ArtifactStore(storage_client)
-    event_store = EventStore(storage_client)
-    device = get_device() if device is None else device
-
-    orchestrator = TrainingOrchestrator(
-        run_repository=run_store,
-        checkpoint_store=checkpoint_store,
-        artifact_store=artifact_store,
-        event_store=event_store,
-        max_epochs=max_epochs,
-        patience=patience,
-        stopping_threshold=stopping_threshold,
-        gradient_clip_norm=gradient_clip_norm,
-        log_interval=log_interval,
-        checkpoint_interval=checkpoint_interval,
-        device=device,
-    )
-
-    orchestrator.train(run_name=name, checkpoint_tag=checkpoint_tag)
 
 
 def _load_spec(spec):
@@ -324,6 +270,7 @@ def _load_spec(spec):
     return Config.from_file(spec_path)
 
 
+# TODO: Move to lumiere module.
 def _load_template(template):
     cwd = Path(__file__).parent
     template_path = (cwd / f"../templates/{template}.yaml").resolve()
@@ -334,15 +281,10 @@ def _load_template(template):
     return Config.from_file(template_path)
 
 
-def _parse_overrides(overrides: str) -> Config:
-    return Config(dict(item.split("=", 1) for item in overrides))
-
-
-# TODO: Need to correctly type convert values from cmd line.
 def _apply_overrides(config, overrides):
     config = copy.deepcopy(config)
 
-    for param, value in overrides.data.items():
+    for param, value in (item.split("=", 1) for item in overrides):
         config[param] = _infer_type(value)
 
     return config
@@ -360,37 +302,18 @@ def _infer_type(value: str):
     return value
 
 
-def _init_storage_client():
-    return FileSystemStorageClient(Path(__file__).parent.parent)
-
-
-class TrainCommandParser:
-    pass
-
-
-class TrainCommandExecutor:
-    pass
-
-
-parsers = {"train": TrainCommandParser}
-executors = {"train": TrainCommandExecutor}
-
-
-def main():
-    """Main entry point for the training script."""
-    subcommand, args = _parse_subcommand()
-
-    if subcommand == "train":
-        args = _parse_train_command_args(args)
-
-        _train_cmd_line_runner(**vars(args))
-    elif subcommand == "resume":
-        args = _parse_resume_command_args(args)
-
-        _resume_cmd_line_runner(**vars(args))
-    else:
-        print(f"Error: Unrecognized subcommand '{subcommand}'.")
-
-
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(prog="lumiere")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    start_parser = subparsers.add_parser("start", help="Start a training run")
+    resume_parser = subparsers.add_parser("resume", help="Resume a training run")
+
+    args, remaining = parser.parse_known_args()
+
+    if args.command == "start":
+        start_args = _parse_start_command_args(remaining)
+        _execute_start_command(**start_args)
+    elif args.command == "resume":
+        resume_args = _parse_resume_command_args(remaining)
+        _execute_resume_command(**resume_args)

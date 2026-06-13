@@ -7,7 +7,7 @@ import yaml
 
 from lumiere.persistence.errors import StorageError
 from lumiere.training import Config
-from lumiere.training.run import Run, RunRepository, RunStatus
+from lumiere.training.run import Run, RunStatus, RunStore
 
 
 @pytest.fixture
@@ -117,17 +117,15 @@ def storage_client():
 
 
 @pytest.fixture
-def run_repository(storage_client):
-    return RunRepository(storage_client)
+def run_store(storage_client):
+    return RunStore(storage_client)
 
 
-class TestRunRepository:
-    """Test suite for the :meth:`lumiere.training.run.RunRepository` class."""
+class TestRunStore:
+    """Test suite for the :meth:`lumiere.training.run.RunStore` class."""
 
-    def test_insert_saves_run_metadata_as_json(
-        self, run, run_repository, storage_client
-    ):
-        run_repository.insert(run)
+    def test_insert_saves_run_metadata_as_json(self, run, run_store, storage_client):
+        run_store.add(run)
 
         run_bytes = storage_client.load(f"runs/{run.name}/meta.json")
         assert run_bytes is not None
@@ -142,21 +140,21 @@ class TestRunRepository:
         assert run_dict["current_step"] == run.current_step
         assert run_dict["current_loss"] == run.current_loss
 
-    def test_insert_saves_run_config_as_yaml(self, run, run_repository, storage_client):
-        run_repository.insert(run)
+    def test_insert_saves_run_config_as_yaml(self, run, run_store, storage_client):
+        run_store.add(run)
 
         config_bytes = storage_client.load(f"runs/{run.name}/config.yaml")
         assert config_bytes is not None
         assert yaml.safe_load(config_bytes) == dict(run.config)
 
-    def test_update_overwrites_run_metadata(self, run, run_repository, storage_client):
-        run_repository.insert(run)
+    def test_update_overwrites_run_metadata(self, run, run_store, storage_client):
+        run_store.add(run)
         run.status = RunStatus.RUNNING
         run.current_epoch = 5
         run.current_step = 12500
         run.current_loss = 0.3217
 
-        run_repository.update(run)
+        run_store.update(run)
 
         run_bytes = storage_client.load(f"runs/{run.name}/meta.json")
         run_dict = json.loads(run_bytes)
@@ -165,18 +163,18 @@ class TestRunRepository:
         assert run_dict["current_step"] == 12500
         assert run_dict["current_loss"] == 0.3217
 
-    def test_update_does_not_modify_config(self, run, run_repository, storage_client):
-        run_repository.insert(run)
+    def test_update_does_not_modify_config(self, run, run_store, storage_client):
+        run_store.add(run)
         original_config_bytes = storage_client.load(f"runs/{run.name}/config.yaml")
 
         run.status = RunStatus.RUNNING
-        run_repository.update(run)
+        run_store.update(run)
 
         assert (
             storage_client.load(f"runs/{run.name}/config.yaml") == original_config_bytes
         )
 
-    def test_get_retrieves_run_by_name(self, storage_client, run_repository):
+    def test_get_retrieves_run_by_name(self, storage_client, run_store):
         run_dict = {
             "id": "kage",
             "name": "gaara",
@@ -194,7 +192,7 @@ class TestRunRepository:
         run_config_bytes = bytes(yaml.dump(run_config_dict), "utf-8")
         storage_client.save(f"runs/{run_dict['name']}/config.yaml", run_config_bytes)
 
-        run = run_repository.get("gaara")
+        run = run_store.get("gaara")
 
         assert run_dict["id"] == run.id
         assert run_dict["name"] == run.name

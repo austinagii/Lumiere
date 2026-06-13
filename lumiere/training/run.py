@@ -103,7 +103,7 @@ class Run:
         return run
 
 
-class RunRepository:
+class RunStore:
     """Stores and retrieves training runs.
 
     Training runs are stored as two separate artifacts:
@@ -124,7 +124,7 @@ class RunRepository:
         """
         self.client = client
 
-    def insert(self, run: Run) -> None:
+    def add(self, run: Run) -> None:
         """Save a training run.
 
         Args:

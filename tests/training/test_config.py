@@ -73,16 +73,7 @@ class TestConfig:
 
     def test_delitem_deletes_deeply_nested_key(self):
         config = Config(
-            {
-                "model": {
-                    "block": {
-                        "feedforward": {
-                            "type": "linear",
-                            "d_ff": 2048
-                        }
-                    }
-                }
-            }
+            {"model": {"block": {"feedforward": {"type": "linear", "d_ff": 2048}}}}
         )
 
         del config["model.block.feedforward.type"]
@@ -93,7 +84,9 @@ class TestConfig:
     def test_delitem_raises_error_for_missing_key(self):
         config = Config({"model": {"vocab_size": 1000}})
 
-        with pytest.raises(KeyError, match="Field 'model.nonexistent' not found in config"):
+        with pytest.raises(
+            KeyError, match="Field 'model.nonexistent' not found in config"
+        ):
             del config["model.nonexistent"]
 
     def test_delitem_raises_error_for_invalid_key_type(self):
@@ -115,3 +108,82 @@ class TestConfig:
 
         assert config["block.feedforward.type"] == "standard"
         assert config["block"] == {"feedforward": {"type": "standard"}}
+
+    def test_flatten_returns_all_individual_config_values(self):
+        content = """
+            batch_size: 16
+            learning_rate: 0.001
+            num_epochs: 10
+            model:
+                name: gpt2
+                attention:
+                    n_layers: 12
+                    n_heads: 16
+                    n_embed: 768
+            tokenizer:
+                name: gpt2
+                vocab_size: 50257
+        """
+        config = Config.from_yaml(content)
+
+        expected_items = {
+            "batch_size": 16,
+            "learning_rate": 0.001,
+            "num_epochs": 10,
+            "model.name": "gpt2",
+            "model.attention.n_layers": 12,
+            "model.attention.n_heads": 16,
+            "model.attention.n_embed": 768,
+            "tokenizer.name": "gpt2",
+            "tokenizer.vocab_size": 50257,
+        }
+
+        actual_items = dict(config.flatten())
+
+        assert actual_items == expected_items
+
+    def test_update_merges_configs(self):
+        a = Config.from_yaml(
+            """
+            batch_size: 16
+            num_epochs: 10
+            model:
+                name: gpt2
+            tokenizer:
+                name: gpt2
+                vocab_size: 50257
+        """
+        )
+
+        b = Config.from_yaml(
+            """
+            batch_size: 24
+            learning_rate: 0.001
+            model:
+                attention:
+                    n_layers: 12
+                    n_heads: 16
+                    n_embed: 768
+        """
+        )
+
+        expected_config = Config.from_yaml(
+            """
+            batch_size: 24
+            num_epochs: 10
+            learning_rate: 0.001
+            model:
+                name: gpt2
+                attention:
+                    n_layers: 12
+                    n_heads: 16
+                    n_embed: 768
+            tokenizer:
+                name: gpt2
+                vocab_size: 50257
+        """
+        )
+
+        actual_config = a.update(b)
+
+        assert expected_config.data == actual_config.data

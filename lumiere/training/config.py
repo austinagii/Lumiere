@@ -1,3 +1,5 @@
+import copy
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +50,15 @@ class Config:
             pass
 
         return value
+
+    # TODO: Improve performance using synchronized dfs.
+    def update(self, o: "Config") -> "Config":
+        config = copy.deepcopy(self)
+
+        for param, value in o.flatten():
+            config[param] = value
+
+        return config
 
     def __getitem__(self, key: str):
         """Get a configuration value using dot notation.
@@ -150,6 +161,16 @@ class Config:
             Tuples of `(key, value)` pairs from the configuration.
         """
         yield from self.data.items()
+
+    def flatten(self):
+        def _iter(prefix, v):
+            if isinstance(v, Mapping):
+                for nk, nv in v.items():
+                    yield from _iter(prefix + [nk], nv)
+            else:
+                yield ".".join(prefix), v
+
+        yield from _iter([], self.data)
 
     @classmethod
     def from_file(cls, path: str | Path) -> "Config":

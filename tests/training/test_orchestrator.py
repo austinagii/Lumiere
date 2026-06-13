@@ -8,7 +8,7 @@ from lumiere.training.checkpoint import CheckpointStore
 from lumiere.training.config import Config
 from lumiere.training.event import EventStore
 from lumiere.training.orchestrator import TrainingOrchestrator
-from lumiere.training.run import RunRepository, RunStatus
+from lumiere.training.run import RunStatus, RunStore
 
 
 # TODO: Move to test utility package.
@@ -34,8 +34,8 @@ def storage_client():
 
 
 @pytest.fixture
-def run_repository(storage_client):
-    return RunRepository(storage_client)
+def run_store(storage_client):
+    return RunStore(storage_client)
 
 
 @pytest.fixture
@@ -125,9 +125,9 @@ def config():
 
 
 @pytest.fixture
-def orchestrator(run_repository, checkpoint_store, artifact_store, event_store):
+def orchestrator(run_store, checkpoint_store, artifact_store, event_store):
     return TrainingOrchestrator(
-        run_repository=run_repository,
+        run_store=run_store,
         checkpoint_store=checkpoint_store,
         artifact_store=artifact_store,
         event_store=event_store,
@@ -139,14 +139,14 @@ class TestOrchestrator:
     def test_train_records_training_run(
         self,
         storage_client,
-        run_repository,
+        run_store,
         checkpoint_store,
         artifact_store,
         event_store,
         config,
     ):
         orchestrator = TrainingOrchestrator(
-            run_repository=run_repository,
+            run_store=run_store,
             checkpoint_store=checkpoint_store,
             artifact_store=artifact_store,
             event_store=event_store,
@@ -155,7 +155,7 @@ class TestOrchestrator:
 
         run = orchestrator.train(config=config)
 
-        saved_run = run_repository.get(run.name)
+        saved_run = run_store.get(run.name)
         assert saved_run.status == RunStatus.COMPLETED
         assert saved_run.created_at
         assert isinstance(saved_run.created_at, int)

@@ -1,7 +1,7 @@
 from .checkpoint import Checkpoint, CheckpointTag
 from .config import Config
 from .orchestrator import TrainingOrchestrator
-from .run import Run, RunRepository, RunStatus
+from .run import Run, RunStatus, RunStore
 from .trainer import Trainer, TrainingState
 
 
@@ -10,7 +10,7 @@ __all__ = [
     "CheckpointTag",
     "Config",
     "Run",
-    "RunRepository",
+    "RunStore",
     "RunStatus",
     "Trainer",
     "TrainingOrchestrator",

@@ -10,7 +10,7 @@ from .config import Config
 from .errors import CheckpointNotFoundError, RunNotFoundError
 from .event import EventStore
 from .loss import cross_entropy_loss
-from .run import Run, RunRepository, RunStatus
+from .run import Run, RunStatus, RunStore
 from .trainer import Trainer, TrainingState
 
 
@@ -28,7 +28,7 @@ class TrainingOrchestrator:
 
     def __init__(
         self,
-        run_repository: RunRepository,
+        run_store: RunStore,
         checkpoint_store: CheckpointStore,
         artifact_store: ArtifactStore,
         event_store: EventStore,
@@ -43,11 +43,11 @@ class TrainingOrchestrator:
         """Initialize a TrainingOrchestrator.
 
         Args:
-            run_repository: The repository for run information.
+            run_store: The repository for run information.
             artifact_store: The repository for training run artifacts.
 
         """
-        self.run_repository = run_repository
+        self.run_store = run_store
         self.checkpoint_store = checkpoint_store
         self.artifact_store = artifact_store
         self.event_store = event_store
@@ -110,7 +110,7 @@ class TrainingOrchestrator:
 
         run.status = RunStatus.COMPLETED
         run.updated_at = time.time_ns()
-        self.run_repository.update(run)
+        self.run_store.update(run)
 
         # self.checkpoint_store.mark_final()
 
@@ -150,7 +150,7 @@ class TrainingOrchestrator:
         }
         run = Run(config, name=name)
         try:
-            self.run_repository.insert(run)
+            self.run_store.add(run)
         except Exception as e:
             logger.error(f"Failed to initialize training run '{run.name}'.")
             raise e
@@ -211,7 +211,7 @@ class TrainingOrchestrator:
                 "Failed to initialize training components for run '{run.name}'."
             )
             run.status = RunStatus.ERROR
-            self.run_repository.update(run)
+            self.run_store.update(run)
             raise e
 
         trainer = Trainer(
@@ -244,7 +244,7 @@ class TrainingOrchestrator:
             Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer)
         """
         logger.debug(f"Loading training run '{run_name}' from storage.")
-        run = self.run_repository.get(run_name)
+        run = self.run_store.get(run_name)
         if run is None:
             raise RunNotFoundError(run_name)
 
@@ -384,7 +384,7 @@ class TrainingOrchestrator:
             run.current_loss = trainer.state.prev_loss.item()
             # TODO: Consider adding total training time as well.
             run.updated_at = time.time_ns()
-            self.run_repository.update(run)
+            self.run_store.update(run)
 
         trainer.register_post_fit_hook(_capture_train_loss)
         trainer.register_post_eval_hook(_capture_val_loss)
