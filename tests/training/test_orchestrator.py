@@ -1,31 +1,13 @@
-from pathlib import Path
 
 import pytest
 
-from lumiere.persistence.errors import StorageError
+from lumiere.testing.storage_clients import MemoryStorageClient
 from lumiere.training.artifact import ArtifactStore
 from lumiere.training.checkpoint import CheckpointStore
 from lumiere.training.config import Config
 from lumiere.training.event import EventStore
 from lumiere.training.orchestrator import TrainingOrchestrator
 from lumiere.training.run import RunStatus, RunStore
-
-
-# TODO: Move to test utility package.
-class MemoryStorageClient:
-    """A simple storage client using an in-memory backend."""
-
-    def __init__(self):
-        self._storage = {}
-
-    def save(self, path: str | Path, data: bytes, overwrite: bool = False) -> int:
-        if not overwrite and path in self._storage:
-            raise StorageError(f"Data already exists at '{path}'")
-        self._storage[path] = data
-        return len(data)
-
-    def load(self, path: str | Path) -> bytes | None:
-        return self._storage.get(path)
 
 
 @pytest.fixture
