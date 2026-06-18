@@ -19,6 +19,12 @@ class _Inherit:
 INHERIT = _Inherit()
 
 
+def load_template(name: str) -> Config | None:
+    cwd = Path(__file__).parent
+    template_path = (cwd / f"../templates/{name}.yaml").resolve()
+    return Config.from_file(template_path)
+
+
 def start(
     model: Config,
     name: str | None = None,
@@ -73,7 +79,7 @@ def start(
         device=device,
     )
 
-    orchestrator.train(config=model, run_name=name)
+    return orchestrator.train(config=model, run_name=name)
 
 
 def resume(
