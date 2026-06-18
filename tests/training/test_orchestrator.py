@@ -1,4 +1,3 @@
-
 import pytest
 
 from lumiere.testing.storage_clients import MemoryStorageClient
@@ -8,6 +7,7 @@ from lumiere.training.config import Config
 from lumiere.training.event import EventStore
 from lumiere.training.orchestrator import TrainingOrchestrator
 from lumiere.training.run import RunStatus, RunStore
+from lumiere.utils.device import get_device
 
 
 @pytest.fixture
@@ -33,6 +33,11 @@ def artifact_store(storage_client):
 @pytest.fixture
 def event_store(storage_client):
     return EventStore(storage_client)
+
+
+@pytest.fixture(scope="module")
+def device():
+    return get_device()
 
 
 @pytest.fixture
@@ -107,47 +112,44 @@ def config():
 
 
 @pytest.fixture
-def orchestrator(run_store, checkpoint_store, artifact_store, event_store):
+def orchestrator(run_store, checkpoint_store, artifact_store, event_store, device):
     return TrainingOrchestrator(
         run_store=run_store,
         checkpoint_store=checkpoint_store,
         artifact_store=artifact_store,
         event_store=event_store,
+        max_epochs=3,
+        patience=None,
+        stopping_threshold=1e-3,
+        gradient_clip_norm=1e-1,
+        log_interval=10,
         checkpoint_interval=1,
+        device=device,
     )
 
 
 class TestOrchestrator:
-    def test_train_records_training_run(
+    @pytest.mark.slow
+    def test_train_stores_record_of_training_run(
         self,
-        storage_client,
-        run_store,
-        checkpoint_store,
-        artifact_store,
-        event_store,
-        config,
+        run_store: RunStore,
+        checkpoint_store: CheckpointStore,
+        artifact_store: ArtifactStore,
+        event_store: EventStore,
+        orchestrator: TrainingOrchestrator,
+        config: Config,
     ):
-        orchestrator = TrainingOrchestrator(
-            run_store=run_store,
-            checkpoint_store=checkpoint_store,
-            artifact_store=artifact_store,
-            event_store=event_store,
-            checkpoint_interval=1,
-        )
-
+        # Refactor to split start / resume methods.
         run = orchestrator.train(config=config)
 
         saved_run = run_store.get(run.name)
         assert saved_run.status == RunStatus.COMPLETED
-        assert saved_run.created_at
-        assert isinstance(saved_run.created_at, int)
-        assert saved_run.updated_at
-        assert isinstance(saved_run.updated_at, int)
+        assert saved_run.created_at and isinstance(saved_run.created_at, int)
+        assert saved_run.updated_at and isinstance(saved_run.updated_at, int)
         assert saved_run.updated_at > saved_run.created_at
         assert saved_run.current_epoch == 3
         assert saved_run.current_step > 0
-        assert saved_run.current_loss
-        assert isinstance(saved_run.current_loss, float)
+        assert saved_run.current_loss and isinstance(saved_run.current_loss, float)
 
     def test_train_captures_training_checkpoints(
         self, config, orchestrator, checkpoint_store
