@@ -1,4 +1,5 @@
 import copy
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -112,6 +113,11 @@ class Config:
 
         obj[key_components[len(key_components) - 1]] = value
 
+        if key.endswith("type"):
+            for k in list(obj.keys()):
+                if k != "type":
+                    del obj[k]
+
     def __delitem__(self, key: str):
         """Delete a configuration value using dot notation.
 
@@ -153,6 +159,9 @@ class Config:
             YAML-formatted string of the configuration data.
         """
         return yaml.dump(self.data, default_flow_style=False)
+
+    def __repr__(self):
+        return json.dumps(self.data, indent=2)
 
     def __iter__(self):
         """Iterate over configuration items.
