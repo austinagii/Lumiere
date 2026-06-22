@@ -10,21 +10,57 @@ from typing import Any
 
 from .lumiere import resume, start
 from .training.config import Config
+from .training.orchestrator import TrainingArguments
 
-
-LUMIERE_CONFIG_PATH = "../lumiere.yaml"
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("training.log"), logging.StreamHandler()],
+    handlers=[logging.FileHandler("./.lumiere.log"), logging.StreamHandler()],
 )
 
 logger = logging.getLogger(__name__)
 
 
-def _add_training_control_args(parser: argparse.ArgumentParser) -> None:
-    """Add the shared training-control arguments to a parser."""
+def _parse_start_command_args(args) -> dict[str, Any]:
+    parser = argparse.ArgumentParser(
+        description="Start a new training run.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--spec",
+        dest="spec",
+        type=str,
+        default=None,
+        help="The path to the training configuration file",
+    )
+    group.add_argument(
+        "--template",
+        dest="template",
+        type=str,
+        default=None,
+        help="The name of the model template",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--name",
+        dest="name",
+        type=str,
+        default=None,
+        help="The name of the training run",
+    )
+    parser.add_argument(
+        "-o",
+        "--set",
+        action="append",
+        dest="overrides",
+        metavar="KEY=VALUE",
+        help="Properties of either the spec or template to be replaced during the run",
+    )
+
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
         "-e",
@@ -126,48 +162,6 @@ def _add_training_control_args(parser: argparse.ArgumentParser) -> None:
         help="The device to train on",
     )
 
-
-def _parse_start_command_args(args) -> dict[str, Any]:
-    parser = argparse.ArgumentParser(
-        description="Start a new training run.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "--spec",
-        dest="spec",
-        type=str,
-        default=None,
-        help="The path to the training configuration file",
-    )
-    group.add_argument(
-        "--template",
-        dest="template",
-        type=str,
-        default=None,
-        help="The name of the model template",
-    )
-
-    parser.add_argument(
-        "-n",
-        "--name",
-        dest="name",
-        type=str,
-        default=None,
-        help="The name of the training run",
-    )
-    parser.add_argument(
-        "-o",
-        "--set",
-        action="append",
-        dest="overrides",
-        metavar="KEY=VALUE",
-        help="Properties of either the spec or template to be replaced during the run",
-    )
-
-    _add_training_control_args(parser)
-
     return vars(parser.parse_args(args))
 
 
@@ -187,7 +181,6 @@ def _execute_start_command(
     no_checkpoints: bool,
     gradient_clip_norm: float,
     no_gradient_clipping: bool,
-    # storage_locations: str,
     device: str,
 ):
     if spec:
@@ -198,17 +191,17 @@ def _execute_start_command(
     if overrides:
         config = _apply_overrides(config, overrides)
 
-    start(
-        model=config,
-        name=name,
+    args = TrainingArguments(
         max_epochs=None if no_max_epochs else max_epochs,
         patience=None if no_patience else patience,
         stopping_threshold=stopping_threshold,
-        gradient_clip_norm=None if no_gradient_clipping else gradient_clip_norm,
         log_interval=None if no_logging else log_interval,
         checkpoint_interval=None if no_checkpoints else checkpoint_interval,
+        gradient_clip_norm=None if no_gradient_clipping else gradient_clip_norm,
         device=device,
     )
+
+    start(config, args=args, name=name)
 
 
 def _parse_resume_command_args(args) -> dict[str, Any]:
@@ -224,44 +217,16 @@ def _parse_resume_command_args(args) -> dict[str, Any]:
     parser.add_argument(
         "-f",
         "--from",
-        dest="checkpoint_tag",
+        dest="tag",
         default="latest",
-        help="The checkpoint tag to resume from",
+        help="The checkpoint to resume from",
     )
-
-    _add_training_control_args(parser)
 
     return vars(parser.parse_args(args))
 
 
-def _execute_resume_command(
-    name: str,
-    checkpoint_tag: str,
-    max_epochs: int | None,
-    no_max_epochs: bool,
-    patience: int | None,
-    no_patience: bool,
-    stopping_threshold: float,
-    log_interval: int,
-    no_logging: bool,
-    checkpoint_interval: int,
-    no_checkpoints: bool,
-    gradient_clip_norm: float,
-    no_gradient_clipping: bool,
-    # storage_locations: str,
-    device: str,
-):
-    resume(
-        name=name,
-        checkpoint_tag=checkpoint_tag,
-        max_epochs=None if no_max_epochs else max_epochs,
-        patience=None if no_patience else patience,
-        stopping_threshold=stopping_threshold,
-        log_interval=None if no_logging else log_interval,
-        checkpoint_interval=None if no_checkpoints else checkpoint_interval,
-        gradient_clip_norm=None if no_gradient_clipping else gradient_clip_norm,
-        device=device,
-    )
+def _execute_resume_command(name: str, tag: str):
+    resume(name=name, tag=tag)
 
 
 def _load_spec(spec):
@@ -270,7 +235,6 @@ def _load_spec(spec):
     return Config.from_file(spec_path)
 
 
-# TODO: Move to lumiere module.
 def _load_template(template):
     cwd = Path(__file__).parent
     template_path = (cwd / f"../templates/{template}.yaml").resolve()

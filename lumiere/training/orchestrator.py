@@ -1,8 +1,11 @@
+import dataclasses
 import logging
+import string
 import time
 from typing import Any
 
 from lumiere import Loader, register_dependency
+from lumiere.utils import randomizer
 
 from .artifact import ArtifactStore
 from .checkpoint import Checkpoint, CheckpointStore, CheckpointTag
@@ -17,13 +20,45 @@ from .trainer import Trainer, TrainingState
 logger = logging.getLogger(__name__)
 
 
+@dataclasses.dataclass
+class TrainingArguments:
+    """Parameters to control training runs.
+
+    Attributes:
+        max_epochs: The maximum number epochs to be executed. If none is provided the
+            run will execute indefinitely or until either it's patience is exceeded or
+            it is forcefully stopped via a signal.
+        patience: The maximum number of consecutive epochs allowed without improvement.
+            Exceeding this number halts the training run.
+        stopping_threshold: The minimum improvement to the validation performance for
+            this epoch to count as an improvement.
+        gradient_clip_norm: The maximum normal of the gradient weights.
+        log_interval: The number of steps between each capture or training metrics.
+        checkpoint_interval: The number of epochs between saving each checkpoint.
+        device: The device training should be executed on.
+
+    """
+
+    max_epochs: int | None = 25
+    patience: int | None = 3
+    stopping_threshold: float | None = 1e-3
+    gradient_clip_norm: float | None = 1e-1
+    log_interval: int | None = 50
+    checkpoint_interval: int | None = 5
+    device: str | None = "cpu"
+
+
 class TrainingOrchestrator:
     """Orchestrates and executes training runs.
 
-    The orchestrator's focus is on ensuring that all the components needed to
-    execute a training run are present and that they are coordinated in a way to
-    successfully complete the training run without issue, doing everything that they
-    need to do at every step of the way.
+    An orchestrator is responsible for ensuring that all components needed to execute
+    a training run are initialized or loaded successfully and that they are
+    coordinated to successfully complete the training run.
+
+    To ensure that training runs can be interrupted and resumed at a later time, an
+    orchestrator stores several artifacts. Artifacts are categorized by type and to
+    allow flexibility in storage locations, each designated artifact type uses its
+    own store.
     """
 
     def __init__(
@@ -32,82 +67,52 @@ class TrainingOrchestrator:
         checkpoint_store: CheckpointStore,
         artifact_store: ArtifactStore,
         event_store: EventStore,
-        max_epochs: int | None,
-        patience: int | None,
-        stopping_threshold: float,
-        gradient_clip_norm: float | None,
-        log_interval: int | None,
-        checkpoint_interval: int | None,
-        device="cpu",
     ):
         """Initialize a TrainingOrchestrator.
 
         Args:
-            run_store: The repository for run information.
-            artifact_store: The repository for training run artifacts.
+            run_store: The store for training runs.
+            checkpoint_store: The store for training checkpoints.
+            artifact_store: The store for training artifacts.
+            event_store: The store for training events.
 
         """
         self.run_store = run_store
         self.checkpoint_store = checkpoint_store
         self.artifact_store = artifact_store
         self.event_store = event_store
-        self.max_epochs = max_epochs
-        self.patience = patience
-        self.stopping_threshold = stopping_threshold
-        self.gradient_clip_norm = gradient_clip_norm
-        self.log_interval = log_interval
-        self.checkpoint_interval = checkpoint_interval
-        self.device = device
 
+        # TODO: Move to closure in _register_training_hooks method.
         self._buffer: dict[str, Any] = {}
 
-    def train(
+    def start(
         self,
-        config: Config | None = None,
+        config: Config,
+        args: TrainingArguments,
         run_name: str | None = None,
-        checkpoint_tag: str | None = None,
     ):
-        """Orchestrate and execute a training run.
-
-        If `run_id` is specified, then this method will attempt to resume the training
-        run with the specified id from `checkpoint_tag` (or latest if not provided).
-        Otherwise this method will attempt to start a new training run using `config`
-        as the configuration for the new run. If `config` is not provided in this case
-        an error will be raised.
+        """Start a new training run.
 
         Args:
             config: The configuration to be used for the training run.
-            run_name: The name of the training run to be resumed.
-            checkpoint_tag: The checkpoint to resume training from.
+            args: The parameters controlling the training run.
+            run_name: The name of the training run to be resumed. If none is provided
+                one will be autogenerated.
+
         """
-        if config:
-            logger.info("Initializing a new training run...")
-            run, trainer = self._init_training_run(config, name=run_name)
-        else:
-            if run_name is None:
-                raise ValueError(
-                    "No training config or run to be resumed was specified."
-                )
-            if checkpoint_tag is None:
-                logger.debug(
-                    "No checkpoint specified as the restore point for training run"
-                    + "'{run_name}'. Defaulting to 'latest'."
-                )
-                checkpoint_tag = CheckpointTag.LATEST
+        logger.info("Initializing a new training run...")
+        if run_name is None or len(run_name.strip(string.whitespace)) == 0:
+            run_name = randomizer.random_name()
 
-            logger.info(
-                f"Resuming training run '{run_name}' from checkpoint '{checkpoint_tag}'..."  # NOQA: E501
-            )
-            run, trainer = self._load_training_run(run_name, checkpoint_tag)
+        run, trainer = self._init_training_run(run_name, config, args)
+        logger.info(f"Run '{run_name}' successfully initialized. Starting run...")
 
-        self._register_training_hooks(run, trainer)
-        logger.info("Trainer initialized successfully")
-        logger.info(f"Starting training run: '{run.name}'")
+        # TODO: Execute this asynchronously.
         train_metrics = trainer.train()
+
         logger.info(
             f"Training completed in {_format_hours(train_metrics.total_time_taken)}!"
         )
-
         run.status = RunStatus.COMPLETED
         run.updated_at = time.time_ns()
         self.run_store.update(run)
@@ -117,17 +122,9 @@ class TrainingOrchestrator:
         return run
 
     def _init_training_run(
-        self, config: Config, name: str | None = None
+        self, name: str, config: Config, args: TrainingArguments
     ) -> tuple[Run, Trainer]:
-        """Initialize components for a new training run.
-
-        Args:
-            run: The training run for which the components are to be intialized.
-            device: The device to use for training.
-
-        Returns:
-            Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer)
-        """
+        """Initialize components for a new training run."""
         # Validate early to avoid partially loading components.
         # TODO: Raise ValueError if required config fields are missing.
         # fmt: off
@@ -139,15 +136,7 @@ class TrainingOrchestrator:
         # fmt: on
 
         # Capture the training params so they can be reused when resuming runs.
-        config.data["training"] = {
-            "max_epochs": self.max_epochs,
-            "patience": self.patience,
-            "stopping_threshold": self.stopping_threshold,
-            "gradient_clip_norm": self.gradient_clip_norm,
-            "checkpoint_interval": self.checkpoint_interval,
-            "log_interval": self.log_interval,
-            "device": self.device,
-        }
+        config["training"] = dataclasses.asdict(args)
         run = Run(config, name=name)
         try:
             self.run_store.add(run)
@@ -221,28 +210,58 @@ class TrainingOrchestrator:
             loss_fn=cross_entropy_loss,
             optimizer=optimizer,
             scheduler=scheduler,
-            max_epochs=self.max_epochs,
-            stopping_threshold=self.stopping_threshold,
-            patience=self.patience,
-            gradient_clip_norm=self.gradient_clip_norm,
-            device=self.device,
+            max_epochs=args.max_epochs,
+            stopping_threshold=args.stopping_threshold,
+            patience=args.patience,
+            gradient_clip_norm=args.gradient_clip_norm,
+            device=args.device,
         )
 
+        self._register_training_hooks(run, trainer)
+
         return run, trainer
+
+    def resume(self, run_name: str, checkpoint_tag: str = "latest"):
+        """Resume a previously interrupted training run.
+
+        Args:
+            run_name: The name of the training run to be resumed.
+            checkpoint_tag: The checkpoint to resume training from. Defaults to
+                `'latest'`.
+        """
+        if run_name is None or len(run_name.strip()) == 0:
+            raise ValueError("No run rame was provided.")
+
+        if checkpoint_tag is None:
+            logger.debug(
+                "No checkpoint specified as the restore point for training run"
+                + "'{run_name}'. Defaulting to 'latest'."
+            )
+            checkpoint_tag = str(CheckpointTag.LATEST)
+
+        logger.info(
+            f"Resuming training run '{run_name}' from checkpoint '{checkpoint_tag}'..."  # NOQA: E501
+        )
+        run, trainer = self._load_training_run(run_name, checkpoint_tag)
+
+        logger.info("Trainer initialized successfully, starting run '{run.name}'...")
+        train_metrics = trainer.train()
+        logger.info(
+            f"Training completed in {_format_hours(train_metrics.total_time_taken)}!"
+        )
+
+        run.status = RunStatus.COMPLETED
+        run.updated_at = time.time_ns()
+        self.run_store.update(run)
+
+        # self.checkpoint_store.mark_final()
+
+        return run
 
     def _load_training_run(
         self, run_name: str, checkpoint_tag: CheckpointTag | str
     ) -> tuple[Run, Trainer]:
-        """Load components from a previous training run.
-
-        Args:
-            config: The configuration from the previous training run.
-            checkpoint: The checkpoint to resume from.
-            device: The device to use for training.
-
-        Returns:
-            Tuple of (model, dataloader, pipeline, optimizer, scheduler, tokenizer)
-        """
+        """Load components from a previous training run."""
         logger.debug(f"Loading training run '{run_name}' from storage.")
         run = self.run_store.get(run_name)
         if run is None:
@@ -332,6 +351,7 @@ class TrainingOrchestrator:
             gradient_clip_norm=config["training.gradient_clip_norm"],
             device=config["training.device"],
         )
+        self._register_training_hooks(run, trainer)
 
         return run, trainer
 
@@ -389,7 +409,7 @@ class TrainingOrchestrator:
         trainer.register_post_fit_hook(_capture_train_loss)
         trainer.register_post_eval_hook(_capture_val_loss)
         trainer.register_post_epoch_hook(_save_epoch_stats)
-        if self.checkpoint_interval:
+        if run.config["training.checkpoint_interval"]:
             trainer.register_post_epoch_hook(_save_checkpoint)
         trainer.register_post_epoch_hook(_update_run)
 
