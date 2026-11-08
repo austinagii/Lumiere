@@ -82,10 +82,11 @@ class Config:
 
         obj = self.data
         for component in key_components:
-            obj = obj.get(component)
-
-            if obj is None:
+            # Distinguish missing keys from keys explicitly set to `None`.
+            if not isinstance(obj, Mapping) or component not in obj:
                 raise KeyError(f"Field '{key}' not found in config")
+
+            obj = obj[component]
 
         return obj
 

@@ -39,7 +39,7 @@ lumi test --run-id <run_id> --checkpoint-tag best
 
 ### Example Configurations
 
-The [`examples/`](examples/) folder contains reference training configurations, such as [`lumiere-1m.yaml`](examples/lumiere-1m.yaml), a ~1M parameter transformer trained on WikiText. To reuse a configuration by name, copy it into a `templates/` folder at the repository root and start a run with `--template <name>`. See the [Templates guide](docs/user-guide/templates.md) for details.
+The [`examples/`](examples/) folder contains reference training configurations, such as [`lumiere-1m.yaml`](examples/lumiere-1m.yaml), a ~1M parameter transformer trained on WikiText, and [`vit-cifar10.yaml`](examples/vit-cifar10.yaml), a ~2.7M parameter vision transformer trained on CIFAR-10. To reuse a configuration by name, copy it into a `templates/` folder at the repository root and start a run with `--template <name>`. See the [Templates guide](docs/user-guide/templates.md) for details.
 
 ## Development
 

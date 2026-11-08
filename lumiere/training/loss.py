@@ -47,12 +47,14 @@ class Loss:
 def cross_entropy_loss(
     predictions: torch.Tensor | tuple, targets: torch.Tensor
 ) -> torch.Tensor:
-    """Compute cross entropy loss for language modeling.
+    """Compute cross entropy loss for language modeling or classification.
 
     Args:
-        predictions: Model output logits of shape (batch_size, seq_len, vocab_size),
+        predictions: Model output logits of shape (batch_size, seq_len, vocab_size)
+            for language modeling or (batch_size, num_classes) for classification,
             or a tuple of (logits, attention_weights) where we only use the logits.
-        targets: Target token IDs of shape (batch_size, seq_len).
+        targets: Target token IDs of shape (batch_size, seq_len), or target class
+            indices of shape (batch_size,).
 
     Returns:
         Scalar loss tensor.
@@ -61,11 +63,10 @@ def cross_entropy_loss(
     if isinstance(predictions, tuple):
         predictions = predictions[0]
 
-    # Reshape predictions and targets for cross entropy
-    # predictions: (batch_size * seq_len, vocab_size)
-    # targets: (batch_size * seq_len)
-    batch_size, seq_len, vocab_size = predictions.shape
-    predictions = predictions.view(-1, vocab_size)
+    # Flatten predictions and targets for cross entropy
+    # predictions: (batch_size * seq_len, vocab_size) or (batch_size, num_classes)
+    # targets: (batch_size * seq_len) or (batch_size)
+    predictions = predictions.reshape(-1, predictions.size(-1))
     targets = targets.reshape(-1)
 
     # Compute cross entropy loss

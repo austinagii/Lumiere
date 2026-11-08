@@ -31,6 +31,28 @@ The number of transformer blocks in the network.
 The number of attention heads.
 ```
 
+### Vision
+
+**`image_size`**
+```
+The height and width of the input images in pixels.
+```
+
+**`patch_size`**
+```
+The height and width of each image patch in pixels.
+```
+
+**`num_channels`**
+```
+The number of channels in the input images.
+```
+
+**`num_classes`**
+```
+The number of output classes.
+```
+
 ### Attention Mechanism
 
 **`d_key`**
@@ -48,6 +70,11 @@ The dimensionality of the value vectors.
 **`d_ff`**
 ```
 The hidden dimension of the feed-forward network.
+```
+
+**`causal`**
+```
+Whether to apply a causal mask, preventing each token from attending to future tokens.
 ```
 
 ### Regularization
@@ -110,6 +137,11 @@ A batch of transformed token embeddings of shape `(batch_size, context_size, emb
 A batch of output embeddings of shape `(batch_size, context_size, embedding_size)`.
 ```
 
+**Patch embeddings (output)**
+```
+A batch of position-encoded patch embeddings of shape `(batch_size, num_patches + 1, embedding_size)`.
+```
+
 ### Attention Outputs
 
 **Attention weights**
@@ -147,6 +179,11 @@ A batch of logits of shape `(batch_size, context_size, vocab_size)`.
 **Tuple of logits and multi-layer attention weights**
 ```
 A tuple of logits and attention weights. The logits have shape `(batch_size, context_size, vocab_size)` and the attention weights have shape `(batch_size, num_layers, num_heads, context_size, context_size)`.
+```
+
+**Tuple of class logits and multi-layer attention weights**
+```
+A tuple of logits and attention weights. The logits have shape `(batch_size, num_classes)` and the attention weights have shape `(batch_size, num_blocks, num_heads, num_patches + 1, num_patches + 1)`.
 ```
 
 ### Masks

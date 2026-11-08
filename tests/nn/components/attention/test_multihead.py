@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from lumiere.nn.components.attention import (
@@ -124,3 +125,43 @@ class TestMultiHeadAttention:
         actual, _ = self.attention(x, padding_mask)
 
         assert torch.allclose(actual, expected, atol=1e-4)
+
+
+class TestNonCausalMultiHeadAttention:
+    def setup_method(self):
+        torch.manual_seed(0)
+        self.attention = MultiHeadAttention(
+            num_heads=2, embedding_size=4, d_key=2, d_value=2, causal=False
+        )
+
+    def test_every_token_attends_to_every_token(self):
+        x = torch.randn(2, 5, 4)
+
+        _, attention_weights = self.attention(x)
+
+        assert torch.all(attention_weights > 0)
+        assert torch.allclose(attention_weights.sum(-1), torch.ones(2, 2, 5), atol=1e-6)
+
+    def test_output_depends_on_future_tokens(self):
+        x = torch.randn(1, 4, 4)
+        modified = x.clone()
+        modified[:, -1] += 1.0
+
+        output, _ = self.attention(x)
+        modified_output, _ = self.attention(modified)
+
+        assert not torch.allclose(output[:, 0], modified_output[:, 0])
+
+    def test_padding_tokens_are_not_attended_to(self):
+        x = torch.randn(1, 4, 4)
+        padding_mask = torch.tensor([[0, 0, 1, 1]], dtype=torch.bool)
+
+        _, attention_weights = self.attention(x, padding_mask)
+
+        assert torch.all(attention_weights[..., 2:] == 0)
+        assert torch.all(attention_weights[..., 2:, :] == 0)
+        assert torch.all(attention_weights[..., :2, :2] > 0)
+
+    def test_raises_an_error_if_causal_is_not_a_boolean(self):
+        with pytest.raises(ValueError):
+            MultiHeadAttention(2, 4, 2, 2, causal="no")

@@ -1,7 +1,7 @@
 from .builder import ModelBuilder
 from .components.attention import MultiHeadAttention
 from .components.blocks import StandardTransformerBlock
-from .components.embedding import SinusoidalPositionalEmbedding
+from .components.embedding import PatchEmbedding, SinusoidalPositionalEmbedding
 from .components.feedforward import LinearFeedForward, SwigluFeedForward
 
 
@@ -11,6 +11,7 @@ __all__ = [
     # Components
     "StandardTransformerBlock",
     "SinusoidalPositionalEmbedding",
+    "PatchEmbedding",
     "MultiHeadAttention",
     "SwigluFeedForward",
     "LinearFeedForward",

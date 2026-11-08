@@ -1,0 +1,52 @@
+architecture:
+  type: vision_transformer
+  num_classes: 10
+  embedding_size: 192
+  num_blocks: 6
+  normalization:
+    type: layer
+    normalized_shape: 192
+  embedding:
+    type: patch
+    image_size: 32
+    patch_size: 4
+    num_channels: 3
+    dropout: 0.0
+  block:
+    type: standard
+    attention:
+      type: multihead
+      num_heads: 3
+      d_key: 64
+      d_value: 64
+      causal: False
+    feedforward:
+      type: linear
+      d_ff: 768
+    normalization:
+      type: layer
+      normalized_shape: 192
+    dropout: 0.1
+    pre_norm: True
+    post_norm: False
+
+data:
+  datasets:
+    - name: cifar10
+
+pipeline:
+  name: image
+  batch_size: 128
+  mean: [0.4914, 0.4822, 0.4465]
+  std: [0.2470, 0.2435, 0.2616]
+
+optimizer:
+  name: adamw
+  lr: 0.001
+  weight_decay: 0.05
+
+scheduler:
+  name: cosine-annealing
+  max_epochs: 100
+  epoch_steps: 352
+  warmup_steps: 1760

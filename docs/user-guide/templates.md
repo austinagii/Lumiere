@@ -85,6 +85,27 @@ The full configuration:
 --8<-- "examples/lumiere-1m.yaml"
 ```
 
+## Example: ViT-CIFAR10
+
+ViT-CIFAR10 is a small vision transformer with roughly 2.7M parameters. It trains
+on CIFAR-10 image classification.
+No tokenizer is required.
+
+| Property          | Value                      |
+| ----------------- | -------------------------- |
+| Blocks            | 6                          |
+| Embedding size    | 192                        |
+| Attention heads   | 3 (`d_key = d_value = 64`), bidirectional |
+| Feed-forward size | 768                        |
+| Patches           | 64 patches of 4×4 pixels, plus a class token |
+| Classes           | 10                         |
+| Normalization     | LayerNorm, pre-norm        |
+| Positional encoding | Learned                  |
+
+```yaml
+--8<-- "examples/vit-cifar10.yaml"
+```
+
 ## See Also
 
 - [Configuration](configuration.md)

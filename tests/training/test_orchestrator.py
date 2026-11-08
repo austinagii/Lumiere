@@ -1,5 +1,6 @@
 import pytest
 
+import lumiere.testing.datasets  # noqa: F401  (registers 'random-images')
 from lumiere.testing.storage_clients import MemoryStorageClient
 from lumiere.training.artifact import ArtifactStore
 from lumiere.training.checkpoint import CheckpointStore
@@ -102,6 +103,55 @@ def config():
           max_epochs: 1000
           epoch_steps: 1700
           warmup_steps: 1700
+    """
+    return Config.from_yaml(config_yaml)
+
+
+@pytest.fixture
+def vision_config():
+    config_yaml = """
+        architecture:
+          type: vision_transformer
+          num_classes: 10
+          embedding_size: 16
+          num_blocks: 1
+          embedding:
+            type: patch
+            image_size: 8
+            patch_size: 4
+            num_channels: 3
+          block:
+            type: standard
+            attention:
+              type: multihead
+              num_heads: 2
+              d_key: 8
+              d_value: 8
+              causal: false
+            feedforward:
+              type: linear
+              d_ff: 32
+            normalization:
+              type: layer
+              normalized_shape: 16
+          normalization:
+            type: layer
+            normalized_shape: 16
+
+        data:
+          datasets:
+            - name: random-images
+              image_size: 8
+
+        pipeline:
+          name: image
+          batch_size: 4
+          mean: [0.5, 0.5, 0.5]
+          std: [0.5, 0.5, 0.5]
+
+        optimizer:
+          name: adamw
+          lr: 0.001
     """
     return Config.from_yaml(config_yaml)
 
@@ -267,3 +317,32 @@ class TestOrchestratorRunStatus:
             orchestrator._execute_training_run(run, trainer)
 
         assert run_store.get(run.name).status == RunStatus.ERROR
+
+
+class TestOrchestratorVisionTransformer:
+    def test_vision_transformer_can_be_trained_without_a_tokenizer(
+        self,
+        orchestrator,
+        run_store,
+        checkpoint_store,
+        artifact_store,
+        vision_config,
+        args,
+    ):
+        args.max_epochs = 2
+
+        run = orchestrator.start(vision_config, args)
+
+        assert run_store.get(run.name).status == RunStatus.COMPLETED
+        assert checkpoint_store.get(run.name, "latest") is not None
+        assert artifact_store.get(run.name, "tokenizer") is None
+
+    def test_vision_transformer_run_can_be_resumed(
+        self, orchestrator, run_store, vision_config, args
+    ):
+        args.max_epochs = 1
+        run = orchestrator.start(vision_config, args)
+
+        resumed = orchestrator.resume(run.name)
+
+        assert run_store.get(resumed.name).status == RunStatus.COMPLETED

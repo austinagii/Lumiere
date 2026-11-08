@@ -187,3 +187,11 @@ class TestConfig:
         actual_config = a.update(b)
 
         assert expected_config.data == actual_config.data
+
+
+def test_keys_explicitly_set_to_none_are_returned():
+    from lumiere.training.config import Config
+
+    config = Config({"training": {"patience": None}})
+
+    assert config["training.patience"] is None

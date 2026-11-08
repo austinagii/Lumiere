@@ -36,6 +36,7 @@ class MultiHeadAttention(nn.Module):
         d_value (int): The dimensionality of the value vectors.
         num_heads (int): The number of attention heads.
         embedding_size (int): The dimensionality of the token embeddings.
+        causal (bool): Whether tokens are prevented from attending to future tokens.
 
     """
 
@@ -45,6 +46,7 @@ class MultiHeadAttention(nn.Module):
         embedding_size: int,
         d_key: int,
         d_value: int,
+        causal: bool = True,
     ):
         """Initialize a multi-head attention module.
 
@@ -53,8 +55,13 @@ class MultiHeadAttention(nn.Module):
             embedding_size: The dimensionality of the token embeddings.
             d_key: The dimensionality of the key vectors.
             d_value: The dimensionality of the value vectors.
+            causal: Whether to apply a causal mask, preventing each token from
+                attending to future tokens. Set to `False` for bidirectional
+                attention, e.g. in encoder models such as the vision transformer.
+                Defaults to True.
 
         Raises:
+            ValueError: If `causal` is not a boolean.
             ValueError: If any of the following are not positive integers:
                 - `num_heads`
                 - `embedding_size`
@@ -68,11 +75,13 @@ class MultiHeadAttention(nn.Module):
         validation.validate_integer(embedding_size, "embedding_size", min_value=1)
         validation.validate_integer(d_key, "d_key", min_value=1)
         validation.validate_integer(d_value, "d_value", min_value=1)
+        validation.validate_boolean(causal, "causal")
 
         self.d_key = d_key
         self.d_value = d_value
         self.num_heads = num_heads
         self.embedding_size = embedding_size
+        self.causal = causal
 
         self._q_proj = nn.Linear(embedding_size, d_key * num_heads, bias=False)
         self._k_proj = nn.Linear(embedding_size, d_key * num_heads, bias=False)
@@ -125,13 +134,17 @@ class MultiHeadAttention(nn.Module):
             torch.tensor(self.d_key, dtype=queries.dtype, device=queries.device)
         )
 
-        mask = create_causal_mask(queries.shape[2], padding_mask)
+        if self.causal:
+            mask = create_causal_mask(queries.shape[2], padding_mask)
+        else:
+            mask = create_padding_mask(padding_mask)
 
-        masked_attention_scores = scaled_attention_scores.masked_fill(
-            mask, -float("inf")
-        )
+        if mask is not None:
+            scaled_attention_scores = scaled_attention_scores.masked_fill(
+                mask.to(scaled_attention_scores.device), -float("inf")
+            )
 
-        attention_weights = stable_softmax(masked_attention_scores)
+        attention_weights = stable_softmax(scaled_attention_scores)
         attention_values = torch.matmul(attention_weights, values)
         attention_values = concat_heads(attention_values)
         output = self._o_proj(attention_values)
@@ -172,6 +185,29 @@ def create_causal_mask(
         mask = mask | padding_mask_cols | padding_mask_rows
 
     return mask
+
+
+def create_padding_mask(padding_mask: torch.Tensor = None) -> torch.Tensor | None:
+    """Create a bidirectional attention mask from a padding mask.
+
+    This mask is used to prevent attention to and from padding tokens, while allowing
+    every other token to attend to every other token in the sequence.
+
+    Args:
+        padding_mask: A boolean mask indicating which of the tokens are padding
+            tokens, with `True` indicating a padding token and `False` for
+            non-padding tokens.
+
+    Returns:
+        A mask of shape `(batch_size, 1, context_size, context_size)`, or `None` if
+        no padding mask is provided.
+    """
+    if padding_mask is None:
+        return None
+
+    padding_mask_cols = padding_mask.unsqueeze(1).unsqueeze(1)
+    padding_mask_rows = padding_mask.unsqueeze(1).unsqueeze(3)
+    return padding_mask_cols | padding_mask_rows
 
 
 def split_heads(

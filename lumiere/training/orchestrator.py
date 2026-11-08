@@ -155,7 +155,6 @@ class TrainingOrchestrator:
         # Validate early to avoid partially loading components.
         # TODO: Raise ValueError if required config fields are missing.
         # fmt: off
-        assert config.get("tokenizer") is not None, "Config missing required 'tokenizer' section"   # NOQA: E501
         assert config.get("data") is not None, "Config missing required 'data' section"             # NOQA: E501
         assert config.get("pipeline") is not None, "Config missing required 'pipeline' section"     # NOQA: E501
         assert config.get("architecture") is not None, "Config missing required 'architecture' section"  # NOQA: E501
@@ -181,20 +180,23 @@ class TrainingOrchestrator:
                 f"Dataloader initialized with {len(dataloader.datasets)} dataset(s)"
             )
 
-            logger.info("Loading tokenizer...")
-            tokenizer = Loader.tokenizer(run.config["tokenizer"])
-            register_dependency("tokenizer", tokenizer)
-            logger.info("Tokenizer loaded successfully")
+            # A tokenizer is only required for text data (e.g. not for images).
+            if run.config.get("tokenizer") is not None:
+                logger.info("Loading tokenizer...")
+                tokenizer = Loader.tokenizer(run.config["tokenizer"])
+                register_dependency("tokenizer", tokenizer)
+                logger.info("Tokenizer loaded successfully")
 
-            logger.info("Training tokenizer on training data...")
-            tokenizer.train(dataloader["train"])
-            logger.info(
-                f"Tokenizer trained successfully (vocab size: {tokenizer.vocab_size})"
-            )
+                logger.info("Training tokenizer on training data...")
+                tokenizer.train(dataloader["train"])
+                logger.info(
+                    "Tokenizer trained successfully "
+                    f"(vocab size: {tokenizer.vocab_size})"
+                )
 
-            logger.info("Saving tokenizer artifact...")
-            self.artifact_store.add(run.name, "tokenizer", bytes(tokenizer))
-            logger.info("Tokenizer artifact saved successfully")
+                logger.info("Saving tokenizer artifact...")
+                self.artifact_store.add(run.name, "tokenizer", bytes(tokenizer))
+                logger.info("Tokenizer artifact saved successfully")
 
             logger.info("Loading pipeline...")
             pipeline = Loader.pipeline(config["pipeline"])
@@ -291,7 +293,6 @@ class TrainingOrchestrator:
 
         # fmt: off
         config = run.config
-        assert config.get("tokenizer") is not None, "Config missing required 'tokenizer' section"   # NOQA: E501
         assert config.get("data") is not None, "Config missing required 'data' section"             # NOQA: E501
         assert config.get("pipeline") is not None, "Config missing required 'pipeline' section"     # NOQA: E501
         assert config.get("architecture") is not None, "Config missing required 'model' section"           # NOQA: E501
@@ -309,13 +310,14 @@ class TrainingOrchestrator:
             + f"{checkpoint.meta()}"
         )
 
-        logger.info("Loading tokenizer...")
-        tokenizer_data = self.artifact_store.get(run_name, "tokenizer")
-        if tokenizer_data is None:
-            raise RuntimeError(f"No tokenizer found for run '{run_name}'.")
-        tokenizer = Loader.tokenizer(config["tokenizer"], state=tokenizer_data)
-        register_dependency("tokenizer", tokenizer)
-        logger.info("Tokenizer loaded successfully")
+        if config.get("tokenizer") is not None:
+            logger.info("Loading tokenizer...")
+            tokenizer_data = self.artifact_store.get(run_name, "tokenizer")
+            if tokenizer_data is None:
+                raise RuntimeError(f"No tokenizer found for run '{run_name}'.")
+            tokenizer = Loader.tokenizer(config["tokenizer"], state=tokenizer_data)
+            register_dependency("tokenizer", tokenizer)
+            logger.info("Tokenizer loaded successfully")
 
         logger.info("Loading dataset...")
         dataloader = Loader.data(config["data"])

@@ -131,3 +131,42 @@ class FamousQuotesDataset:
             raise KeyError(f"Split '{split_name}' not found")
 
         return _get_split()
+
+
+@discover(Dataset, "random-images")
+class RandomImageDataset:
+    """A toy dataset of random labelled images for testing image models."""
+
+    def __init__(
+        self,
+        image_size: int = 8,
+        num_channels: int = 3,
+        num_classes: int = 10,
+        count: int = 16,
+        seed: int = 0,
+    ):
+        import torch
+
+        generator = torch.Generator().manual_seed(seed)
+        self._samples = [
+            (
+                torch.randint(
+                    0,
+                    256,
+                    (num_channels, image_size, image_size),
+                    dtype=torch.uint8,
+                    generator=generator,
+                ),
+                int(torch.randint(0, num_classes, (1,), generator=generator)),
+            )
+            for _ in range(count)
+        ]
+
+    def __getitem__(self, split_name):
+        if split_name not in ["train", "validation"]:
+            raise KeyError(f"Split '{split_name}' not found")
+
+        def _get_split():
+            yield from self._samples
+
+        return _get_split()
