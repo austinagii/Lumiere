@@ -28,20 +28,10 @@ def _parse_start_command_args(args) -> dict[str, Any]:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "--spec",
-        dest="spec",
+    parser.add_argument(
+        "spec",
         type=str,
-        default=None,
         help="The path to the training configuration file",
-    )
-    group.add_argument(
-        "--template",
-        dest="template",
-        type=str,
-        default=None,
-        help="The name of the model template",
     )
 
     parser.add_argument(
@@ -167,7 +157,6 @@ def _parse_start_command_args(args) -> dict[str, Any]:
 
 def _execute_start_command(
     spec: str | None,
-    template: str | None,
     name: str | None,
     overrides: str | None,
     max_epochs: int | None,
@@ -183,10 +172,7 @@ def _execute_start_command(
     no_gradient_clipping: bool,
     device: str,
 ):
-    if spec:
-        config = _load_spec(spec)
-    elif template:
-        config = _load_template(template)
+    config = _load_spec(spec)
 
     if overrides:
         config = _apply_overrides(config, overrides)
