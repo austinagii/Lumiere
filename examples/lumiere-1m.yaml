@@ -1,4 +1,4 @@
-model:
+architecture:
   type: transformer
   vocab_size: 4096
   context_size: 64

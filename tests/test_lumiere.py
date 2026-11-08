@@ -1,0 +1,81 @@
+import lumiere
+from lumiere.training import Config
+from lumiere.training.orchestrator import TrainingArguments
+
+
+class TestLumiere:
+    def test_new_run_can_be_started_from_config(self):
+        config = Config(
+            {
+                "architecture": {
+                    "type": "transformer",
+                    "vocab_size": 4096,
+                    "context_size": 64,
+                    "embedding_size": 128,
+                    "num_blocks": 4,
+                    "normalization": {
+                        "type": "layer",
+                        "normalized_shape": 128,
+                    },
+                    "embedding": {
+                        "type": "sinusoidal",
+                        "padding_id": 2,
+                    },
+                    "block": {
+                        "type": "standard",
+                        "attention": {
+                            "type": "multihead",
+                            "num_heads": 4,
+                            "d_key": 32,
+                            "d_value": 32,
+                        },
+                        "feedforward": {
+                            "type": "linear",
+                            "d_ff": 256,
+                        },
+                        "normalization": {
+                            "type": "rms",
+                            "normalized_shape": 128,
+                        },
+                        "dropout": 0.1,
+                        "pre_norm": True,
+                        "post_norm": False,
+                    },
+                },
+                "data": {
+                    "datasets": [
+                        {"name": "wikitext"},
+                    ]
+                },
+                "tokenizer": {
+                    "name": "bpe",
+                    "vocab_size": 4096,
+                    "min_frequency": 2,
+                },
+                "pipeline": {
+                    "name": "text",
+                    "tokenizer": "@tokenizer",
+                    "batch_size": 32,
+                    "context_size": 64,
+                    "pad_id": 2,
+                    "sliding_window_size": 8,
+                    "preprocessors": [
+                        {"name": "autoregressive"},
+                    ],
+                },
+                "optimizer": {
+                    "name": "adamw",
+                    "lr": 0.0003,
+                },
+                "scheduler": {
+                    "name": "cosine-annealing",
+                    "max_epochs": 1000,
+                    "epoch_steps": 1700,
+                    "warmup_steps": 1700,
+                },
+            }
+        )
+
+        args = TrainingArguments(max_epochs=1)
+
+        lumiere.start(config)  # Train a new model using this training configuration.

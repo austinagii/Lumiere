@@ -11,18 +11,10 @@ from .training.orchestrator import TrainingArguments, TrainingOrchestrator
 from .training.run import RunStore
 
 
-# TODO: Fix to return `None` if template not found.
-def load_template(name: str) -> Config | None:
-    cwd = Path(__file__).parent
-    template_path = (cwd / f"../templates/{name}.yaml").resolve()
-    return Config.from_file(template_path)
-
-
 def start(
-    model: Config,
+    config: Config,
     args: TrainingArguments | None = None,
     name: str | None = None,
-    # storage_locations: str = "filesystem:filesystem",
 ):
     """Start a new training run.
 
@@ -30,13 +22,14 @@ def start(
     will continue indefinitely until manually stopped by the user.
 
     Args:
-        model: A specification of the model to be trained.
+        config: A specification of the training run and its components.
+        args: The training controls. Defaults to `None`.
         name: The name of the training run. If a name is not provided one will be
             generated. Defaults to `None`.
-        args: The training controls.
 
     """
-    storage_client = _init_storage_client()
+    # TODO: Consider simplifying initialization of stores.
+    storage_client = FileSystemStorageClient(Path(__file__).parent.parent)
     run_store = RunStore(storage_client)
     checkpoint_store = CheckpointStore(storage_client)
     artifact_store = ArtifactStore(storage_client)
@@ -49,7 +42,7 @@ def start(
         event_store=event_store,
     )
 
-    return orchestrator.start(model, args=args, run_name=name)
+    return orchestrator.start(config, args=args, run_name=name)
 
 
 def resume(name: str, tag: str = "latest"):
@@ -64,7 +57,7 @@ def resume(name: str, tag: str = "latest"):
         tag: The tag of the checkpoint to resume training from.
 
     """
-    storage_client = _init_storage_client()
+    storage_client = FileSystemStorageClient(Path(__file__).parent.parent)
     run_store = RunStore(storage_client)
     checkpoint_store = CheckpointStore(storage_client)
     artifact_store = ArtifactStore(storage_client)
@@ -78,7 +71,3 @@ def resume(name: str, tag: str = "latest"):
     )
 
     orchestrator.resume(name, tag)
-
-
-def _init_storage_client():
-    return FileSystemStorageClient(Path(__file__).parent.parent)

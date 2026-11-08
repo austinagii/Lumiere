@@ -37,6 +37,10 @@ lumi train --run-id <run_id> --checkpoint-tag best
 lumi test --run-id <run_id> --checkpoint-tag best
 ```
 
+### Example Configurations
+
+The [`examples/`](examples/) folder contains reference training configurations, such as [`lumiere-1m.yaml`](examples/lumiere-1m.yaml), a ~1M parameter transformer trained on WikiText. To reuse a configuration by name, copy it into a `templates/` folder at the repository root and start a run with `--template <name>`. See the [Templates guide](docs/user-guide/templates.md) for details.
+
 ## Development
 
 Tests will be executed on commit and push to ensure that changes do not break existing functionality. To execute tests manually, you can execute the following.

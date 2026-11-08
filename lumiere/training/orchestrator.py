@@ -88,7 +88,7 @@ class TrainingOrchestrator:
     def start(
         self,
         config: Config,
-        args: TrainingArguments,
+        args: TrainingArguments | None = None,
         run_name: str | None = None,
     ):
         """Start a new training run.
@@ -104,22 +104,49 @@ class TrainingOrchestrator:
         if run_name is None or len(run_name.strip(string.whitespace)) == 0:
             run_name = randomizer.random_name()
 
+        if args is None:
+            args = TrainingArguments()
+
         run, trainer = self._init_training_run(run_name, config, args)
         logger.info(f"Run '{run_name}' successfully initialized. Starting run...")
 
         # TODO: Execute this asynchronously.
-        train_metrics = trainer.train()
-
-        logger.info(
-            f"Training completed in {_format_hours(train_metrics.total_time_taken)}!"
-        )
-        run.status = RunStatus.COMPLETED
-        run.updated_at = time.time_ns()
-        self.run_store.update(run)
+        self._execute_training_run(run, trainer)
 
         # self.checkpoint_store.mark_final()
 
         return run
+
+    def _execute_training_run(self, run: Run, trainer: Trainer) -> None:
+        """Execute a training run, keeping its status in sync with the outcome.
+
+        The run is marked as `RUNNING` before training begins, then `COMPLETED`
+        on success, `STOPPED` if training is interrupted (e.g. Ctrl+C), or `ERROR`
+        if training fails. Interrupts and errors are re-raised after the status
+        has been saved.
+        """
+        self._update_run_status(run, RunStatus.RUNNING)
+        try:
+            train_metrics = trainer.train()
+        except KeyboardInterrupt:
+            logger.warning(f"Training run '{run.name}' was interrupted.")
+            self._update_run_status(run, RunStatus.STOPPED)
+            raise
+        except Exception:
+            logger.exception(f"Training run '{run.name}' failed.")
+            self._update_run_status(run, RunStatus.ERROR)
+            raise
+
+        logger.info(
+            f"Training completed in {_format_hours(train_metrics.total_time_taken)}!"
+        )
+        self._update_run_status(run, RunStatus.COMPLETED)
+
+    def _update_run_status(self, run: Run, status: RunStatus) -> None:
+        """Set the status of a run and persist it."""
+        run.status = status
+        run.updated_at = time.time_ns()
+        self.run_store.update(run)
 
     def _init_training_run(
         self, name: str, config: Config, args: TrainingArguments
@@ -131,7 +158,7 @@ class TrainingOrchestrator:
         assert config.get("tokenizer") is not None, "Config missing required 'tokenizer' section"   # NOQA: E501
         assert config.get("data") is not None, "Config missing required 'data' section"             # NOQA: E501
         assert config.get("pipeline") is not None, "Config missing required 'pipeline' section"     # NOQA: E501
-        assert config.get("model") is not None, "Config missing required 'model' section"           # NOQA: E501
+        assert config.get("architecture") is not None, "Config missing required 'architecture' section"  # NOQA: E501
         assert config.get("optimizer") is not None, "Config missing required 'optimizer' section"   # NOQA: E501
         # fmt: on
 
@@ -174,7 +201,7 @@ class TrainingOrchestrator:
             logger.info("Pipeline loaded successfully")
 
             logger.info("Building model...")
-            model = Loader.model(config["model"])
+            model = Loader.model(config["architecture"])
             total_params = sum(p.numel() for p in model.parameters())
             trainable_params = sum(
                 p.numel() for p in model.parameters() if p.requires_grad
@@ -217,7 +244,7 @@ class TrainingOrchestrator:
             device=args.device,
         )
 
-        self._register_training_hooks(run, trainer)
+        self._register_training_hooks(run, trainer, args)
 
         return run, trainer
 
@@ -244,15 +271,8 @@ class TrainingOrchestrator:
         )
         run, trainer = self._load_training_run(run_name, checkpoint_tag)
 
-        logger.info("Trainer initialized successfully, starting run '{run.name}'...")
-        train_metrics = trainer.train()
-        logger.info(
-            f"Training completed in {_format_hours(train_metrics.total_time_taken)}!"
-        )
-
-        run.status = RunStatus.COMPLETED
-        run.updated_at = time.time_ns()
-        self.run_store.update(run)
+        logger.info(f"Trainer initialized successfully, starting run '{run.name}'...")
+        self._execute_training_run(run, trainer)
 
         # self.checkpoint_store.mark_final()
 
@@ -274,7 +294,7 @@ class TrainingOrchestrator:
         assert config.get("tokenizer") is not None, "Config missing required 'tokenizer' section"   # NOQA: E501
         assert config.get("data") is not None, "Config missing required 'data' section"             # NOQA: E501
         assert config.get("pipeline") is not None, "Config missing required 'pipeline' section"     # NOQA: E501
-        assert config.get("model") is not None, "Config missing required 'model' section"           # NOQA: E501
+        assert config.get("architecture") is not None, "Config missing required 'model' section"           # NOQA: E501
         assert config.get("optimizer") is not None, "Config missing required 'optimizer' section"   # NOQA: E501
         assert config.get("training") is not None, "Config missing required 'training' section"     # NOQA: E501
         # fmt: on
@@ -308,7 +328,7 @@ class TrainingOrchestrator:
         logger.info("Pipeline loaded successfully")
 
         logger.info("Building model...")
-        model = Loader.model(config["model"])
+        model = Loader.model(config["architecture"])
         model.load_state_dict(checkpoint.model_state_dict, strict=True, assign=True)
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -351,11 +371,15 @@ class TrainingOrchestrator:
             gradient_clip_norm=config["training.gradient_clip_norm"],
             device=config["training.device"],
         )
-        self._register_training_hooks(run, trainer)
+        self._register_training_hooks(
+            run, trainer, TrainingArguments(**config["training"])
+        )
 
         return run, trainer
 
-    def _register_training_hooks(self, run: Run, trainer: Trainer) -> None:
+    def _register_training_hooks(
+        self, run: Run, trainer: Trainer, args: TrainingArguments
+    ) -> None:
         def _capture_train_loss(trainer: Trainer, train_metrics) -> None:
             self._buffer["train_loss"] = train_metrics.avg_loss.item()
 
@@ -379,7 +403,7 @@ class TrainingOrchestrator:
             # Avoid creating a checkpoint if saving criteria aren't met.
             # TODO: Only skip creation of epoch checkpoints, best / latest should always be created.
             if (
-                trainer.state.current_epoch % self.checkpoint_interval != 0
+                trainer.state.current_epoch % args.checkpoint_interval != 0
                 and trainer.state.prev_loss != trainer.state.best_loss
             ):
                 return

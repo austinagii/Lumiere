@@ -82,6 +82,7 @@ nav:
     - Quick Start: getting-started/quickstart.md
   - User Guide:
     - Configuration: user-guide/configuration.md
+    - Templates: user-guide/templates.md
     - Training: user-guide/training.md
     - Model Building: user-guide/model-building.md
     - Data Pipeline: user-guide/data-pipeline.md

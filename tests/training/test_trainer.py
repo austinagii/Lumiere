@@ -103,8 +103,8 @@ def loss_fn():
     def _cross_entropy(outputs, y):
         logits, _ = outputs
         return F.cross_entropy(
-            logits.view(-1, logits.size(-1)),
-            y.view(-1),
+            logits.reshape(-1, logits.size(-1)),
+            y.reshape(-1),
             ignore_index=SPECIAL_TOKENS["padding"].id,
         )
 

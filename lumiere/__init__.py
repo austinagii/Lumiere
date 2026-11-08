@@ -15,7 +15,7 @@ from .internal.loader import (
     load_scheduler,
     load_tokenizer,
 )
-from .lumiere import load_template, resume, start
+from .lumiere import resume, start
 from .utils.signals import register_signal_handlers
 
 
@@ -33,7 +33,6 @@ __all__ = [
     "load_tokenizer",
     "start",
     "resume",
-    "load_template",
 ]
 
 register_signal_handlers()

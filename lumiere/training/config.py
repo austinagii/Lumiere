@@ -13,7 +13,8 @@ SUBKEY_SEPARATOR = "."
 class Config:
     """Configuration object with dot notation access.
 
-    Provides hierarchical configuration access using dot notation (e.g., `config["model.vocab_size"]`).
+    Provides hierarchical configuration access using dot notation (e.g.,
+    `config["model.vocab_size"]`).
 
     Args:
         data: Dictionary containing the configuration data.
@@ -162,6 +163,18 @@ class Config:
 
     def __repr__(self):
         return json.dumps(self.data, indent=2)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Config):
+            return NotImplemented
+
+        return self.data == other.data
+
+    __hash__ = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a deep copy of the configuration data as a dict."""
+        return copy.deepcopy(self.data)
 
     def __iter__(self):
         """Iterate over configuration items.
